@@ -1,0 +1,7 @@
+[submodule "provoor-runs"]
+	path = provoor-runs
+	url = git@github.com:han0110/provoor-runs.git
+[submodule "benchmarkoor"]
+	path = benchmarkoor
+	url = git@github.com:han0110/benchmarkoor.git
+	branch = feature/provoor
