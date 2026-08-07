@@ -1,0 +1,43 @@
+# provoor cluster configuration template. Copy to cluster.yaml and fill in the
+# placeholders. Real hostnames and addresses stay out of version control.
+zkvm: zisk
+
+# The proving-key volume on each worker host is named after the tag, so hosts
+# cache one key set per release.
+image: ghcr.io/han0110/zisk/zisk
+image_tag: 1.0.0-alpha
+
+# Container log level, 0 info, 1 debug, 2 trace.
+verbose: 0
+
+# SSH destinations are resolved by the local ssh binary, so aliases, keys,
+# ProxyJump, and the agent from the user's own SSH configuration apply. An
+# empty ssh targets the local Docker daemon.
+coordinator:
+  name: node1
+  ssh: <ssh-user>@<coordinator-host>
+  # Coordinator address workers on other hosts dial, distinct from ssh when a
+  # bastion routes no cluster traffic.
+  ip: <coordinator-ip-accessible-by-workers>
+
+# One worker per GPU host, its single container spanning the GPUs it exposes,
+# all, a count, or device=0,1, defaulting to all. A worker named like the
+# coordinator is co-located and dials it over loopback.
+workers:
+  - name: node1
+    ssh: <ssh-user>@<coordinator-host>
+  - name: node2
+    ssh: <ssh-user>@<worker-2-host>
+    gpus: all
+
+# Worker configuration, applied to every worker. mpi_numa_ppr derives from
+# the host topology when unset, and an unset mpi_threads leaves proofman's
+# own choice of physical cores per rank.
+config:
+  shm_size_gb: 64
+  mpi_np: 1
+  # A four buffer witness pool frees roughly 10 GB of heap at no measured
+  # proving-time cost. minimal_memory frees roughly 11 GB more when
+  # step-heavy blocks approach host RAM exhaustion.
+  minimal_memory: false
+  max_witness_stored: 4

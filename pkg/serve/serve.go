@@ -1,0 +1,270 @@
+// Package serve forwards benchmark requests to a proving backend as a
+// JSON-RPC server shaped like an execution client, so a benchmark harness
+// drives proving through its unchanged request loop. One request proves one
+// stateless payload, and the response mirrors an Engine API payload status.
+package serve
+
+import (
+	"bytes"
+	"context"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+)
+
+// DefaultProveTimeout bounds one proof. Shorter timeouts misreport slow
+// proofs as failures, so the default sits well above routine proving times.
+const DefaultProveTimeout = 10 * time.Minute
+
+// Prover proves one stateless payload per call. Implementations are supplied
+// by the zkVM backend packages.
+type Prover interface {
+	// ClientVersion identifies the prover and guest for run records.
+	ClientVersion() string
+	// Prove proves the payload carried in input, bounded by the context
+	// deadline, reporting job phase transitions through onPhase.
+	Prove(ctx context.Context, input []byte, onPhase func(phase string)) (*ProveOutcome, error)
+}
+
+// ProveOutcome carries what one completed proof reports.
+type ProveOutcome struct {
+	// PublicValues is the commitment the guest produced.
+	PublicValues []byte
+	// ProofBytes is the size of the proof.
+	ProofBytes int
+	// ClusterProvingTime is the backend's self-reported proving duration.
+	ClusterProvingTime time.Duration
+}
+
+// Server answers the JSON-RPC methods a benchmark run needs. A mutex
+// serialises proofs, so concurrent callers cannot put two jobs on one
+// cluster and corrupt both timings.
+type Server struct {
+	// Prover proves payloads.
+	Prover Prover
+	// Zkvm and Guest name the subject under test in responses and metrics.
+	Zkvm  string
+	Guest string
+	// ZkvmSdkVersion is reported in responses when known.
+	ZkvmSdkVersion string
+	// ProveTimeout bounds one proof, DefaultProveTimeout when zero.
+	ProveTimeout time.Duration
+	// FailRunOnClusterError exits the process on a cluster error instead of
+	// failing the test, mapping an unrecoverable fault onto container death.
+	FailRunOnClusterError bool
+	// Output receives the phase and metric lines, one per line.
+	Output io.Writer
+	// Exit terminates the process, os.Exit in production.
+	Exit func(code int)
+
+	mu       sync.Mutex
+	outputMu sync.Mutex
+}
+
+type request struct {
+	JSONRPC string            `json:"jsonrpc"`
+	Method  string            `json:"method"`
+	Params  []json.RawMessage `json:"params"`
+	ID      json.RawMessage   `json:"id"`
+}
+
+type response struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id"`
+	Result  any             `json:"result,omitempty"`
+	Error   *rpcError       `json:"error,omitempty"`
+}
+
+type rpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+// provePayload is params[0] of zkvm_proveStatelessPayload. params[1] carries
+// provenance nothing here reads.
+type provePayload struct {
+	BlockHash               string `json:"blockHash"`
+	BlockNumber             string `json:"blockNumber"`
+	GasUsed                 string `json:"gasUsed"`
+	StatelessInput          string `json:"statelessInput"`
+	ExpectedStatelessOutput string `json:"expectedStatelessOutput"`
+}
+
+// payloadStatus mirrors an Engine API payload status, so the harness decides
+// pass and fail without new logic.
+type payloadStatus struct {
+	Status               string `json:"status"`
+	ValidationError      string `json:"validationError,omitempty"`
+	StatelessOutput      string `json:"statelessOutput"`
+	Zkvm                 string `json:"zkvm"`
+	ZkvmSdkVersion       string `json:"zkvmSdkVersion,omitempty"`
+	Guest                string `json:"guest"`
+	ProofSize            int    `json:"proofSize"`
+	ProvingTimeMs        int64  `json:"provingTimeMs"`
+	ClusterProvingTimeMs int64  `json:"clusterProvingTimeMs"`
+}
+
+// metricLine is the per-test JSON object written to Output. The block hash
+// nests under block.hash, the shape every block-log payload shares, so the
+// collector matches the line to its test.
+type metricLine struct {
+	Block                metricBlock `json:"block"`
+	Zkvm                 string      `json:"zkvm"`
+	Guest                string      `json:"guest"`
+	InputBytes           int         `json:"inputBytes"`
+	ProvingTimeMs        int64       `json:"provingTimeMs"`
+	ClusterProvingTimeMs int64       `json:"clusterProvingTimeMs"`
+	ProofSize            int         `json:"proofSize"`
+	OutputMatched        bool        `json:"outputMatched"`
+}
+
+type metricBlock struct {
+	Hash string `json:"hash"`
+}
+
+// Handler returns the HTTP handler answering JSON-RPC requests.
+func (s *Server) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var req request
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeResponse(w, response{JSONRPC: "2.0", ID: nil, Error: &rpcError{Code: -32700, Message: "parse error"}})
+			return
+		}
+
+		resp := response{JSONRPC: "2.0", ID: req.ID}
+		switch req.Method {
+		case "web3_clientVersion":
+			resp.Result = s.Prover.ClientVersion()
+		case "zkvm_proveStatelessPayload":
+			result, rpcErr := s.prove(r.Context(), req.Params)
+			resp.Result, resp.Error = result, rpcErr
+		default:
+			resp.Error = &rpcError{Code: -32601, Message: fmt.Sprintf("the method %s does not exist", req.Method)}
+		}
+		writeResponse(w, resp)
+	})
+}
+
+func writeResponse(w http.ResponseWriter, resp response) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpcError) {
+	if len(params) == 0 {
+		return nil, &rpcError{Code: -32602, Message: "params[0] is required"}
+	}
+	var payload provePayload
+	if err := json.Unmarshal(params[0], &payload); err != nil {
+		return nil, &rpcError{Code: -32602, Message: "params[0]: " + err.Error()}
+	}
+	input, err := decodeHex(payload.StatelessInput)
+	if err != nil {
+		return nil, &rpcError{Code: -32602, Message: "statelessInput: " + err.Error()}
+	}
+	expected, err := decodeHex(payload.ExpectedStatelessOutput)
+	if err != nil {
+		return nil, &rpcError{Code: -32602, Message: "expectedStatelessOutput: " + err.Error()}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	timeout := s.ProveTimeout
+	if timeout == 0 {
+		timeout = DefaultProveTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	s.printf("proving %s (%d input bytes)", payload.BlockHash, len(input))
+	started := time.Now()
+	outcome, err := s.Prover.Prove(ctx, input, func(phase string) {
+		s.printf("proving %s phase %s", payload.BlockHash, phase)
+	})
+	if err != nil {
+		s.printf("proving %s failed: %v", payload.BlockHash, err)
+		if s.FailRunOnClusterError {
+			s.Exit(1)
+		}
+		return nil, &rpcError{Code: -32000, Message: err.Error()}
+	}
+	provingTime := time.Since(started)
+
+	matched := outputMatched(outcome.PublicValues, expected)
+	s.emitMetric(metricLine{
+		Block:                metricBlock{Hash: payload.BlockHash},
+		Zkvm:                 s.Zkvm,
+		Guest:                s.Guest,
+		InputBytes:           len(input),
+		ProvingTimeMs:        provingTime.Milliseconds(),
+		ClusterProvingTimeMs: outcome.ClusterProvingTime.Milliseconds(),
+		ProofSize:            outcome.ProofBytes,
+		OutputMatched:        matched,
+	})
+
+	status := payloadStatus{
+		Status:               "VALID",
+		StatelessOutput:      "0x" + hex.EncodeToString(outcome.PublicValues),
+		Zkvm:                 s.Zkvm,
+		ZkvmSdkVersion:       s.ZkvmSdkVersion,
+		Guest:                s.Guest,
+		ProofSize:            outcome.ProofBytes,
+		ProvingTimeMs:        provingTime.Milliseconds(),
+		ClusterProvingTimeMs: outcome.ClusterProvingTime.Milliseconds(),
+	}
+	if !matched {
+		status.Status = "INVALID"
+		status.ValidationError = "stateless output mismatch"
+	}
+	return status, nil
+}
+
+// outputMatched reports whether the committed public values carry the
+// expected output. The commitment is fixed size and the output shorter, so a
+// match requires prefix equality and all-zero trailing bytes.
+func outputMatched(publicValues, expected []byte) bool {
+	if len(expected) > len(publicValues) {
+		return false
+	}
+	if !bytes.Equal(publicValues[:len(expected)], expected) {
+		return false
+	}
+	for _, trailing := range publicValues[len(expected):] {
+		if trailing != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func decodeHex(value string) ([]byte, error) {
+	trimmed, ok := strings.CutPrefix(value, "0x")
+	if !ok {
+		return nil, fmt.Errorf("missing 0x prefix")
+	}
+	return hex.DecodeString(trimmed)
+}
+
+func (s *Server) printf(format string, args ...any) {
+	s.outputMu.Lock()
+	defer s.outputMu.Unlock()
+	fmt.Fprintf(s.Output, format+"\n", args...)
+}
+
+func (s *Server) emitMetric(metric metricLine) {
+	encoded, _ := json.Marshal(metric)
+	s.outputMu.Lock()
+	defer s.outputMu.Unlock()
+	fmt.Fprintf(s.Output, "%s\n", encoded)
+}

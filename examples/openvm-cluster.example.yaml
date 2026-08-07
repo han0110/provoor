@@ -1,0 +1,62 @@
+# provoor cluster configuration template. Copy to cluster.yaml and fill in the
+# placeholders. Real hostnames and addresses stay out of version control.
+zkvm: openvm
+
+# The artifacts volume on each host is named after the tag, so hosts cache one
+# derived keyset per release.
+image: ghcr.io/han0110/openvm
+image_tag: 2.1.0-preview
+
+# Container log level, 0 info, 1 debug, 2 trace.
+verbose: 0
+
+# Guest ELF sources, local paths or ere-guests release asset URLs. Every host
+# derives a proving keyset per entry at deploy time. Program names are content
+# digests, so a provoor serve for this cluster must reference a byte-identical
+# ELF.
+guests:
+  - https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-ethrex-openvm-v2.1.0-preview.elf
+
+# SSH destinations are resolved by the local ssh binary, so aliases, keys,
+# ProxyJump, and the agent from the user's own SSH configuration apply. An
+# empty ssh targets the local Docker daemon.
+coordinator:
+  name: node1
+  ssh: <ssh-user>@<coordinator-host>
+  # Coordinator address workers on other hosts dial, distinct from ssh when a
+  # bastion routes no cluster traffic.
+  ip: <coordinator-ip-accessible-by-workers>
+
+# One worker entry per container, each owning one GPU of its host, so any
+# topology is spelled out explicitly. The entry's position is its cluster-wide
+# prover id, and the coordinator dials each worker back at its ip, which a
+# worker co-located with the coordinator may omit to be dialed over loopback.
+workers:
+  - name: node1
+    ssh: <ssh-user>@<coordinator-host>
+    ip: <node-1-ip-accessible-by-coordinator>
+    gpu: 0
+  - name: node1
+    ssh: <ssh-user>@<coordinator-host>
+    ip: <node-1-ip-accessible-by-coordinator>
+    gpu: 1
+  - name: node2
+    ssh: <ssh-user>@<worker-2-host>
+    ip: <node-2-ip-accessible-by-coordinator>
+    gpu: 0
+  - name: node2
+    ssh: <ssh-user>@<worker-2-host>
+    ip: <node-2-ip-accessible-by-coordinator>
+    gpu: 1
+
+# Prover configuration. The capacities apply to the manager and every worker
+# alike, so the cluster accepts each worker's registration.
+config:
+  app_provers: 2
+  leaf_provers: 2
+  internal_provers: 1
+  timeout_secs: 1800
+  shm_size_gb: 2
+  # 14.5 GiB sits under OpenVM's built-in cap with headroom for the CUDA
+  # pool, two concurrent app provers at the cap can exhaust a 32 GB card.
+  segment_memory: 15569256448
