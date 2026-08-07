@@ -10,8 +10,8 @@ runner:
   client_logs_to_stdout: true
   container_network: benchmarkoor
   cleanup_on_start: false
-  # The forwarder listens only after guest setup, which on a cold cluster
-  # runs a one-time keygen taking several minutes.
+  # The forwarder listens only after guest setup and a warmup proof, which
+  # on a cold cluster take several minutes.
   ready_timeout: 15m
 
   benchmark:

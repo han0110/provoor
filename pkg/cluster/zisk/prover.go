@@ -67,6 +67,12 @@ func (p *Prover) ClientVersion() string {
 	return p.version
 }
 
+// Warmup proves the shared warmup input once and discards the result.
+func (p *Prover) Warmup(ctx context.Context) error {
+	_, err := p.client.Prove(ctx, p.hashID, cluster.WarmupInput, nil)
+	return err
+}
+
 // Prove proves one stateless payload, bounded by the context deadline.
 func (p *Prover) Prove(ctx context.Context, input []byte, onPhase func(phase string)) (*serve.ProveOutcome, error) {
 	result, err := p.client.Prove(ctx, p.hashID, input, onPhase)

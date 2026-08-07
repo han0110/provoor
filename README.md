@@ -84,7 +84,9 @@ benchmarkoor run --config zkvm-benchmark.yaml
 
 The forwarder flags travel through the instance `extra_args`. `--guest-elf`
 takes a local path or an `eth-act/ere-guests` release asset URL, and for
-OpenVM it must be byte-identical to the cluster's `guests` entry.
+OpenVM it must be byte-identical to the cluster's `guests` entry. Before
+opening its port the forwarder proves a small warmup block, so a cold
+cluster's one-time costs never land in a measured test.
 Results land in `./results` and render in the benchmarkoor UI, including live
 proof phases, per-test proving times, and opcode heatmaps.
 

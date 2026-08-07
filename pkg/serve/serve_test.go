@@ -23,6 +23,10 @@ func (p *fakeProver) ClientVersion() string {
 	return "provoor/0.0.0/fake/guest"
 }
 
+func (p *fakeProver) Warmup(context.Context) error {
+	return nil
+}
+
 func (p *fakeProver) Prove(_ context.Context, _ []byte, onPhase func(string)) (*ProveOutcome, error) {
 	if p.err != nil {
 		return nil, p.err
@@ -110,6 +114,12 @@ func TestProveValid(t *testing.T) {
 	}
 	if metric.Block.Hash != "0xabc123" || !metric.OutputMatched || metric.InputBytes != 3 {
 		t.Errorf("metric = %+v", metric)
+	}
+	if metric.Block.Number != 1 || metric.Block.GasUsed != 60000000 {
+		t.Errorf("block metric = %+v", metric.Block)
+	}
+	if metric.Throughput.MGasPerSec <= 0 || metric.Timing.TotalMs != metric.ProvingTimeMs {
+		t.Errorf("throughput metric = %+v timing = %+v", metric.Throughput, metric.Timing)
 	}
 	if !strings.Contains(output.String(), "phase prove") {
 		t.Errorf("expected phase lines in output, got %q", output.String())

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,9 @@ const DefaultProveTimeout = 10 * time.Minute
 type Prover interface {
 	// ClientVersion identifies the prover and guest for run records.
 	ClientVersion() string
+	// Warmup proves a small fixed input, so a cold prover's one-time costs
+	// land before the first measured proof.
+	Warmup(ctx context.Context) error
 	// Prove proves the payload carried in input, bounded by the context
 	// deadline, reporting job phase transitions through onPhase.
 	Prove(ctx context.Context, input []byte, onPhase func(phase string)) (*ProveOutcome, error)
@@ -111,20 +115,44 @@ type payloadStatus struct {
 
 // metricLine is the per-test JSON object written to Output. The block hash
 // nests under block.hash, the shape every block-log payload shares, so the
-// collector matches the line to its test.
+// collector matches the line to its test. Block, timing, and throughput
+// reuse the standard block-log field names the UI dashboards read.
 type metricLine struct {
-	Block                metricBlock `json:"block"`
-	Zkvm                 string      `json:"zkvm"`
-	Guest                string      `json:"guest"`
-	InputBytes           int         `json:"inputBytes"`
-	ProvingTimeMs        int64       `json:"provingTimeMs"`
-	ClusterProvingTimeMs int64       `json:"clusterProvingTimeMs"`
-	ProofSize            int         `json:"proofSize"`
-	OutputMatched        bool        `json:"outputMatched"`
+	Block                metricBlock      `json:"block"`
+	Timing               metricTiming     `json:"timing"`
+	Throughput           metricThroughput `json:"throughput"`
+	Zkvm                 string           `json:"zkvm"`
+	Guest                string           `json:"guest"`
+	InputBytes           int              `json:"inputBytes"`
+	ProvingTimeMs        int64            `json:"provingTimeMs"`
+	ClusterProvingTimeMs int64            `json:"clusterProvingTimeMs"`
+	ProofSize            int              `json:"proofSize"`
+	OutputMatched        bool             `json:"outputMatched"`
 }
 
 type metricBlock struct {
-	Hash string `json:"hash"`
+	Number  uint64 `json:"number"`
+	Hash    string `json:"hash"`
+	GasUsed uint64 `json:"gas_used"`
+}
+
+type metricTiming struct {
+	TotalMs int64 `json:"total_ms"`
+}
+
+type metricThroughput struct {
+	MGasPerSec float64 `json:"mgas_per_sec"`
+}
+
+// parseQuantity reads a hex or decimal quantity string, zero when absent or
+// malformed, since the metric fields it feeds are best effort.
+func parseQuantity(value string) uint64 {
+	if after, ok := strings.CutPrefix(value, "0x"); ok {
+		parsed, _ := strconv.ParseUint(after, 16, 64)
+		return parsed
+	}
+	parsed, _ := strconv.ParseUint(value, 10, 64)
+	return parsed
 }
 
 // Handler returns the HTTP handler answering JSON-RPC requests.
@@ -202,8 +230,15 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 	provingTime := time.Since(started)
 
 	matched := outputMatched(outcome.PublicValues, expected)
+	gasUsed := parseQuantity(payload.GasUsed)
+	var mgasPerSec float64
+	if provingTime > 0 {
+		mgasPerSec = float64(gasUsed) / 1e6 / provingTime.Seconds()
+	}
 	s.emitMetric(metricLine{
-		Block:                metricBlock{Hash: payload.BlockHash},
+		Block:                metricBlock{Number: parseQuantity(payload.BlockNumber), Hash: payload.BlockHash, GasUsed: gasUsed},
+		Timing:               metricTiming{TotalMs: provingTime.Milliseconds()},
+		Throughput:           metricThroughput{MGasPerSec: mgasPerSec},
 		Zkvm:                 s.Zkvm,
 		Guest:                s.Guest,
 		InputBytes:           len(input),

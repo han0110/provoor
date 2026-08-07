@@ -79,8 +79,19 @@ func serveCommand() *cobra.Command {
 				Exit:                  os.Exit,
 			}
 
-			// The listen port opens only after guest verification and setup,
-			// so a readiness poll cannot race the first proof.
+			// A warmup proof drives a cold cluster through its one-time
+			// compile and cache costs, so no measured proof pays them.
+			warmupStart := time.Now()
+			warmupCtx, cancelWarmup := context.WithTimeout(ctx, timeout)
+			err = prover.Warmup(warmupCtx)
+			cancelWarmup()
+			if err != nil {
+				return fmt.Errorf("warming up the prover: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "prover warmed in %s\n", time.Since(warmupStart).Round(time.Second))
+
+			// The listen port opens only after guest verification, setup, and
+			// warmup, so a readiness poll cannot race the first proof.
 			listener, err := net.Listen("tcp", listen)
 			if err != nil {
 				return err
