@@ -25,7 +25,8 @@ const DefaultProveTimeout = 10 * time.Minute
 // Prover proves one stateless payload per call. Implementations are supplied
 // by the zkVM backend packages.
 type Prover interface {
-	// ClientVersion identifies the prover and guest for run records.
+	// ClientVersion is the guest ELF name, identifying the guest and its
+	// zkVM SDK version for run records.
 	ClientVersion() string
 	// Warmup proves a small fixed input, so a cold prover's one-time costs
 	// land before the first measured proof.

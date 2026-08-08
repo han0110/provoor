@@ -2,7 +2,6 @@ package openvm
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/ethpandaops/provoor/pkg/cluster"
 	"github.com/ethpandaops/provoor/pkg/serve"
@@ -20,7 +19,7 @@ type Prover struct {
 // loadout carries the program, and waits for every worker's registration.
 // Programs are provisioned at deploy time, so a mismatched ELF fails before
 // any server port opens instead of being refused on the first proof.
-func NewProver(ctx context.Context, endpoint string, elf []byte, elfSource, versionPrefix string) (*Prover, error) {
+func NewProver(ctx context.Context, endpoint string, elf []byte, elfSource string) (*Prover, error) {
 	name := programName(elf)
 	client := DialClient(endpoint)
 	if err := client.CheckProgram(ctx, name); err != nil {
@@ -32,11 +31,7 @@ func NewProver(ctx context.Context, endpoint string, elf []byte, elfSource, vers
 
 	guestName := cluster.GuestELFName(elfSource)
 	sdkVersion := cluster.SdkVersionFromELFName(elfSource, "openvm")
-	version := fmt.Sprintf("%s/openvm/%s", versionPrefix, guestName)
-	if sdkVersion != "" {
-		version = fmt.Sprintf("%s/openvm-%s/%s", versionPrefix, sdkVersion, guestName)
-	}
-	return &Prover{client: client, programName: name, version: version, sdkVersion: sdkVersion}, nil
+	return &Prover{client: client, programName: name, version: guestName, sdkVersion: sdkVersion}, nil
 }
 
 // SdkVersion is the zkVM SDK version the guest ELF name carries, empty when
@@ -50,7 +45,8 @@ func (p *Prover) ProgramName() string {
 	return p.programName
 }
 
-// ClientVersion identifies the prover and guest for run records.
+// ClientVersion is the guest ELF name, identifying the guest and its
+// zkVM SDK version for run records.
 func (p *Prover) ClientVersion() string {
 	return p.version
 }

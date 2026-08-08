@@ -2,7 +2,6 @@ package zisk
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/ethpandaops/provoor/pkg/cluster"
@@ -25,7 +24,7 @@ type Prover struct {
 // the program setup. Registration is content addressed, so the registered
 // bytes are what identify the guest and the ELF source only names it for run
 // records.
-func NewProver(ctx context.Context, endpoint string, elf []byte, elfSource, versionPrefix string) (*Prover, error) {
+func NewProver(ctx context.Context, endpoint string, elf []byte, elfSource string) (*Prover, error) {
 	client, err := DialClient(endpoint)
 	if err != nil {
 		return nil, err
@@ -44,11 +43,7 @@ func NewProver(ctx context.Context, endpoint string, elf []byte, elfSource, vers
 
 	guestName := cluster.GuestELFName(elfSource)
 	sdkVersion := cluster.SdkVersionFromELFName(elfSource, "zisk")
-	version := fmt.Sprintf("%s/zisk/%s", versionPrefix, guestName)
-	if sdkVersion != "" {
-		version = fmt.Sprintf("%s/zisk-%s/%s", versionPrefix, sdkVersion, guestName)
-	}
-	return &Prover{client: client, hashID: hashID, version: version, sdkVersion: sdkVersion}, nil
+	return &Prover{client: client, hashID: hashID, version: guestName, sdkVersion: sdkVersion}, nil
 }
 
 // SdkVersion is the zkVM SDK version the guest ELF name carries, empty when
@@ -62,7 +57,8 @@ func (p *Prover) HashID() string {
 	return p.hashID
 }
 
-// ClientVersion identifies the prover and guest for run records.
+// ClientVersion is the guest ELF name, identifying the guest and its
+// zkVM SDK version for run records.
 func (p *Prover) ClientVersion() string {
 	return p.version
 }

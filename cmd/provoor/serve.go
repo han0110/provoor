@@ -16,8 +16,6 @@ import (
 	"github.com/ethpandaops/provoor/pkg/serve"
 )
 
-const versionPrefix = "provoor/0.1.0"
-
 func serveCommand() *cobra.Command {
 	var (
 		zkvm            string
@@ -51,7 +49,7 @@ func serveCommand() *cobra.Command {
 			)
 			switch zkvm {
 			case "zisk":
-				ziskProver, err := zisk.NewProver(ctx, clusterEndpoint, elf, guestELF, versionPrefix)
+				ziskProver, err := zisk.NewProver(ctx, clusterEndpoint, elf, guestELF)
 				if err != nil {
 					return err
 				}
@@ -59,7 +57,7 @@ func serveCommand() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "guest %s registered, hash %s\n", guest, ziskProver.HashID())
 				prover, sdkVersion = ziskProver, ziskProver.SdkVersion()
 			case "openvm":
-				openvmProver, err := openvm.NewProver(ctx, clusterEndpoint, elf, guestELF, versionPrefix)
+				openvmProver, err := openvm.NewProver(ctx, clusterEndpoint, elf, guestELF)
 				if err != nil {
 					return err
 				}
