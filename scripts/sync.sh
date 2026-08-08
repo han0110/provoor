@@ -10,7 +10,7 @@ set -euo pipefail
 # variable names.
 
 REPO_DIR="$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}")")" && pwd)"
-RUNS_DIR="$(cd "${PROVOOR_RUNS:-${REPO_DIR}/provoor-runs}" && pwd)"
+RUNS_DIR="${REPO_DIR}/provoor-runs"
 RESULTS_DIR="${RUNS_DIR}/results"
 
 HOST=""
