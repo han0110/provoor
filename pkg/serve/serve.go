@@ -55,8 +55,6 @@ type Server struct {
 	// Zkvm and Guest name the subject under test in responses and metrics.
 	Zkvm  string
 	Guest string
-	// ZkvmSdkVersion is reported in responses when known.
-	ZkvmSdkVersion string
 	// ProveTimeout bounds one proof, DefaultProveTimeout when zero.
 	ProveTimeout time.Duration
 	// FailRunOnClusterError exits the process on a cluster error instead of
@@ -90,8 +88,7 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
-// provePayload is params[0] of zkvm_proveStatelessPayload. params[1] carries
-// provenance nothing here reads.
+// provePayload is params[0] of engine_proveStatelessValidator.
 type provePayload struct {
 	BlockHash               string `json:"blockHash"`
 	BlockNumber             string `json:"blockNumber"`
@@ -101,17 +98,14 @@ type provePayload struct {
 }
 
 // payloadStatus mirrors an Engine API payload status, so the harness decides
-// pass and fail without new logic.
+// pass and fail without new logic. Proving measurements and the subject under
+// test travel on the metric lines instead, which is where the collector reads
+// them from. The committed output is echoed only on a mismatch, where it is
+// the one thing worth diffing against the fixture.
 type payloadStatus struct {
-	Status               string `json:"status"`
-	ValidationError      string `json:"validationError,omitempty"`
-	StatelessOutput      string `json:"statelessOutput"`
-	Zkvm                 string `json:"zkvm"`
-	ZkvmSdkVersion       string `json:"zkvmSdkVersion,omitempty"`
-	Guest                string `json:"guest"`
-	ProofSize            int    `json:"proofSize"`
-	ProvingTimeMs        int64  `json:"provingTimeMs"`
-	ClusterProvingTimeMs int64  `json:"clusterProvingTimeMs"`
+	Status          string `json:"status"`
+	ValidationError string `json:"validationError,omitempty"`
+	StatelessOutput string `json:"statelessOutput,omitempty"`
 }
 
 // metricLine is the per-test JSON object written to Output. The block hash
@@ -119,16 +113,16 @@ type payloadStatus struct {
 // collector matches the line to its test. Block, timing, and throughput
 // reuse the standard block-log field names the UI dashboards read.
 type metricLine struct {
-	Block                metricBlock      `json:"block"`
-	Timing               metricTiming     `json:"timing"`
-	Throughput           metricThroughput `json:"throughput"`
-	Zkvm                 string           `json:"zkvm"`
-	Guest                string           `json:"guest"`
-	InputBytes           int              `json:"inputBytes"`
-	ProvingTimeMs        int64            `json:"provingTimeMs"`
-	ClusterProvingTimeMs int64            `json:"clusterProvingTimeMs"`
-	ProofSize            int              `json:"proofSize"`
-	OutputMatched        bool             `json:"outputMatched"`
+	Block                        metricBlock      `json:"block"`
+	Timing                       metricTiming     `json:"timing"`
+	Throughput                   metricThroughput `json:"throughput"`
+	Zkvm                         string           `json:"zkvm"`
+	Guest                        string           `json:"guest"`
+	InputBytes                   int              `json:"inputBytes"`
+	ProvingTimeMs                int64            `json:"provingTimeMs"`
+	ClusterReportedProvingTimeMs int64            `json:"clusterReportedProvingTimeMs"`
+	ProofSize                    int              `json:"proofSize"`
+	OutputMatched                bool             `json:"outputMatched"`
 }
 
 type metricBlock struct {
@@ -174,7 +168,7 @@ func (s *Server) Handler() http.Handler {
 		switch req.Method {
 		case "web3_clientVersion":
 			resp.Result = s.Prover.ClientVersion()
-		case "zkvm_proveStatelessPayload":
+		case "engine_proveStatelessValidator":
 			result, rpcErr := s.prove(r.Context(), req.Params)
 			resp.Result, resp.Error = result, rpcErr
 		default:
@@ -237,31 +231,23 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 		mgasPerSec = float64(gasUsed) / 1e6 / provingTime.Seconds()
 	}
 	s.emitMetric(metricLine{
-		Block:                metricBlock{Number: parseQuantity(payload.BlockNumber), Hash: payload.BlockHash, GasUsed: gasUsed},
-		Timing:               metricTiming{TotalMs: provingTime.Milliseconds()},
-		Throughput:           metricThroughput{MGasPerSec: mgasPerSec},
-		Zkvm:                 s.Zkvm,
-		Guest:                s.Guest,
-		InputBytes:           len(input),
-		ProvingTimeMs:        provingTime.Milliseconds(),
-		ClusterProvingTimeMs: outcome.ClusterProvingTime.Milliseconds(),
-		ProofSize:            outcome.ProofBytes,
-		OutputMatched:        matched,
+		Block:                        metricBlock{Number: parseQuantity(payload.BlockNumber), Hash: payload.BlockHash, GasUsed: gasUsed},
+		Timing:                       metricTiming{TotalMs: provingTime.Milliseconds()},
+		Throughput:                   metricThroughput{MGasPerSec: mgasPerSec},
+		Zkvm:                         s.Zkvm,
+		Guest:                        s.Guest,
+		InputBytes:                   len(input),
+		ProvingTimeMs:                provingTime.Milliseconds(),
+		ClusterReportedProvingTimeMs: outcome.ClusterProvingTime.Milliseconds(),
+		ProofSize:                    outcome.ProofBytes,
+		OutputMatched:                matched,
 	})
 
-	status := payloadStatus{
-		Status:               "VALID",
-		StatelessOutput:      "0x" + hex.EncodeToString(outcome.PublicValues),
-		Zkvm:                 s.Zkvm,
-		ZkvmSdkVersion:       s.ZkvmSdkVersion,
-		Guest:                s.Guest,
-		ProofSize:            outcome.ProofBytes,
-		ProvingTimeMs:        provingTime.Milliseconds(),
-		ClusterProvingTimeMs: outcome.ClusterProvingTime.Milliseconds(),
-	}
+	status := payloadStatus{Status: "VALID"}
 	if !matched {
 		status.Status = "INVALID"
 		status.ValidationError = "stateless output mismatch"
+		status.StatelessOutput = "0x" + hex.EncodeToString(outcome.PublicValues)
 	}
 	return status, nil
 }

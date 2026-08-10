@@ -22,7 +22,7 @@ docker build -t ghcr.io/han0110/provoor:latest .
 containers, over SSH-reached Docker daemons. ZisK and OpenVM are supported,
 selected by the `zkvm` field of the cluster configuration. `provoor serve` is
 a JSON-RPC forwarder that benchmarkoor starts as a client container. It
-answers `zkvm_proveStatelessPayload` by submitting the stateless input to the
+answers `engine_proveStatelessValidator` by submitting the stateless input to the
 cluster, so a proving benchmark runs with the same lifecycle, results, and UI
 as an execution-client benchmark.
 
@@ -41,7 +41,7 @@ flowchart LR
         direction TB
         benchmarkoor["benchmarkoor<br/>converts EEST stateless fixtures,<br/>times each call"]
         serve["provoor serve<br/>client container"]
-        benchmarkoor -- "zkvm_proveStatelessPayload<br/>json-rpc" --> serve
+        benchmarkoor -- "engine_proveStatelessValidator<br/>json-rpc" --> serve
     end
 
     serve -- "submit input, await proof,<br/>compare public values" --> coordinator

@@ -43,10 +43,7 @@ func serveCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var (
-				prover     serve.Prover
-				sdkVersion string
-			)
+			var prover serve.Prover
 			switch zkvm {
 			case "zisk":
 				ziskProver, err := zisk.NewProver(ctx, clusterEndpoint, elf, guestELF)
@@ -55,7 +52,7 @@ func serveCommand() *cobra.Command {
 				}
 				defer func() { _ = ziskProver.Close() }()
 				fmt.Fprintf(cmd.OutOrStdout(), "guest %s registered, hash %s\n", guest, ziskProver.HashID())
-				prover, sdkVersion = ziskProver, ziskProver.SdkVersion()
+				prover = ziskProver
 			case "openvm":
 				openvmProver, err := openvm.NewProver(ctx, clusterEndpoint, elf, guestELF)
 				if err != nil {
@@ -63,14 +60,13 @@ func serveCommand() *cobra.Command {
 				}
 				defer func() { _ = openvmProver.Close() }()
 				fmt.Fprintf(cmd.OutOrStdout(), "guest %s provisioned, program %s\n", guest, openvmProver.ProgramName())
-				prover, sdkVersion = openvmProver, openvmProver.SdkVersion()
+				prover = openvmProver
 			}
 
 			server := &serve.Server{
 				Prover:                prover,
 				Zkvm:                  zkvm,
 				Guest:                 guest,
-				ZkvmSdkVersion:        sdkVersion,
 				ProveTimeout:          timeout,
 				FailRunOnClusterError: onClusterError == "fail-run",
 				Output:                cmd.OutOrStdout(),

@@ -79,7 +79,7 @@ func proveRequest(output []byte) string {
 		"expectedStatelessOutput": "0x" + hex.EncodeToString(output),
 	}
 	encoded, _ := json.Marshal(payload)
-	return `{"jsonrpc":"2.0","method":"zkvm_proveStatelessPayload","params":[` + string(encoded) + `,{"fixture":"x"}],"id":7}`
+	return `{"jsonrpc":"2.0","method":"engine_proveStatelessValidator","params":[` + string(encoded) + `],"id":7}`
 }
 
 func TestClientVersion(t *testing.T) {
@@ -100,11 +100,13 @@ func TestProveValid(t *testing.T) {
 	if result["status"] != "VALID" {
 		t.Errorf("status = %v", result["status"])
 	}
-	if result["zkvm"] != "zisk" || result["guest"] != "ethrex" {
-		t.Errorf("subject = %v/%v", result["zkvm"], result["guest"])
+	// A passing proof answers status alone, leaving measurements to the metric
+	// line and echoing no output to diff.
+	if _, ok := result["statelessOutput"]; ok {
+		t.Errorf("VALID response should not echo the output, got %v", result)
 	}
-	if result["proofSize"] != float64(316119) || result["clusterProvingTimeMs"] != float64(4011) {
-		t.Errorf("metrics = %v/%v", result["proofSize"], result["clusterProvingTimeMs"])
+	if len(result) != 1 {
+		t.Errorf("VALID response should carry status alone, got %v", result)
 	}
 
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
@@ -114,6 +116,12 @@ func TestProveValid(t *testing.T) {
 	}
 	if metric.Block.Hash != "0xabc123" || !metric.OutputMatched || metric.InputBytes != 3 {
 		t.Errorf("metric = %+v", metric)
+	}
+	if metric.Zkvm != "zisk" || metric.Guest != "ethrex" {
+		t.Errorf("subject metric = %v/%v", metric.Zkvm, metric.Guest)
+	}
+	if metric.ProofSize != 316119 || metric.ClusterReportedProvingTimeMs != 4011 {
+		t.Errorf("proving metric = %v/%v", metric.ProofSize, metric.ClusterReportedProvingTimeMs)
 	}
 	if metric.Block.Number != 1 || metric.Block.GasUsed != 60000000 {
 		t.Errorf("block metric = %+v", metric.Block)
@@ -180,9 +188,9 @@ func TestMethodNotFound(t *testing.T) {
 func TestProveRejectsMalformedParams(t *testing.T) {
 	server := newServer(&fakeProver{}, &bytes.Buffer{})
 	cases := []string{
-		`{"jsonrpc":"2.0","method":"zkvm_proveStatelessPayload","params":[],"id":1}`,
-		`{"jsonrpc":"2.0","method":"zkvm_proveStatelessPayload","params":[{"statelessInput":"noprefix"}],"id":1}`,
-		`{"jsonrpc":"2.0","method":"zkvm_proveStatelessPayload","params":[{"statelessInput":"0xzz"}],"id":1}`,
+		`{"jsonrpc":"2.0","method":"engine_proveStatelessValidator","params":[],"id":1}`,
+		`{"jsonrpc":"2.0","method":"engine_proveStatelessValidator","params":[{"statelessInput":"noprefix"}],"id":1}`,
+		`{"jsonrpc":"2.0","method":"engine_proveStatelessValidator","params":[{"statelessInput":"0xzz"}],"id":1}`,
 	}
 	for _, body := range cases {
 		resp := post(t, server, body)
