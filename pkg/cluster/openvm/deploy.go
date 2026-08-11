@@ -17,7 +17,7 @@ import (
 	"github.com/docker/docker/client"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ethpandaops/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/cluster"
 )
 
 // Readiness budgets. The coordinator only has to open its API port, while a
@@ -345,41 +345,11 @@ func (d *deployment) startCoordinator(ctx context.Context) error {
 		d.out.Printf("[%s] starting coordinator (api %d)...", n, apiPort)
 	}
 
-	if err := d.waitCoordinatorReady(ctx, cli, n); err != nil {
+	if err := cluster.WaitContainerListening(ctx, cli, coordinatorContainer, n, coordinatorReadyTimeout, apiPort); err != nil {
 		return err
 	}
 	d.out.Printf("[%s] coordinator ready (api %d)", n, apiPort)
 	return nil
-}
-
-func (d *deployment) waitCoordinatorReady(ctx context.Context, cli *client.Client, n string) error {
-	probe := []string{"bash", "-c", fmt.Sprintf("echo > /dev/tcp/127.0.0.1/%d", apiPort)}
-	deadline := time.Now().Add(coordinatorReadyTimeout)
-	for {
-		inspect, err := cli.ContainerInspect(ctx, coordinatorContainer)
-		if err != nil {
-			return fmt.Errorf("inspecting coordinator on %s: %w", n, err)
-		}
-		if inspect.State == nil || !inspect.State.Running {
-			return fmt.Errorf("coordinator on %s exited before becoming ready, journalctl CONTAINER_NAME=%s has the log",
-				n, coordinatorContainer)
-		}
-		ready, err := cluster.ExecSucceeds(ctx, cli, coordinatorContainer, probe)
-		if err != nil {
-			return fmt.Errorf("probing coordinator on %s: %w", n, err)
-		}
-		if ready {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("coordinator on %s not ready after %s", n, coordinatorReadyTimeout)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(3 * time.Second):
-		}
-	}
 }
 
 // hostWorkers is one host's worker containers, each carrying its position
@@ -467,7 +437,7 @@ func (d *deployment) startWorkers(ctx context.Context, group hostWorkers) error 
 				return fmt.Errorf("worker %s on %s exited before it was ready, journalctl CONTAINER_NAME=%s has the log",
 					name, group.node.Name, name)
 			}
-			logs, err := cluster.ContainerLogsText(ctx, cli, name)
+			logs, err := cluster.ContainerLogsText(ctx, cli, name, inspect.State.StartedAt)
 			if err != nil {
 				return fmt.Errorf("reading worker %s log on %s: %w", name, group.node.Name, err)
 			}

@@ -1,4 +1,4 @@
-module github.com/ethpandaops/provoor
+module github.com/han0110/provoor
 
 go 1.24.5
 

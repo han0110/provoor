@@ -13,7 +13,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	"github.com/ethpandaops/provoor/pkg/cluster/zisk/api"
+	"github.com/han0110/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/cluster/zisk/api"
+	"github.com/han0110/provoor/pkg/serve"
 )
 
 const (
@@ -55,16 +57,6 @@ type ProveTimeoutError struct {
 
 func (e *ProveTimeoutError) Error() string {
 	return fmt.Sprintf("prove job %s timed out", e.JobID)
-}
-
-// ProveResult carries what a completed prove job reports.
-type ProveResult struct {
-	// PublicValues is the fixed-size commitment the guest produced.
-	PublicValues []byte
-	// ProofBytes is the size of the returned proof envelope.
-	ProofBytes int
-	// ClusterProvingTime is the cluster's self-reported proving duration.
-	ClusterProvingTime time.Duration
 }
 
 // Client drives guest program registration and prove jobs against a
@@ -173,7 +165,7 @@ func classifySubmitError(err error) error {
 
 // WaitProveJob blocks until a prove job terminates, reporting phase
 // transitions through onPhase when non-nil.
-func (c *Client) WaitProveJob(ctx context.Context, jobID string, onPhase func(phase string)) (*ProveResult, error) {
+func (c *Client) WaitProveJob(ctx context.Context, jobID string, onPhase func(phase string)) (*serve.ProveOutcome, error) {
 	result, err := c.waitJob(ctx, jobID, onPhase)
 	if err != nil {
 		return nil, err
@@ -193,7 +185,7 @@ func (c *Client) WaitProveJob(ctx context.Context, jobID string, onPhase func(ph
 	if err != nil {
 		return nil, fmt.Errorf("prove job %s: %w", jobID, err)
 	}
-	return &ProveResult{
+	return &serve.ProveOutcome{
 		PublicValues:       publicValues,
 		ProofBytes:         len(prove.Prove.Proof.Data),
 		ClusterProvingTime: time.Duration(prove.Prove.Stats.DurationNanos), //nolint:gosec // nanoseconds fit
@@ -212,7 +204,7 @@ func (c *Client) CancelProveJob(ctx context.Context, jobID string) (bool, error)
 // Prove submits an input, waits for the proof, and cancels the job when the
 // context expires first. Submission retries while the cluster is unavailable
 // and recovers a missing setup, both bounded by the same context.
-func (c *Client) Prove(ctx context.Context, hashID string, input []byte, onPhase func(phase string)) (*ProveResult, error) {
+func (c *Client) Prove(ctx context.Context, hashID string, input []byte, onPhase func(phase string)) (*serve.ProveOutcome, error) {
 	var jobID string
 	for {
 		var err error
@@ -272,19 +264,12 @@ func (c *Client) waitJob(ctx context.Context, jobID string, onPhase func(phase s
 		case *api.JobStatus_Cancelled:
 			return nil, fmt.Errorf("job %s was cancelled", jobID)
 		case *api.JobStatus_Queued:
-			reportPhase(onPhase, &lastPhase, "queued")
+			cluster.ReportPhase(onPhase, &lastPhase, "queued")
 		case *api.JobStatus_Running:
-			reportPhase(onPhase, &lastPhase, runningPhase(jobStatus.Running.GetPhase()))
+			cluster.ReportPhase(onPhase, &lastPhase, runningPhase(jobStatus.Running.GetPhase()))
 		case *api.JobStatus_WaitingForInput:
-			reportPhase(onPhase, &lastPhase, "waiting for input")
+			cluster.ReportPhase(onPhase, &lastPhase, "waiting for input")
 		}
-	}
-}
-
-func reportPhase(onPhase func(phase string), lastPhase *string, phase string) {
-	if onPhase != nil && phase != *lastPhase {
-		*lastPhase = phase
-		onPhase(phase)
 	}
 }
 

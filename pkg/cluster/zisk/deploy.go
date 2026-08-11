@@ -16,7 +16,7 @@ import (
 	"github.com/docker/docker/client"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ethpandaops/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/cluster"
 )
 
 // Readiness budgets. The coordinator only has to open two ports, while a
@@ -161,7 +161,13 @@ func (d *deployment) ensureProvingKey(ctx context.Context, cli *client.Client, n
 	output.Flush()
 	if err != nil {
 		// A failed run removes the partial volume, so the next Up retries.
-		_ = cli.VolumeRemove(context.WithoutCancel(ctx), volumeName, true)
+		// The volume standing in for a finished setup, a removal that does
+		// not take leaves the next Up starting workers against an empty key
+		// directory, so the failure is reported rather than dropped.
+		if removeErr := cli.VolumeRemove(context.WithoutCancel(ctx), volumeName, true); removeErr != nil {
+			return fmt.Errorf("proving-key setup on %s: %w, and removing the partial volume %s failed, remove it before retrying: %v",
+				node, err, volumeName, removeErr)
+		}
 		return fmt.Errorf("proving-key setup on %s: %w", node, err)
 	}
 	d.out.Printf("[%s] proving key ready in volume %s", node, volumeName)
@@ -194,43 +200,11 @@ func (d *deployment) startCoordinator(ctx context.Context) error {
 		d.out.Printf("[%s] starting coordinator (api %d, cluster %d)...", node, apiPort, clusterPort)
 	}
 
-	if err := d.waitCoordinatorReady(ctx, cli, node); err != nil {
+	if err := cluster.WaitContainerListening(ctx, cli, coordinatorContainer, node, coordinatorReadyTimeout, apiPort, clusterPort); err != nil {
 		return err
 	}
 	d.out.Printf("[%s] coordinator ready (api %d, cluster %d)", node, apiPort, clusterPort)
 	return nil
-}
-
-func (d *deployment) waitCoordinatorReady(ctx context.Context, cli *client.Client, node string) error {
-	probe := []string{"bash", "-c", fmt.Sprintf(
-		"(echo > /dev/tcp/127.0.0.1/%d) && (echo > /dev/tcp/127.0.0.1/%d)",
-		apiPort, clusterPort)}
-	deadline := time.Now().Add(coordinatorReadyTimeout)
-	for {
-		inspect, err := cli.ContainerInspect(ctx, coordinatorContainer)
-		if err != nil {
-			return fmt.Errorf("inspecting coordinator on %s: %w", node, err)
-		}
-		if inspect.State == nil || !inspect.State.Running {
-			return fmt.Errorf("coordinator on %s exited before becoming ready, journalctl CONTAINER_NAME=%s has the log",
-				node, coordinatorContainer)
-		}
-		ready, err := cluster.ExecSucceeds(ctx, cli, coordinatorContainer, probe)
-		if err != nil {
-			return fmt.Errorf("probing coordinator on %s: %w", node, err)
-		}
-		if ready {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("coordinator on %s not ready after %s", node, coordinatorReadyTimeout)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(3 * time.Second):
-		}
-	}
 }
 
 func (d *deployment) startWorker(ctx context.Context, worker Worker) error {
@@ -271,7 +245,7 @@ func (d *deployment) startWorker(ctx context.Context, worker Worker) error {
 			return fmt.Errorf("worker on %s exited before registration, journalctl CONTAINER_NAME=%s has the log",
 				worker.Name, workerContainer)
 		}
-		logs, err := cluster.ContainerLogsText(ctx, cli, workerContainer)
+		logs, err := cluster.ContainerLogsText(ctx, cli, workerContainer, inspect.State.StartedAt)
 		if err != nil {
 			return fmt.Errorf("reading worker log on %s: %w", worker.Name, err)
 		}

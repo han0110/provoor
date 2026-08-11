@@ -8,7 +8,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
 
-	"github.com/ethpandaops/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/cluster"
 )
 
 func testConfig() *Config {
@@ -239,13 +239,5 @@ func TestParseGpus(t *testing.T) {
 	}
 	if _, err := parseGpus("none"); err == nil {
 		t.Error("expected error for invalid spec")
-	}
-}
-
-func TestRustLog(t *testing.T) {
-	for verbose, want := range map[int]string{0: "info", 1: "debug", 2: "trace"} {
-		if got := rustLog(verbose); got != want {
-			t.Errorf("rustLog(%d) = %q, want %q", verbose, got, want)
-		}
 	}
 }

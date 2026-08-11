@@ -169,6 +169,21 @@ func TestProveClusterErrorFailsRun(t *testing.T) {
 	post(t, server, proveRequest([]byte{1}))
 }
 
+// TestProveClientDisconnectDoesNotFailRun pins that a client going away is
+// never attributed to the cluster. The prover error carries no context error,
+// the shape a backend returns when it reports its own timeout type, so the
+// decision has to come from the request rather than the error chain.
+func TestProveClientDisconnectDoesNotFailRun(t *testing.T) {
+	server := newServer(&fakeProver{err: errors.New("prove job 7 timed out")}, &bytes.Buffer{})
+	server.FailRunOnClusterError = true
+	server.Exit = func(int) { t.Error("a disconnected client must not fail the run") }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	request := httptest.NewRequest("POST", "/", strings.NewReader(proveRequest([]byte{1}))).WithContext(ctx)
+	server.Handler().ServeHTTP(httptest.NewRecorder(), request)
+}
+
 func TestMethodNotFound(t *testing.T) {
 	server := newServer(&fakeProver{}, &bytes.Buffer{})
 	for _, method := range []string{"eth_getBlockByNumber", "engine_newPayloadV5"} {

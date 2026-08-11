@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"strings"
 	"testing"
+	"time"
 )
 
 // appendVarint encodes a bincode standard-configuration unsigned integer,
@@ -109,11 +110,34 @@ func TestDecodeProofPublicValuesRejects(t *testing.T) {
 	}
 }
 
+// TestDecodeProofPublicValuesRejectsTruncation sweeps every truncation point
+// rather than sampling, because a cut landing immediately after a multi-byte
+// varint marker is the case that reads past the end.
 func TestDecodeProofPublicValuesRejectsTruncation(t *testing.T) {
 	valid := validEnvelope().encode()
-	for _, size := range []int{0, 1, len(valid) / 2, len(valid) - 1} {
+	for size := range len(valid) {
 		if _, err := decodeProofPublicValues(valid[:size]); err == nil {
 			t.Errorf("expected error for envelope truncated to %d bytes", size)
 		}
+	}
+}
+
+// TestDecodeProofPublicValuesRejectsOversizedLength pins that a declared
+// element count beyond the remaining input fails immediately. Returning the
+// count anyway makes the caller loop over it.
+func TestDecodeProofPublicValuesRejectsOversizedLength(t *testing.T) {
+	envelope := []byte{0, 253, 0, 0, 0, 0, 0, 1, 0, 0}
+	done := make(chan error, 1)
+	go func() {
+		_, err := decodeProofPublicValues(envelope)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "exceeds remaining input") {
+			t.Errorf("err = %v, want mention of %q", err, "exceeds remaining input")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("decode did not return, the declared length is being looped over")
 	}
 }

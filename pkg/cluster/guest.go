@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -39,6 +40,13 @@ func ResolveGuestELF(ctx context.Context, source string) ([]byte, error) {
 // GuestELFName is a source's base name without the .elf extension, which for
 // release assets follows stateless-validator-<guest>-<zkvm>-v<sdk-version>.
 func GuestELFName(source string) string {
+	// A signed asset URL carries its token in the query, which is not part of
+	// the name reported as the client version.
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		if parsed, err := url.Parse(source); err == nil {
+			source = parsed.Path
+		}
+	}
 	return strings.TrimSuffix(path.Base(source), ".elf")
 }
 

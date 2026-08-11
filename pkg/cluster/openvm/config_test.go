@@ -149,6 +149,17 @@ func TestLoadValidation(t *testing.T) {
 			wantErr: "worker ip",
 		},
 		{
+			// Two hosts reaching the same address is the copy-paste that the
+			// ssh and gpu pair does not catch, and the manager would dial one
+			// worker twice.
+			name: "colliding advertised worker url",
+			config: strings.Replace(minimalConfig, `  - ssh: user@10.0.0.2
+    ip: 10.0.0.2
+    gpu: 0
+`, "  - ssh: user@10.0.0.2\n    ip: 10.0.0.2\n    gpu: 0\n  - ssh: user@10.0.0.3\n    ip: 10.0.0.2\n    gpu: 0\n", 1),
+			wantErr: "already advertised by another worker",
+		},
+		{
 			name: "duplicate gpu on one host",
 			config: strings.Replace(minimalConfig, "  - ssh: user@10.0.0.1\n    gpu: 0\n",
 				"  - ssh: user@10.0.0.1\n    gpu: 0\n  - ssh: user@10.0.0.1\n    gpu: 0\n", 1),
@@ -186,7 +197,7 @@ func TestLoadValidation(t *testing.T) {
 }
 
 func TestLoadExampleTemplate(t *testing.T) {
-	if _, err := Load("../../../examples/openvm-cluster.example.yaml"); err != nil {
+	if _, err := Load("../../../examples/openvm-4x4.example.yaml"); err != nil {
 		t.Errorf("shipped template must load, got %v", err)
 	}
 }

@@ -1,6 +1,7 @@
 package zisk
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 )
@@ -57,7 +58,9 @@ func decodeProofPublicValues(envelope []byte) ([]byte, error) {
 	if len(publicValues) != publicValuesBytes {
 		return nil, fmt.Errorf("public values hold %d bytes, expected %d", len(publicValues), publicValuesBytes)
 	}
-	return publicValues, nil
+	// byteVec subslices the envelope, so the commitment is copied out rather
+	// than pinning the whole proof for as long as the result is held.
+	return bytes.Clone(publicValues), nil
 }
 
 // bincodeReader decodes bincode standard-configuration primitives with a
@@ -95,19 +98,27 @@ func (r *bincodeReader) varint() uint64 {
 	if r.err != nil {
 		return 0
 	}
+	var width int
 	switch prefix[0] {
 	case 251:
-		return uint64(binary.LittleEndian.Uint16(r.take(2)))
+		width = 2
 	case 252:
-		return uint64(binary.LittleEndian.Uint32(r.take(4)))
+		width = 4
 	case 253:
-		return binary.LittleEndian.Uint64(r.take(8))
+		width = 8
 	case 254, 255:
 		r.fail("integer wider than 64 bits at offset %d", r.off-1)
 		return 0
 	default:
 		return uint64(prefix[0])
 	}
+	wide := r.take(width)
+	if r.err != nil {
+		return 0
+	}
+	var padded [8]byte
+	copy(padded[:], wide)
+	return binary.LittleEndian.Uint64(padded[:])
 }
 
 // discriminant decodes an enum variant index.
@@ -117,10 +128,14 @@ func (r *bincodeReader) discriminant() uint64 {
 
 func (r *bincodeReader) length() int {
 	length := r.varint()
-	if r.err == nil && length > uint64(len(r.buf)-r.off) {
+	if r.err != nil {
+		return 0
+	}
+	if length > uint64(len(r.buf)-r.off) {
 		// Every element occupies at least one byte, so a length beyond the
 		// remaining input is malformed regardless of element width.
 		r.fail("length %d exceeds remaining input", length)
+		return 0
 	}
 	return int(length)
 }

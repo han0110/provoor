@@ -1,5 +1,15 @@
+.claude/
 .env
 .idea/
 .local/
 .playwright-cli/
 benchmarkoor.db
+/provoor
+
+# Configs and results carry real hosts and addresses, so anything a template
+# is materialized into stays out while the templates themselves stay tracked.
+/cluster.yaml
+/*-benchmark.yaml
+/results/
+examples/*.yaml
+!examples/*.example.yaml

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ethpandaops/provoor/pkg/cluster"
-	"github.com/ethpandaops/provoor/pkg/cluster/openvm"
-	"github.com/ethpandaops/provoor/pkg/cluster/zisk"
+	"github.com/han0110/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/cluster/openvm"
+	"github.com/han0110/provoor/pkg/cluster/zisk"
 )
 
 // clusterBackend is the deploy lifecycle every zkVM backend package provides,

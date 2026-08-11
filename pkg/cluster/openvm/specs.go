@@ -11,6 +11,8 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/pelletier/go-toml/v2"
+
+	"github.com/han0110/provoor/pkg/cluster"
 )
 
 // Deployment constants. The API and worker ports are fixed so the manager,
@@ -107,31 +109,13 @@ func edgePrograms(programs []program) string {
 	return string(data)
 }
 
-func rustLog(verbose int) string {
-	switch verbose {
-	case 0:
-		return "info"
-	case 1:
-		return "debug"
-	default:
-		return "trace"
-	}
-}
-
 // workerRustLog quiets the CUDA memory manager at the default level, whose
 // per-allocation logging floods the journal.
 func workerRustLog(verbose int) string {
 	if verbose == 0 {
 		return "info,openvm_cuda_common::memory_manager=warn"
 	}
-	return rustLog(verbose)
-}
-
-func journald(containerName string) container.LogConfig {
-	return container.LogConfig{
-		Type:   "journald",
-		Config: map[string]string{"tag": containerName},
-	}
+	return cluster.RustLog(verbose)
 }
 
 // proverLimits is the [provers] table the manager and every worker carry,
@@ -193,7 +177,7 @@ func managerTOML(cfg *Config) string {
 	doc.Proof.TimeoutSecs = cfg.Config.TimeoutSecs
 	doc.Proof.PersistFinalProofsDir = finalProofsDir
 	doc.Metrics.OutputDir = metricsOutputDir
-	doc.Telemetry.LogLevel = rustLog(cfg.Verbose)
+	doc.Telemetry.LogLevel = cluster.RustLog(cfg.Verbose)
 	return renderTOML(doc)
 }
 
@@ -267,7 +251,7 @@ func coordinatorSpec(cfg *Config, loadout string) (*container.Config, *container
 	containerCfg := &container.Config{
 		Image: cfg.imageRef(),
 		Env: []string{
-			"RUST_LOG=" + rustLog(cfg.Verbose),
+			"RUST_LOG=" + cluster.RustLog(cfg.Verbose),
 			"RUST_BACKTRACE=1",
 			"NO_COLOR=1",
 			"EDGE_PROGRAMS=" + loadout,
@@ -277,7 +261,7 @@ func coordinatorSpec(cfg *Config, loadout string) (*container.Config, *container
 	hostCfg := &container.HostConfig{
 		NetworkMode:   "host",
 		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyOnFailure},
-		LogConfig:     journald(coordinatorContainer),
+		LogConfig:     cluster.Journald(coordinatorContainer),
 		Mounts: []mount.Mount{
 			{
 				Type:     mount.TypeVolume,
@@ -321,7 +305,7 @@ func workerSpec(cfg *Config, gpu int, cpuset, loadout string) (*container.Config
 		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyOnFailure},
 		ShmSize:       int64(cfg.Config.ShmSizeGB) << 30,
 		CapAdd:        []string{"SYS_NICE"},
-		LogConfig:     journald(workerContainer(gpu)),
+		LogConfig:     cluster.Journald(workerContainer(gpu)),
 		Mounts: []mount.Mount{
 			{
 				Type:     mount.TypeVolume,

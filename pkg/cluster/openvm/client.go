@@ -16,6 +16,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/han0110/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/serve"
 )
 
 const (
@@ -35,6 +38,11 @@ const (
 	statusStreamReconnectDelay = time.Second
 	// readyTimeout bounds the startup wait for every worker's registration.
 	readyTimeout = 120 * time.Second
+	// unreachableRetries caps consecutive submissions that never reached the
+	// coordinator. A restart recovers well inside the window, while an
+	// endpoint that stays down fails the proof rather than spending its whole
+	// budget dialing.
+	unreachableRetries = 6
 )
 
 // errClusterBusy reports a submission refused because the manager already
@@ -45,25 +53,26 @@ var errClusterBusy = errors.New("cluster busy")
 // registering or compiling, recoverable by retrying.
 var errClusterNotReady = errors.New("cluster not ready")
 
-// ProveTimeoutError reports a proof cancelled on deadline.
+// errClusterUnreachable reports a submission that never reached the
+// coordinator. A restart cures it, an endpoint that is gone does not, so it
+// is retried on a bounded count rather than the whole prove budget.
+var errClusterUnreachable = errors.New("cluster unreachable")
+
+// ProveTimeoutError reports a proof cancelled on deadline. Cause carries the
+// last stream failure when one kept the proof from settling.
 type ProveTimeoutError struct {
 	ProofUUID string
+	Cause     error
 }
 
 func (e *ProveTimeoutError) Error() string {
+	if e.Cause != nil {
+		return fmt.Sprintf("proof %s timed out: %v", e.ProofUUID, e.Cause)
+	}
 	return fmt.Sprintf("proof %s timed out", e.ProofUUID)
 }
 
-// ProveResult carries what one completed proof reports.
-type ProveResult struct {
-	// PublicValues is the fixed-size commitment the guest produced.
-	PublicValues []byte
-	// ProofBytes is the size of the returned proof envelope.
-	ProofBytes int
-	// ClusterProvingTime is the manager's admission-to-completion latency,
-	// the same boundary the ZisK backend reports.
-	ClusterProvingTime time.Duration
-}
+func (e *ProveTimeoutError) Unwrap() error { return e.Cause }
 
 // statusError reports a status stream refused with an HTTP error, which a
 // reconnect cannot cure.
@@ -168,15 +177,25 @@ func (c *Client) ready(ctx context.Context) (detail string, err error) {
 // Prove submits an input, waits for the proof, and cancels it when the
 // context expires first. Submission retries while the manager is busy with
 // another proof or its workers are not ready, bounded by the same context.
-func (c *Client) Prove(ctx context.Context, programName string, input []byte, onPhase func(phase string)) (*ProveResult, error) {
+func (c *Client) Prove(ctx context.Context, programName string, input []byte, onPhase func(phase string)) (*serve.ProveOutcome, error) {
 	var proofUUID string
+	unreachable := 0
 	for {
 		proofUUID = newProofUUID()
 		err := c.submit(ctx, proofUUID, programName, input)
 		if err == nil {
 			break
 		}
-		if !errors.Is(err, errClusterBusy) && !errors.Is(err, errClusterNotReady) {
+		switch {
+		case errors.Is(err, errClusterUnreachable):
+			// Counted consecutively, so a coordinator that comes back and
+			// then reports busy starts the allowance over.
+			if unreachable++; unreachable > unreachableRetries {
+				return nil, err
+			}
+		case errors.Is(err, errClusterBusy), errors.Is(err, errClusterNotReady):
+			unreachable = 0
+		default:
 			return nil, err
 		}
 		select {
@@ -191,7 +210,7 @@ func (c *Client) Prove(ctx context.Context, programName string, input []byte, on
 		cancelCtx, cancelCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancelCancel()
 		_ = c.CancelProof(cancelCtx, proofUUID)
-		return nil, &ProveTimeoutError{ProofUUID: proofUUID}
+		return nil, &ProveTimeoutError{ProofUUID: proofUUID, Cause: err}
 	}
 	return result, err
 }
@@ -234,9 +253,12 @@ func (c *Client) uploadInput(ctx context.Context, proofUUID string, input []byte
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("uploading input for proof %s: %w", proofUUID, err)
+		return fmt.Errorf("%w: uploading input for proof %s: %w", errClusterUnreachable, proofUUID, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		return fmt.Errorf("%w: uploading input for proof %s: %s", errClusterNotReady, proofUUID, readBody(resp.Body))
+	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("uploading input for proof %s: status %d: %s", proofUUID, resp.StatusCode, readBody(resp.Body))
 	}
@@ -270,7 +292,7 @@ func (c *Client) startProof(ctx context.Context, proofUUID, programName string) 
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("starting proof %s: %w", proofUUID, err)
+		return fmt.Errorf("%w: starting proof %s: %w", errClusterUnreachable, proofUUID, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
@@ -301,7 +323,7 @@ func classifyStartError(code int, body string) error {
 
 // waitProof follows the proof to a settled status and assembles the result
 // of a completed one.
-func (c *Client) waitProof(ctx context.Context, proofUUID string, onPhase func(phase string)) (*ProveResult, error) {
+func (c *Client) waitProof(ctx context.Context, proofUUID string, onPhase func(phase string)) (*serve.ProveOutcome, error) {
 	status, reason, err := c.awaitSettled(ctx, proofUUID, onPhase)
 	if err != nil {
 		return nil, err
@@ -329,7 +351,7 @@ func (c *Client) waitProof(ctx context.Context, proofUUID string, onPhase func(p
 	if err != nil {
 		return nil, fmt.Errorf("proof %s: %w", proofUUID, err)
 	}
-	return &ProveResult{
+	return &serve.ProveOutcome{
 		PublicValues:       publicValues,
 		ProofBytes:         len(proof),
 		ClusterProvingTime: latency,
@@ -341,6 +363,15 @@ func (c *Client) waitProof(ctx context.Context, proofUUID string, onPhase func(p
 // current status on subscribe, so a dropped stream reconnects without loss.
 func (c *Client) awaitSettled(ctx context.Context, proofUUID string, onPhase func(phase string)) (status, reason string, err error) {
 	lastPhase := ""
+	// The last stream failure is kept so an expiring context reports why the
+	// proof never settled rather than a bare deadline.
+	var lastErr error
+	expired := func() (string, string, error) {
+		if lastErr != nil {
+			return "", "", fmt.Errorf("streaming proof %s status: %w", proofUUID, lastErr)
+		}
+		return "", "", ctx.Err()
+	}
 	for {
 		status, reason, err := c.streamStatus(ctx, proofUUID, onPhase, &lastPhase)
 		switch {
@@ -349,12 +380,15 @@ func (c *Client) awaitSettled(ctx context.Context, proofUUID string, onPhase fun
 		case err != nil && errors.As(err, new(*statusError)):
 			return "", "", fmt.Errorf("streaming proof %s status: %w", proofUUID, err)
 		case ctx.Err() != nil:
-			return "", "", ctx.Err()
+			return expired()
+		}
+		if err != nil {
+			lastErr = err
 		}
 		// The stream dropped or ended unsettled, resubscribe.
 		select {
 		case <-ctx.Done():
-			return "", "", ctx.Err()
+			return expired()
 		case <-time.After(statusStreamReconnectDelay):
 		}
 	}
@@ -396,7 +430,7 @@ func (c *Client) streamStatus(ctx context.Context, proofUUID string, onPhase fun
 					return "", "", err
 				}
 				if !settled(status) {
-					reportPhase(onPhase, lastPhase, status)
+					cluster.ReportPhase(onPhase, lastPhase, status)
 				}
 				if settled(status) {
 					return status, reason, nil
@@ -433,13 +467,6 @@ func parseProofStatus(data string) (status, reason string, err error) {
 // always becomes failed, so it stays a phase.
 func settled(status string) bool {
 	return status == "completed" || status == "failed" || status == "canceled"
-}
-
-func reportPhase(onPhase func(phase string), lastPhase *string, phase string) {
-	if onPhase != nil && phase != *lastPhase {
-		*lastPhase = phase
-		onPhase(phase)
-	}
 }
 
 // proofLatency reads the settled proof's admission-to-completion latency.

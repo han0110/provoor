@@ -13,7 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/ethpandaops/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/cluster"
 )
 
 // Config describes one OpenVM cluster deployment.
@@ -128,6 +128,7 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("at least one worker is required")
 	}
 	seenGPU := map[string]bool{}
+	seenWorkerURL := map[string]bool{}
 	for _, worker := range cfg.Workers {
 		if err := cluster.ValidateColocation(cfg.Coordinator, worker.Node); err != nil {
 			return err
@@ -146,6 +147,13 @@ func validate(cfg *Config) error {
 			return fmt.Errorf("duplicate worker gpu %d on host %q", worker.GPU, worker.SSH)
 		}
 		seenGPU[key] = true
+		// The manager dials workers at the address they advertise, so two
+		// entries resolving to one url silently share a single process.
+		advertised := workerURL(worker)
+		if seenWorkerURL[advertised] {
+			return fmt.Errorf("worker %q gpu %d advertises %s, already advertised by another worker", worker.Name, worker.GPU, advertised)
+		}
+		seenWorkerURL[advertised] = true
 	}
 
 	for name, value := range map[string]int{
@@ -160,7 +168,7 @@ func validate(cfg *Config) error {
 		}
 	}
 	if cfg.Config.SegmentMemory < 0 {
-		return fmt.Errorf("segment_memory expects a positive byte count, got %d", cfg.Config.SegmentMemory)
+		return fmt.Errorf("segment_memory expects a non-negative byte count, got %d", cfg.Config.SegmentMemory)
 	}
 	return nil
 }

@@ -38,9 +38,9 @@ type Prover interface {
 
 // ProveOutcome carries what one completed proof reports.
 type ProveOutcome struct {
-	// PublicValues is the commitment the guest produced.
+	// PublicValues is the fixed-size commitment the guest produced.
 	PublicValues []byte
-	// ProofBytes is the size of the proof.
+	// ProofBytes is the size of the returned proof envelope.
 	ProofBytes int
 	// ClusterProvingTime is the backend's self-reported proving duration.
 	ClusterProvingTime time.Duration
@@ -204,6 +204,9 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 	if timeout == 0 {
 		timeout = DefaultProveTimeout
 	}
+	// The request context reports whether the benchmark client is still
+	// waiting, independent of how a backend wraps its own errors.
+	requestCtx := ctx
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -214,7 +217,9 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 	})
 	if err != nil {
 		s.printf("proving %s failed: %v", payload.BlockHash, err)
-		if s.FailRunOnClusterError {
+		// A client that went away says nothing about the cluster's health,
+		// while a proof exceeding its own budget is the fault this exits on.
+		if s.FailRunOnClusterError && requestCtx.Err() == nil {
 			s.Exit(1)
 		}
 		return nil, &rpcError{Code: -32000, Message: err.Error()}

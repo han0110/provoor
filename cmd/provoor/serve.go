@@ -10,10 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ethpandaops/provoor/pkg/cluster"
-	"github.com/ethpandaops/provoor/pkg/cluster/openvm"
-	"github.com/ethpandaops/provoor/pkg/cluster/zisk"
-	"github.com/ethpandaops/provoor/pkg/serve"
+	"github.com/han0110/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/cluster/openvm"
+	"github.com/han0110/provoor/pkg/cluster/zisk"
+	"github.com/han0110/provoor/pkg/serve"
 )
 
 func serveCommand() *cobra.Command {
@@ -61,6 +61,12 @@ func serveCommand() *cobra.Command {
 				defer func() { _ = openvmProver.Close() }()
 				fmt.Fprintf(cmd.OutOrStdout(), "guest %s provisioned, program %s\n", guest, openvmProver.ProgramName())
 				prover = openvmProver
+			}
+
+			// Resolved once so warmup and each proof share one budget, since
+			// zero selects the default rather than an expired deadline.
+			if timeout <= 0 {
+				timeout = serve.DefaultProveTimeout
 			}
 
 			server := &serve.Server{

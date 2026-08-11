@@ -3,8 +3,8 @@ package openvm
 import (
 	"context"
 
-	"github.com/ethpandaops/provoor/pkg/cluster"
-	"github.com/ethpandaops/provoor/pkg/serve"
+	"github.com/han0110/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/serve"
 )
 
 // Prover proves stateless payloads for one provisioned guest program.
@@ -59,15 +59,7 @@ func (p *Prover) Warmup(ctx context.Context) error {
 
 // Prove proves one stateless payload, bounded by the context deadline.
 func (p *Prover) Prove(ctx context.Context, input []byte, onPhase func(phase string)) (*serve.ProveOutcome, error) {
-	result, err := p.client.Prove(ctx, p.programName, input, onPhase)
-	if err != nil {
-		return nil, err
-	}
-	return &serve.ProveOutcome{
-		PublicValues:       result.PublicValues,
-		ProofBytes:         result.ProofBytes,
-		ClusterProvingTime: result.ClusterProvingTime,
-	}, nil
+	return p.client.Prove(ctx, p.programName, input, onPhase)
 }
 
 // Close releases the coordinator connection.

@@ -198,7 +198,7 @@ workers:
 }
 
 func TestLoadExampleTemplate(t *testing.T) {
-	if _, err := Load("../../../examples/zisk-cluster.example.yaml"); err != nil {
+	if _, err := Load("../../../examples/zisk-4x4.example.yaml"); err != nil {
 		t.Errorf("shipped template must load, got %v", err)
 	}
 }

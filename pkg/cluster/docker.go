@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -63,6 +64,26 @@ func (h *Hosts) Close() {
 	}
 }
 
+// RustLog is the RUST_LOG level a verbosity level selects.
+func RustLog(verbose int) string {
+	switch verbose {
+	case 0:
+		return "info"
+	case 1:
+		return "debug"
+	default:
+		return "trace"
+	}
+}
+
+// Journald logs a container to the journal under its name as tag.
+func Journald(containerName string) container.LogConfig {
+	return container.LogConfig{
+		Type:   "journald",
+		Config: map[string]string{"tag": containerName},
+	}
+}
+
 // PullImage pulls an image, consuming the progress stream.
 func PullImage(ctx context.Context, cli *client.Client, ref string) error {
 	reader, err := cli.ImagePull(ctx, ref, image.PullOptions{})
@@ -86,7 +107,11 @@ func RunToCompletion(ctx context.Context, cli *client.Client, name string, conta
 		return err
 	}
 	defer func() {
-		_ = cli.ContainerRemove(context.WithoutCancel(ctx), created.ID, container.RemoveOptions{Force: true})
+		// Cleanup outlives a cancelled run but still needs its own bound, so
+		// a wedged daemon cannot hold the call open indefinitely.
+		removeCtx, cancelRemove := context.WithTimeout(context.WithoutCancel(ctx), containerRemoveTimeout)
+		defer cancelRemove()
+		_ = cli.ContainerRemove(removeCtx, created.ID, container.RemoveOptions{Force: true})
 	}()
 	for filePath, data := range files {
 		if err := CopyFileToContainer(ctx, cli, created.ID, filePath, data); err != nil {
@@ -103,11 +128,16 @@ func RunToCompletion(ctx context.Context, cli *client.Client, name string, conta
 	if err != nil {
 		return err
 	}
-	defer func() { _ = logs.Close() }()
 	streamed := make(chan struct{})
 	go func() {
 		defer close(streamed)
 		_, _ = stdcopy.StdCopy(output, output, logs)
+	}()
+	// Closing unblocks the copier on the paths that do not read the stream to
+	// its end, so no write to output outlives this call.
+	defer func() {
+		_ = logs.Close()
+		<-streamed
 	}()
 
 	statusCh, errCh := cli.ContainerWait(ctx, created.ID, container.WaitConditionNotRunning)
@@ -151,6 +181,63 @@ func ExecSucceeds(ctx context.Context, cli *client.Client, name string, cmd []st
 	}
 }
 
+// listeningPollInterval paces the readiness probe.
+const listeningPollInterval = 3 * time.Second
+
+// containerRemoveTimeout bounds the cleanup of a one-off container, which
+// runs after the invocation context is already done.
+const containerRemoveTimeout = 30 * time.Second
+
+// WaitContainerListening polls until every port accepts a connection
+// inside the container, failing early when the container exits first.
+func WaitContainerListening(ctx context.Context, cli *client.Client, name, node string, timeout time.Duration, ports ...int) error {
+	dials := make([]string, len(ports))
+	for i, port := range ports {
+		dials[i] = fmt.Sprintf("(echo > /dev/tcp/127.0.0.1/%d)", port)
+	}
+	probe := []string{"bash", "-c", strings.Join(dials, " && ")}
+	// Bounding the context applies the budget to the daemon calls too, so a
+	// stalled connection cannot outlast it between polls.
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	// expired separates the budget running out from the caller cancelling, so
+	// an interrupt does not report as a readiness timeout.
+	expired := func() error {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("%s on %s not ready after %s", name, node, timeout)
+		}
+		return ctx.Err()
+	}
+	for {
+		inspect, err := cli.ContainerInspect(ctx, name)
+		if err != nil {
+			if ctx.Err() != nil {
+				return expired()
+			}
+			return fmt.Errorf("inspecting %s on %s: %w", name, node, err)
+		}
+		if inspect.State == nil || !inspect.State.Running {
+			return fmt.Errorf("%s on %s exited before becoming ready, journalctl CONTAINER_NAME=%s has the log",
+				name, node, name)
+		}
+		ready, err := ExecSucceeds(ctx, cli, name, probe)
+		if err != nil {
+			if ctx.Err() != nil {
+				return expired()
+			}
+			return fmt.Errorf("probing %s on %s: %w", name, node, err)
+		}
+		if ready {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return expired()
+		case <-time.After(listeningPollInterval):
+		}
+	}
+}
+
 // EnsureAbsentUnlessRunning reports whether the named container is already
 // running, removing a stopped leftover so the name is free.
 func EnsureAbsentUnlessRunning(ctx context.Context, cli *client.Client, name string) (bool, error) {
@@ -161,7 +248,9 @@ func EnsureAbsentUnlessRunning(ctx context.Context, cli *client.Client, name str
 	if err != nil {
 		return false, err
 	}
-	if inspect.State != nil && inspect.State.Running {
+	// Docker reports a container in its restart backoff as running, so a
+	// crash loop only counts as absent once Restarting is ruled out.
+	if inspect.State != nil && inspect.State.Running && !inspect.State.Restarting {
 		return true, nil
 	}
 	if err := cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true}); err != nil {
@@ -187,9 +276,11 @@ func StopAndRemove(ctx context.Context, cli *client.Client, name, node string, o
 	return nil
 }
 
-// ContainerLogsText returns a container's combined output as text.
-func ContainerLogsText(ctx context.Context, cli *client.Client, name string) (string, error) {
-	logs, err := cli.ContainerLogs(ctx, name, container.LogsOptions{ShowStdout: true, ShowStderr: true})
+// ContainerLogsText returns a container's combined output as text, starting at
+// since. Passing the current State.StartedAt keeps a restarted container's
+// earlier output from being read as the running incarnation's.
+func ContainerLogsText(ctx context.Context, cli *client.Client, name, since string) (string, error) {
+	logs, err := cli.ContainerLogs(ctx, name, container.LogsOptions{ShowStdout: true, ShowStderr: true, Since: since})
 	if err != nil {
 		return "", err
 	}

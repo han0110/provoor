@@ -60,3 +60,12 @@ func (p *PrefixWriter) Flush() {
 		p.pending = nil
 	}
 }
+
+// ReportPhase reports a phase through onPhase when non-nil, skipping the
+// phase already reported.
+func ReportPhase(onPhase func(phase string), lastPhase *string, phase string) {
+	if onPhase != nil && phase != *lastPhase {
+		*lastPhase = phase
+		onPhase(phase)
+	}
+}

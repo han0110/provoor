@@ -9,6 +9,8 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/go-connections/nat"
+
+	"github.com/han0110/provoor/pkg/cluster"
 )
 
 // Deployment constants. The API and cluster ports are fixed so the
@@ -40,24 +42,6 @@ func provingKeyVolume(tag string) string {
 	return "zisk-proving-key-" + tag
 }
 
-func rustLog(verbose int) string {
-	switch verbose {
-	case 0:
-		return "info"
-	case 1:
-		return "debug"
-	default:
-		return "trace"
-	}
-}
-
-func journald(containerName string) container.LogConfig {
-	return container.LogConfig{
-		Type:   "journald",
-		Config: map[string]string{"tag": containerName},
-	}
-}
-
 // coordinatorTOML renders the coordinator config holding a job until the
 // full cluster is Ready.
 func coordinatorTOML(workerCount int) string {
@@ -79,7 +63,7 @@ func coordinatorSpec(cfg *Config) (*container.Config, *container.HostConfig) {
 
 	containerCfg := &container.Config{
 		Image: cfg.imageRef(),
-		Env:   []string{"RUST_LOG=" + rustLog(cfg.Verbose)},
+		Env:   []string{"RUST_LOG=" + cluster.RustLog(cfg.Verbose)},
 		Cmd: []string{
 			"zisk-coordinator",
 			"--api-port", strconv.Itoa(apiPort),
@@ -94,7 +78,7 @@ func coordinatorSpec(cfg *Config) (*container.Config, *container.HostConfig) {
 			api:        {{HostPort: strconv.Itoa(apiPort)}},
 			clusterAPI: {{HostPort: strconv.Itoa(clusterPort)}},
 		},
-		LogConfig: journald(coordinatorContainer),
+		LogConfig: cluster.Journald(coordinatorContainer),
 	}
 	return containerCfg, hostCfg
 }
@@ -135,7 +119,7 @@ func workerArgs(cfg *Config, worker Worker, numaNodes int) []string {
 		args = append(args, "-x", "RAYON_NUM_THREADS="+strconv.Itoa(cfg.Config.MPIThreads))
 	}
 	args = append(args,
-		"-x", "RUST_LOG="+rustLog(cfg.Verbose),
+		"-x", "RUST_LOG="+cluster.RustLog(cfg.Verbose),
 		"-x", "NO_COLOR=1",
 		"-x", "ZISK_HOME=/root/.zisk",
 		// Witness generation walks PIL expression trees too deep for the
@@ -185,7 +169,7 @@ func workerSpec(cfg *Config, worker Worker, numaNodes int) (*container.Config, *
 		NetworkMode:   "host",
 		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyOnFailure},
 		ShmSize:       int64(cfg.Config.ShmSizeGB) << 30,
-		LogConfig:     journald(workerContainer),
+		LogConfig:     cluster.Journald(workerContainer),
 		// Mounted writable because proofman regenerates a .consttree into
 		// the setup path whenever one is missing or older than the .const
 		// it derives from, which happens on the first prove after a setup.

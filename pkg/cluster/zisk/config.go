@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/ethpandaops/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/cluster"
 )
 
 // Config describes one ZisK cluster deployment.
@@ -146,7 +146,7 @@ func validate(cfg *Config) error {
 		"max_witness_stored":     cfg.Config.MaxWitnessStored,
 	} {
 		if value < 0 {
-			return fmt.Errorf("%s expects a positive integer, got %d", name, value)
+			return fmt.Errorf("%s expects a non-negative integer, got %d", name, value)
 		}
 	}
 	return nil
