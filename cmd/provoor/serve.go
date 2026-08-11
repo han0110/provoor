@@ -18,13 +18,13 @@ import (
 
 func serveCommand() *cobra.Command {
 	var (
-		zkvm            string
-		guest           string
-		guestELF        string
-		clusterEndpoint string
-		listen          string
-		timeout         time.Duration
-		onClusterError  string
+		zkvm                string
+		statelessValidator  string
+		elfSource           string
+		coordinatorEndpoint string
+		listen              string
+		timeout             time.Duration
+		onClusterError      string
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -39,27 +39,27 @@ func serveCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			elf, err := cluster.ResolveGuestELF(ctx, guestELF)
+			elf, err := cluster.ResolveGuestELF(ctx, elfSource)
 			if err != nil {
 				return err
 			}
 			var prover serve.Prover
 			switch zkvm {
 			case "zisk":
-				ziskProver, err := zisk.NewProver(ctx, clusterEndpoint, elf, guestELF)
+				ziskProver, err := zisk.NewProver(ctx, coordinatorEndpoint, elf, elfSource)
 				if err != nil {
 					return err
 				}
 				defer func() { _ = ziskProver.Close() }()
-				fmt.Fprintf(cmd.OutOrStdout(), "guest %s registered, hash %s\n", guest, ziskProver.HashID())
+				fmt.Fprintf(cmd.OutOrStdout(), "stateless validator %s registered, hash %s\n", statelessValidator, ziskProver.HashID())
 				prover = ziskProver
 			case "openvm":
-				openvmProver, err := openvm.NewProver(ctx, clusterEndpoint, elf, guestELF)
+				openvmProver, err := openvm.NewProver(ctx, coordinatorEndpoint, elf, elfSource)
 				if err != nil {
 					return err
 				}
 				defer func() { _ = openvmProver.Close() }()
-				fmt.Fprintf(cmd.OutOrStdout(), "guest %s provisioned, program %s\n", guest, openvmProver.ProgramName())
+				fmt.Fprintf(cmd.OutOrStdout(), "stateless validator %s provisioned, program %s\n", statelessValidator, openvmProver.ProgramName())
 				prover = openvmProver
 			}
 
@@ -110,15 +110,15 @@ func serveCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&zkvm, "zkvm", "", "proving backend, zisk or openvm")
-	cmd.Flags().StringVar(&guest, "guest", "", "guest program name, for example ethrex")
-	cmd.Flags().StringVar(&guestELF, "guest-elf", "", "guest ELF source, a local path or an ere-guests release asset URL")
-	cmd.Flags().StringVar(&clusterEndpoint, "cluster-endpoint", "", "coordinator API endpoint, for example http://10.0.0.1:7000")
+	cmd.Flags().StringVar(&statelessValidator, "stateless-validator", "", "stateless validator name, for example ethrex")
+	cmd.Flags().StringVar(&elfSource, "elf", "", "guest ELF source, a local path or an ere-guests release asset URL")
+	cmd.Flags().StringVar(&coordinatorEndpoint, "coordinator-endpoint", "", "coordinator API endpoint, for example http://10.0.0.1:7000")
 	cmd.Flags().StringVar(&listen, "listen", ":8551", "listen address")
 	cmd.Flags().DurationVar(&timeout, "timeout", serve.DefaultProveTimeout, "per-proof timeout")
 	cmd.Flags().StringVar(&onClusterError, "on-cluster-error", "fail-test", "fail-test answers an error and continues, fail-run exits")
 	_ = cmd.MarkFlagRequired("zkvm")
-	_ = cmd.MarkFlagRequired("guest")
-	_ = cmd.MarkFlagRequired("guest-elf")
-	_ = cmd.MarkFlagRequired("cluster-endpoint")
+	_ = cmd.MarkFlagRequired("stateless-validator")
+	_ = cmd.MarkFlagRequired("elf")
+	_ = cmd.MarkFlagRequired("coordinator-endpoint")
 	return cmd
 }
