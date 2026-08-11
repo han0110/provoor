@@ -18,8 +18,10 @@ go build -o provoor ./cmd/provoor
 ```
 
 The scripts under `scripts/` additionally need `envsubst` from GNU gettext and
-`python3`, and running a benchmark needs a `benchmarkoor` binary on `PATH`,
-built from the `benchmarkoor` submodule following its own README.
+`python3`, and `scripts/benchmarkoor.sh` resets every submodule to the
+revision this repository records and builds `benchmarkoor` from it, so running
+a benchmark needs Go and `make` rather than a prebuilt binary on `PATH`, and a
+submodule carrying uncommitted work is overwritten.
 
 The container image benchmark runs use builds from the repository root. A
 tagged release publishes the same build to `ghcr.io/han0110/provoor`, stamped
@@ -125,4 +127,5 @@ A completed results directory publishes to GitHub Pages as a static site, the
 benchmarkoor UI plus pruned metrics, with no server. The `provoor-runs`
 submodule automates it on every push to its `main`, and
 [docs/publish-to-gh-page.md](docs/publish-to-gh-page.md) covers how that
-pipeline fits together and what constrains it.
+pipeline fits together and what constrains it. A run leaves the submodule on a
+detached HEAD, so committing results there starts with `git checkout main`.
