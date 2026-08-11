@@ -111,7 +111,7 @@ path.
 scripts/benchmarkoor.sh run --config benchmarkoor/examples/provoor/openvm-eest-v0.6.2-10M.example.yaml
 ```
 
-The forwarder flags travel through the instance `extra_args`. `--guest-elf`
+The forwarder flags travel through the instance `extra_args`. `--elf`
 takes a local path or an `eth-act/ere-guests` release asset URL, and for
 OpenVM it must be byte-identical to the cluster's `guests` entry. Before
 opening its port the forwarder proves a small warmup block, so a cold
