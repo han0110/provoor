@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/han0110/provoor/compare/v0.1.0...v0.1.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* sync submodule and use local built benchmarkoor ([#4](https://github.com/han0110/provoor/issues/4)) ([eb6c7e6](https://github.com/han0110/provoor/commit/eb6c7e6de940fa8569d12df9440ff09daf8b386b))
+
 ## 0.1.0 (2026-08-11)
 
 
