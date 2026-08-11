@@ -1,0 +1,24 @@
+# ZisK cluster across four hosts with four GPUs each, one worker per host
+# spanning all of them. Placeholders are filled from .env by
+# scripts/provoor.sh, so real addresses stay out of version control.
+zkvm: zisk
+
+coordinator:
+  name: node1
+  ssh: ${NODE1_SSH}
+  ip: ${NODE1_IP}
+
+workers:
+  - name: node1
+    ssh: ${NODE1_SSH}
+  - name: node2
+    ssh: ${NODE2_SSH}
+  - name: node3
+    ssh: ${NODE3_SSH}
+  - name: node4
+    ssh: ${NODE4_SSH}
+
+config:
+  # Frees roughly 11 GB of heap, which step-heavy blocks need on a 32 GB card.
+  minimal_memory: true
+  max_witness_stored: 4
