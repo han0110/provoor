@@ -65,8 +65,6 @@ func serveCommand() *cobra.Command {
 
 			server := &serve.Server{
 				Prover:                prover,
-				Zkvm:                  zkvm,
-				Guest:                 guest,
 				ProveTimeout:          timeout,
 				FailRunOnClusterError: onClusterError == "fail-run",
 				Output:                cmd.OutOrStdout(),

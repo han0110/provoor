@@ -51,8 +51,6 @@ func commitment(output []byte) []byte {
 func newServer(prover Prover, output *bytes.Buffer) *Server {
 	return &Server{
 		Prover: prover,
-		Zkvm:   "zisk",
-		Guest:  "ethrex",
 		Output: output,
 		Exit:   func(int) { panic("unexpected exit") },
 	}
@@ -114,11 +112,8 @@ func TestProveValid(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &metric); err != nil {
 		t.Fatalf("metric line %q: %v", lines[len(lines)-1], err)
 	}
-	if metric.Block.Hash != "0xabc123" || !metric.OutputMatched || metric.InputBytes != 3 {
+	if metric.Block.Hash != "0xabc123" || !metric.OutputMatched || metric.StatelessInputSize != 3 {
 		t.Errorf("metric = %+v", metric)
-	}
-	if metric.Zkvm != "zisk" || metric.Guest != "ethrex" {
-		t.Errorf("subject metric = %v/%v", metric.Zkvm, metric.Guest)
 	}
 	if metric.ProofSize != 316119 || metric.ClusterReportedProvingTimeMs != 4011 {
 		t.Errorf("proving metric = %v/%v", metric.ProofSize, metric.ClusterReportedProvingTimeMs)

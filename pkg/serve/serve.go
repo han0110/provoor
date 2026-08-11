@@ -52,9 +52,6 @@ type ProveOutcome struct {
 type Server struct {
 	// Prover proves payloads.
 	Prover Prover
-	// Zkvm and Guest name the subject under test in responses and metrics.
-	Zkvm  string
-	Guest string
 	// ProveTimeout bounds one proof, DefaultProveTimeout when zero.
 	ProveTimeout time.Duration
 	// FailRunOnClusterError exits the process on a cluster error instead of
@@ -111,14 +108,14 @@ type payloadStatus struct {
 // metricLine is the per-test JSON object written to Output. The block hash
 // nests under block.hash, the shape every block-log payload shares, so the
 // collector matches the line to its test. Block, timing, and throughput
-// reuse the standard block-log field names the UI dashboards read.
+// reuse the standard block-log field names the UI dashboards read. Like an
+// execution client's own block logs, the line carries measurements only, and
+// the subject under test is named once per run by the harness configuration.
 type metricLine struct {
 	Block                        metricBlock      `json:"block"`
 	Timing                       metricTiming     `json:"timing"`
 	Throughput                   metricThroughput `json:"throughput"`
-	Zkvm                         string           `json:"zkvm"`
-	Guest                        string           `json:"guest"`
-	InputBytes                   int              `json:"inputBytes"`
+	StatelessInputSize           int              `json:"statelessInputSize"`
 	ProvingTimeMs                int64            `json:"provingTimeMs"`
 	ClusterReportedProvingTimeMs int64            `json:"clusterReportedProvingTimeMs"`
 	ProofSize                    int              `json:"proofSize"`
@@ -234,9 +231,7 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 		Block:                        metricBlock{Number: parseQuantity(payload.BlockNumber), Hash: payload.BlockHash, GasUsed: gasUsed},
 		Timing:                       metricTiming{TotalMs: provingTime.Milliseconds()},
 		Throughput:                   metricThroughput{MGasPerSec: mgasPerSec},
-		Zkvm:                         s.Zkvm,
-		Guest:                        s.Guest,
-		InputBytes:                   len(input),
+		StatelessInputSize:           len(input),
 		ProvingTimeMs:                provingTime.Milliseconds(),
 		ClusterReportedProvingTimeMs: outcome.ClusterProvingTime.Milliseconds(),
 		ProofSize:                    outcome.ProofBytes,
