@@ -15,17 +15,19 @@ type Prover struct {
 	sdkVersion  string
 }
 
-// NewProver derives the guest ELF's program name, confirms the deployment's
-// loadout carries the program, and waits for every worker's registration.
-// Programs are provisioned at deploy time, so a mismatched ELF fails before
-// any server port opens instead of being refused on the first proof.
-func NewProver(ctx context.Context, endpoint string, elf []byte, elfSource string) (*Prover, error) {
+// NewProver derives the guest ELF's program name, binds a verifier to
+// programVK, and waits for every worker's registration. Programs are
+// provisioned at deploy time, so an ELF or a verifying key the deployment does
+// not carry fails before any server port opens instead of being refused on the
+// first proof.
+func NewProver(ctx context.Context, endpoint string, elf, programVK []byte, elfSource string) (*Prover, error) {
 	name := programName(elf)
-	client := DialClient(endpoint)
-	if err := client.CheckProgram(ctx, name); err != nil {
+	client, err := DialClient(ctx, endpoint, name, programVK)
+	if err != nil {
 		return nil, err
 	}
 	if err := client.WaitReady(ctx); err != nil {
+		_ = client.Close()
 		return nil, err
 	}
 
@@ -53,16 +55,16 @@ func (p *Prover) ClientVersion() string {
 
 // Warmup proves the shared warmup input once and discards the result.
 func (p *Prover) Warmup(ctx context.Context) error {
-	_, err := p.client.Prove(ctx, p.programName, cluster.WarmupInput, nil)
+	_, err := p.client.Prove(ctx, cluster.WarmupInput, nil)
 	return err
 }
 
 // Prove proves one stateless payload, bounded by the context deadline.
 func (p *Prover) Prove(ctx context.Context, input []byte, onPhase func(phase string)) (*serve.ProveOutcome, error) {
-	return p.client.Prove(ctx, p.programName, input, onPhase)
+	return p.client.Prove(ctx, input, onPhase)
 }
 
-// Close releases the coordinator connection.
+// Close releases the verifier and the coordinator connection.
 func (p *Prover) Close() error {
 	return p.client.Close()
 }

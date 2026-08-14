@@ -11,9 +11,36 @@ import (
 	"strings"
 )
 
-// ResolveGuestELF reads a guest ELF from its source, a local file path or an
-// http(s) URL such as an ere-guests release asset.
-func ResolveGuestELF(ctx context.Context, source string) ([]byte, error) {
+// Guest names one guest program's artifacts, the ELF a cluster proves and the
+// verifying key its proofs are checked against. An ere-guests release
+// publishes the two side by side, and naming the key here rather than taking
+// the cluster's own makes the guest, not the cluster, decide what a proof has
+// to be about.
+type Guest struct {
+	ELF string `yaml:"elf"`
+	VK  string `yaml:"vk"`
+}
+
+// ValidateGuests rejects a guest list a cluster cannot be deployed from,
+// naming the entry at fault so a long list is legible.
+func ValidateGuests(guests []Guest) error {
+	if len(guests) == 0 {
+		return fmt.Errorf("at least one guest is required")
+	}
+	for i, guest := range guests {
+		if guest.ELF == "" {
+			return fmt.Errorf("guest %d is missing elf", i)
+		}
+		if guest.VK == "" {
+			return fmt.Errorf("guest %d is missing vk", i)
+		}
+	}
+	return nil
+}
+
+// ResolveSource reads a guest artifact from its source, a local file path or
+// an http(s) URL such as an ere-guests release asset.
+func ResolveSource(ctx context.Context, source string) ([]byte, error) {
 	if !strings.HasPrefix(source, "http://") && !strings.HasPrefix(source, "https://") {
 		return os.ReadFile(source)
 	}
@@ -24,17 +51,30 @@ func ResolveGuestELF(ctx context.Context, source string) ([]byte, error) {
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching guest ELF %s: %w", source, err)
+		return nil, fmt.Errorf("fetching %s: %w", source, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetching guest ELF %s: status %s", source, resp.Status)
+		return nil, fmt.Errorf("fetching %s: status %s", source, resp.Status)
 	}
-	elf, err := io.ReadAll(resp.Body)
+	contents, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("fetching guest ELF %s: %w", source, err)
+		return nil, fmt.Errorf("fetching %s: %w", source, err)
 	}
-	return elf, nil
+	return contents, nil
+}
+
+// ResolveGuest reads a guest's ELF and verifying key from their sources.
+func ResolveGuest(ctx context.Context, guest Guest) (elf, verifyingKey []byte, err error) {
+	elf, err = ResolveSource(ctx, guest.ELF)
+	if err != nil {
+		return nil, nil, err
+	}
+	verifyingKey, err = ResolveSource(ctx, guest.VK)
+	if err != nil {
+		return nil, nil, err
+	}
+	return elf, verifyingKey, nil
 }
 
 // GuestELFName is a source's base name without the .elf extension, which for

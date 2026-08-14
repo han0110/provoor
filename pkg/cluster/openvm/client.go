@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -15,9 +16,11 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/han0110/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/ereverifier"
 	"github.com/han0110/provoor/pkg/serve"
 )
 
@@ -85,56 +88,110 @@ func (e *statusError) Error() string {
 	return fmt.Sprintf("status %d: %s", e.code, e.body)
 }
 
-// Client drives prove jobs against an edge-manager coordinator's client
-// HTTP API.
+// Client drives prove jobs for one program against an edge-manager
+// coordinator's client HTTP API.
 type Client struct {
-	endpoint string
-	http     *http.Client
+	endpoint    string
+	programName string
+	http        *http.Client
 	// stream carries the status event streams, unbounded in total duration
 	// with silence policed per read instead.
 	stream *http.Client
+	// verifier is bound to the caller's program verifying key for the
+	// client's whole life, so no proof can be accepted unverified. Its guard
+	// is held for reading across a verification, since the handle it frees
+	// must not be released while a proof is still being checked against it.
+	verifierMu sync.RWMutex
+	verifier   *ereverifier.Verifier
 }
 
-// DialClient targets a coordinator API endpoint such as http://10.0.0.1:3000.
-// Connections are lazy, an unreachable coordinator surfaces on the first
-// call.
-func DialClient(endpoint string) *Client {
+// DialClient targets a coordinator API endpoint such as http://10.0.0.1:3000
+// and binds a verifier to programVK, so an unreachable coordinator surfaces
+// here instead of on the first proof. The verification baseline the
+// coordinator serves for the program is a cross-check of programVK rather than
+// its source, so a cluster proving anything else is refused before it proves
+// it. The caller releases the client with Close.
+func DialClient(ctx context.Context, endpoint, programName string, programVK []byte) (*Client, error) {
 	transport := &http.Transport{DialContext: (&net.Dialer{Timeout: connectTimeout}).DialContext}
-	return &Client{
-		endpoint: strings.TrimRight(endpoint, "/"),
-		http:     &http.Client{Timeout: requestTimeout, Transport: transport},
-		stream:   &http.Client{Transport: transport},
+	client := &Client{
+		endpoint:    strings.TrimRight(endpoint, "/"),
+		programName: programName,
+		http:        &http.Client{Timeout: requestTimeout, Transport: transport},
+		stream:      &http.Client{Transport: transport},
 	}
+	verifier, err := ereverifier.New(ereverifier.OpenVM, programVK)
+	if err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("binding a verifier to program %s: %w", programName, err)
+	}
+	client.verifier = verifier
+	clusterVerifyingKey, err := client.fetchProgramVerifyingKey(ctx)
+	if err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	if !bytes.Equal(clusterVerifyingKey, programVK) {
+		_ = client.Close()
+		// A baseline runs to hundreds of bytes and two of them differ in a
+		// handful, so the digests are what a reader can compare, against
+		// sha256sum of the configured key as deployment reports it.
+		return nil, fmt.Errorf("cluster serves program %s under a verifying key of sha256 %x, the configured key hashes to %x",
+			programName, sha256.Sum256(clusterVerifyingKey), sha256.Sum256(programVK))
+	}
+	return client, nil
 }
 
-// Close releases pooled coordinator connections.
+// Close releases the verifier and pooled coordinator connections. The
+// verifier is freed under the write guard, so a proof still being checked
+// keeps its handle alive until it is done with it.
 func (c *Client) Close() error {
+	c.verifierMu.Lock()
+	c.verifier.Close()
+	c.verifier = nil
+	c.verifierMu.Unlock()
+
 	c.http.CloseIdleConnections()
 	c.stream.CloseIdleConnections()
 	return nil
 }
 
-// CheckProgram confirms the deployment's loadout carries the program, whose
-// verification baseline the coordinator serves per name.
-func (c *Client) CheckProgram(ctx context.Context, name string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint+"/vk/"+name, nil)
+// verify checks a proof against the bound verifier, holding the binding for
+// as long as the verifier is in use.
+func (c *Client) verify(proof []byte) ([]byte, error) {
+	c.verifierMu.RLock()
+	defer c.verifierMu.RUnlock()
+
+	if c.verifier == nil {
+		return nil, errors.New("the client is closed")
+	}
+	return verifyProof(c.verifier, proof)
+}
+
+// fetchProgramVerifyingKey reads the program's verification baseline, which
+// the coordinator serves per name, and so also confirms the deployment's
+// loadout carries the program.
+func (c *Client) fetchProgramVerifyingKey(ctx context.Context) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint+"/vk/"+c.programName, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("checking program %s: %w", name, err)
+		return nil, fmt.Errorf("fetching the verifying key of program %s: %w", c.programName, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusOK {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return nil
+		programVerifyingKey, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("fetching the verifying key of program %s: %w", c.programName, err)
+		}
+		return programVerifyingKey, nil
 	}
 	body := readBody(resp.Body)
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("program %s is not in the cluster loadout, deploy a cluster carrying this guest ELF: %s", name, body)
+		return nil, fmt.Errorf("program %s is not in the cluster loadout, deploy a cluster carrying this guest ELF: %s", c.programName, body)
 	}
-	return fmt.Errorf("checking program %s: status %d: %s", name, resp.StatusCode, body)
+	return nil, fmt.Errorf("fetching the verifying key of program %s: status %d: %s", c.programName, resp.StatusCode, body)
 }
 
 // WaitReady polls the coordinator until every expected worker is registered,
@@ -177,12 +234,12 @@ func (c *Client) ready(ctx context.Context) (detail string, err error) {
 // Prove submits an input, waits for the proof, and cancels it when the
 // context expires first. Submission retries while the manager is busy with
 // another proof or its workers are not ready, bounded by the same context.
-func (c *Client) Prove(ctx context.Context, programName string, input []byte, onPhase func(phase string)) (*serve.ProveOutcome, error) {
+func (c *Client) Prove(ctx context.Context, input []byte, onPhase func(phase string)) (*serve.ProveOutcome, error) {
 	var proofUUID string
 	unreachable := 0
 	for {
 		proofUUID = newProofUUID()
-		err := c.submit(ctx, proofUUID, programName, input)
+		err := c.submit(ctx, proofUUID, input)
 		if err == nil {
 			break
 		}
@@ -225,11 +282,11 @@ func newProofUUID() string {
 
 // submit stages the input and starts the proof, one fresh identifier per
 // attempt so a lost admission response cannot collide with itself.
-func (c *Client) submit(ctx context.Context, proofUUID, programName string, input []byte) error {
+func (c *Client) submit(ctx context.Context, proofUUID string, input []byte) error {
 	if err := c.uploadInput(ctx, proofUUID, input); err != nil {
 		return err
 	}
-	return c.startProof(ctx, proofUUID, programName)
+	return c.startProof(ctx, proofUUID)
 }
 
 func (c *Client) uploadInput(ctx context.Context, proofUUID string, input []byte) error {
@@ -266,7 +323,7 @@ func (c *Client) uploadInput(ctx context.Context, proofUUID string, input []byte
 	return nil
 }
 
-func (c *Client) startProof(ctx context.Context, proofUUID, programName string) error {
+func (c *Client) startProof(ctx context.Context, proofUUID string) error {
 	payload, err := json.Marshal(struct {
 		ProofUUID string `json:"proof_uuid"`
 		Program   struct {
@@ -279,7 +336,7 @@ func (c *Client) startProof(ctx context.Context, proofUUID, programName string) 
 		Program: struct {
 			Name    string `json:"name"`
 			Version int    `json:"version"`
-		}{Name: programName, Version: programVersion},
+		}{Name: c.programName, Version: programVersion},
 	})
 	if err != nil {
 		return err
@@ -344,10 +401,7 @@ func (c *Client) waitProof(ctx context.Context, proofUUID string, onPhase func(p
 	if err != nil {
 		return nil, err
 	}
-	if err := verifyProof(proof); err != nil {
-		return nil, fmt.Errorf("proof %s: %w", proofUUID, err)
-	}
-	publicValues, err := decodeProofPublicValues(proof)
+	publicValues, err := c.verify(proof)
 	if err != nil {
 		return nil, fmt.Errorf("proof %s: %w", proofUUID, err)
 	}

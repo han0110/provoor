@@ -21,10 +21,11 @@ type Prover struct {
 }
 
 // NewProver connects to the coordinator, registers the guest ELF, and runs
-// the program setup. Registration is content addressed, so the registered
-// bytes are what identify the guest and the ELF source only names it for run
-// records.
-func NewProver(ctx context.Context, endpoint string, elf []byte, elfSource string) (*Prover, error) {
+// the program setup, binding a verifier to programVK and failing when the
+// cluster derives another key from the same ELF. Registration is content
+// addressed, so the registered bytes are what identify the guest and the ELF
+// source only names it for run records.
+func NewProver(ctx context.Context, endpoint string, elf, programVK []byte, elfSource string) (*Prover, error) {
 	client, err := DialClient(endpoint)
 	if err != nil {
 		return nil, err
@@ -36,7 +37,7 @@ func NewProver(ctx context.Context, endpoint string, elf []byte, elfSource strin
 		_ = client.Close()
 		return nil, err
 	}
-	if err := client.Setup(ctx, hashID); err != nil {
+	if err := client.Setup(ctx, hashID, programVK); err != nil {
 		_ = client.Close()
 		return nil, err
 	}

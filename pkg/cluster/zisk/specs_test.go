@@ -16,6 +16,7 @@ func testConfig() *Config {
 		Zkvm:     "zisk",
 		Image:    "ghcr.io/han0110/zisk/zisk",
 		ImageTag: "1.0.0-alpha",
+		Guests:   []cluster.Guest{{ELF: "/guests/a.elf", VK: "/guests/a.vk"}},
 		Coordinator: cluster.Node{
 			Name: "node1",
 			SSH:  "user@203.0.113.1",
@@ -136,6 +137,25 @@ func TestCoordinatorSpec(t *testing.T) {
 			t.Errorf("PortBindings[%s] = %v", port, bindings)
 		}
 	}
+	if len(hostCfg.Mounts) != 1 || hostCfg.Mounts[0].Source != "zisk-cache-1.0.0-alpha" ||
+		hostCfg.Mounts[0].Target != "/root/.zisk/cache" || hostCfg.Mounts[0].ReadOnly {
+		t.Errorf("Mounts = %+v", hostCfg.Mounts)
+	}
+}
+
+func TestCoordinatorEndpoint(t *testing.T) {
+	cfg := testConfig()
+	if got := coordinatorEndpoint(cfg); got != "http://10.0.0.1:7000" {
+		t.Errorf("endpoint = %q", got)
+	}
+	cfg.Coordinator.IP = ""
+	if got := coordinatorEndpoint(cfg); got != "http://node1:7000" {
+		t.Errorf("endpoint without an ip = %q", got)
+	}
+	cfg.Coordinator.SSH = ""
+	if got := coordinatorEndpoint(cfg); got != "http://127.0.0.1:7000" {
+		t.Errorf("endpoint of a local coordinator = %q", got)
+	}
 }
 
 func TestWorkerSpec(t *testing.T) {
@@ -159,10 +179,13 @@ func TestWorkerSpec(t *testing.T) {
 	if hostCfg.LogConfig.Config["tag"] != "zisk-worker" {
 		t.Errorf("LogConfig = %+v", hostCfg.LogConfig)
 	}
-	if len(hostCfg.Mounts) != 1 ||
+	if len(hostCfg.Mounts) != 2 ||
 		hostCfg.Mounts[0].Source != "zisk-proving-key-1.0.0-alpha" ||
 		hostCfg.Mounts[0].Target != "/root/.zisk/provingKey" ||
-		hostCfg.Mounts[0].ReadOnly {
+		hostCfg.Mounts[0].ReadOnly ||
+		hostCfg.Mounts[1].Source != "zisk-cache-1.0.0-alpha" ||
+		hostCfg.Mounts[1].Target != "/root/.zisk/cache" ||
+		hostCfg.Mounts[1].ReadOnly {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
 	}
 	if len(hostCfg.Ulimits) != 1 || hostCfg.Ulimits[0].Name != "memlock" ||

@@ -1,7 +1,6 @@
 package zisk
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 )
@@ -13,10 +12,12 @@ import (
 //	Proof        { body: ProofBody, publics: PublicValues, program_vk: ProgramVK }
 //	ProofBody    enum { Vadcop { proof: Vec<u64>, zisk_vk: Vec<u64>, minimal: bool, hash: String }, Plonk }
 //	PublicValues { data: Vec<u8> }
-//	ProgramVK    { vk: Vec<u64> }
+//	ProgramVK    { vk: Vec<u64>, hash_mode: HashMode }
 //
-// Only the public values are consumed. The proof itself is not verified,
-// validity is decided by comparing the public values to the expected output.
+// The trailing hash_mode is never read, decoding stops once the vk is in
+// hand. ere's verifier accepts the same proof under bincode's legacy
+// configuration instead, little endian with fixed-width integers, so an
+// envelope is transcoded before it is verified.
 const (
 	// programVKWords and publicValuesBytes are the fixed lengths of the
 	// envelope's trailing fields.
@@ -24,20 +25,36 @@ const (
 	publicValuesBytes = 256
 	// vadcopFinalHashFamily is the hash family every accepted proof carries.
 	vadcopFinalHashFamily = "Poseidon1"
+	// maxEnvelopeBytes caps the envelope a transcode will read. A vadcop
+	// final proof runs under 300 KiB, so the margin is generous, and the cap
+	// keeps a coordinator's reply from expanding eightfold into the heap on
+	// its way to the verifier.
+	maxEnvelopeBytes = 1 << 20
 )
 
-// decodeProofPublicValues extracts the committed public values from a proof
-// envelope, rejecting envelopes of any other shape.
-func decodeProofPublicValues(envelope []byte) ([]byte, error) {
+// transcodeProof rewrites a proof envelope into the VadcopFinalProof ere's
+// verifier accepts, rejecting envelopes of any other shape. The result uses
+// bincode's legacy configuration, so every length and every word occupies
+// eight little-endian bytes, holding proof, public_values, compressed and
+// hash in that order.
+//
+// The verified public values are the vk words followed by the envelope's
+// commitment read as little-endian u32s, each widened to a word. zisk_vk is
+// discarded, it does not identify the guest program.
+func transcodeProof(envelope []byte) ([]byte, error) {
+	if len(envelope) > maxEnvelopeBytes {
+		return nil, fmt.Errorf("proof envelope holds %d bytes, beyond the %d byte cap", len(envelope), maxEnvelopeBytes)
+	}
 	reader := &bincodeReader{buf: envelope}
 
+	var proofWords []uint64
 	switch variant := reader.discriminant(); {
 	case reader.err != nil:
 	case variant == 0:
-		reader.skipU64Vec()         // proof
-		reader.skipU64Vec()         // zisk_vk
-		minimal := reader.boolean() // minimal
-		hashFamily := reader.utf8() // hash
+		proofWords = reader.u64Vec() // proof
+		reader.skipU64Vec()          // zisk_vk
+		minimal := reader.boolean()  // minimal
+		hashFamily := reader.utf8()  // hash
 		if reader.err == nil && (!minimal || hashFamily != vadcopFinalHashFamily) {
 			return nil, fmt.Errorf("proof body is not a minimal %s vadcop proof", vadcopFinalHashFamily)
 		}
@@ -48,19 +65,32 @@ func decodeProofPublicValues(envelope []byte) ([]byte, error) {
 	}
 
 	publicValues := reader.byteVec()
-	vkWords := reader.u64VecLen()
+	vkWords := reader.u64Vec()
 	if reader.err != nil {
 		return nil, fmt.Errorf("malformed proof envelope: %w", reader.err)
 	}
-	if vkWords != programVKWords {
-		return nil, fmt.Errorf("program vk holds %d words, expected %d", vkWords, programVKWords)
+	if len(vkWords) != programVKWords {
+		return nil, fmt.Errorf("program vk holds %d words, expected %d", len(vkWords), programVKWords)
 	}
 	if len(publicValues) != publicValuesBytes {
 		return nil, fmt.Errorf("public values hold %d bytes, expected %d", len(publicValues), publicValuesBytes)
 	}
-	// byteVec subslices the envelope, so the commitment is copied out rather
-	// than pinning the whole proof for as long as the result is held.
-	return bytes.Clone(publicValues), nil
+
+	proof := make([]byte, 0, 8*(1+len(proofWords)+1+programVKWords+publicValuesBytes/4)+1+8+len(vadcopFinalHashFamily))
+	proof = binary.LittleEndian.AppendUint64(proof, uint64(len(proofWords)))
+	for _, word := range proofWords {
+		proof = binary.LittleEndian.AppendUint64(proof, word)
+	}
+	proof = binary.LittleEndian.AppendUint64(proof, uint64(programVKWords+publicValuesBytes/4))
+	for _, word := range vkWords {
+		proof = binary.LittleEndian.AppendUint64(proof, word)
+	}
+	for offset := 0; offset < publicValuesBytes; offset += 4 {
+		proof = binary.LittleEndian.AppendUint64(proof, uint64(binary.LittleEndian.Uint32(publicValues[offset:])))
+	}
+	proof = append(proof, 1) // compressed
+	proof = binary.LittleEndian.AppendUint64(proof, uint64(len(vadcopFinalHashFamily)))
+	return append(proof, vadcopFinalHashFamily...), nil
 }
 
 // bincodeReader decodes bincode standard-configuration primitives with a
@@ -147,13 +177,13 @@ func (r *bincodeReader) skipU64Vec() {
 	}
 }
 
-// u64VecLen reads over a Vec<u64> and returns its element count.
-func (r *bincodeReader) u64VecLen() int {
-	length := r.length()
-	for range length {
-		r.varint()
+// u64Vec reads a Vec<u64> and returns its elements.
+func (r *bincodeReader) u64Vec() []uint64 {
+	words := make([]uint64, r.length())
+	for i := range words {
+		words[i] = r.varint()
 	}
-	return length
+	return words
 }
 
 func (r *bincodeReader) byteVec() []byte {

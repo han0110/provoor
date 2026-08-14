@@ -3,6 +3,14 @@
 # scripts/provoor.sh, so real addresses stay out of version control.
 zkvm: zisk
 
+# provoor up sets each guests entry up on the cluster and checks the key that
+# setup derives against the vk published beside the ELF.
+guests:
+  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-reth-zisk-v1.0.0-alpha.elf
+    vk: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-reth-zisk-v1.0.0-alpha.vk
+  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-ethrex-zisk-v1.0.0-alpha.elf
+    vk: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-ethrex-zisk-v1.0.0-alpha.vk
+
 coordinator:
   name: node1
   ssh: ${NODE1_SSH}

@@ -10,12 +10,12 @@ import (
 	"testing"
 )
 
-func TestResolveGuestELFLocalPath(t *testing.T) {
+func TestResolveSourceLocalPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "stateless-validator-ethrex-zisk-v1.0.0-alpha.elf")
 	if err := os.WriteFile(path, []byte("elf-bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	elf, err := ResolveGuestELF(context.Background(), path)
+	elf, err := ResolveSource(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,13 +24,13 @@ func TestResolveGuestELFLocalPath(t *testing.T) {
 	}
 }
 
-func TestResolveGuestELFMissingFile(t *testing.T) {
-	if _, err := ResolveGuestELF(context.Background(), filepath.Join(t.TempDir(), "absent.elf")); err == nil {
+func TestResolveSourceMissingFile(t *testing.T) {
+	if _, err := ResolveSource(context.Background(), filepath.Join(t.TempDir(), "absent.elf")); err == nil {
 		t.Fatal("expected an error for a missing file")
 	}
 }
 
-func TestResolveGuestELFURL(t *testing.T) {
+func TestResolveSourceURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/release/guest.elf" {
 			http.NotFound(w, r)
@@ -40,7 +40,7 @@ func TestResolveGuestELFURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	elf, err := ResolveGuestELF(context.Background(), server.URL+"/release/guest.elf")
+	elf, err := ResolveSource(context.Background(), server.URL+"/release/guest.elf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,8 +48,34 @@ func TestResolveGuestELFURL(t *testing.T) {
 		t.Errorf("elf = %q", elf)
 	}
 
-	if _, err := ResolveGuestELF(context.Background(), server.URL+"/absent.elf"); err == nil {
+	if _, err := ResolveSource(context.Background(), server.URL+"/absent.elf"); err == nil {
 		t.Fatal("expected an error for a 404 response")
+	}
+}
+
+func TestResolveGuest(t *testing.T) {
+	dir := t.TempDir()
+	elfPath := filepath.Join(dir, "guest.elf")
+	vkPath := filepath.Join(dir, "guest.vk")
+	if err := os.WriteFile(elfPath, []byte("elf-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(vkPath, []byte("vk-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	elf, verifyingKey, err := ResolveGuest(context.Background(), Guest{ELF: elfPath, VK: vkPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(elf, []byte("elf-bytes")) || !bytes.Equal(verifyingKey, []byte("vk-bytes")) {
+		t.Errorf("elf = %q, vk = %q", elf, verifyingKey)
+	}
+
+	// A guest is unusable without both, so an absent key fails the pair
+	// rather than yielding an ELF a caller could go on to prove.
+	if _, _, err := ResolveGuest(context.Background(), Guest{ELF: elfPath, VK: filepath.Join(dir, "absent.vk")}); err == nil {
+		t.Error("expected an error for a missing vk")
 	}
 }
 

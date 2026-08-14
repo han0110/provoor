@@ -28,9 +28,9 @@ const (
 )
 
 // Up deploys the cluster and blocks until the coordinator accepts
-// connections and every worker has registered. It is idempotent, a container
-// already running is left in place and a proving-key volume already present
-// is reused.
+// connections, every worker has registered, and every configured guest is set
+// up. It is idempotent, a container already running is left in place and a
+// proving-key volume already present is reused.
 func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 	out := cluster.NewOutput(w)
 	hosts, err := cluster.DialHosts(ctx, cfg.destinations())
@@ -80,15 +80,109 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 		return err
 	}
 
-	out.Printf("cluster ready, coordinator api on %s port %d, %d workers registered",
-		cfg.Coordinator.Name, apiPort, len(cfg.Workers))
+	// A setup reserves every worker, so guests are provisioned one at a time.
+	for _, guest := range cfg.Guests {
+		if err := d.setupGuest(ctx, guest); err != nil {
+			return err
+		}
+	}
+
+	if err := d.restartAfterSetup(ctx); err != nil {
+		return err
+	}
+
+	out.Printf("cluster ready, coordinator api on %s port %d, %d workers registered, %d guests set up",
+		cfg.Coordinator.Name, apiPort, len(cfg.Workers), len(cfg.Guests))
 	return nil
+}
+
+// restartAfterSetup restarts the coordinator and every worker once the guests
+// are set up, then waits for the cluster to come back.
+//
+// Running two setups in a row, with no proof of the first between them, leaves
+// a ZisK v1.0.0-alpha worker unable to prove the earlier guest. The proof
+// fails late, either asserting in the ROM state machine that the exit
+// instruction never ran or failing recursive witness generation, both of which
+// read as a proof against another program's assembly. Provisioning several
+// guests here is exactly that pattern, so a cluster deployed with more than
+// one guest would serve the last one and fail the rest.
+//
+// A restart discards it. The coordinator's record of the keys it has handed
+// out and the worker's record of the programs it has set up are both held in
+// memory, so both start empty, while the artifact cache volume keeps the
+// assembly this pass compiled. Each forwarder then runs a real setup for its
+// own guest and proves it immediately, the order that works, and pays only a
+// cache hit for the assembly rather than compiling it again.
+//
+// Switching between guests is otherwise sound. Once each has been set up and
+// proved once, a later forwarder proves its guest correctly even when the
+// coordinator answers its setup from cache and the worker is never reached.
+// A ZisK release that survives consecutive setups would retire this.
+func (d *deployment) restartAfterSetup(ctx context.Context) error {
+	coordinator := d.hosts.Client(d.cfg.Coordinator.SSH)
+	node := d.cfg.Coordinator.Name
+	d.out.Printf("[%s] restarting the cluster so each guest is set up again when it is proved...", node)
+
+	if err := coordinator.ContainerRestart(ctx, coordinatorContainer, container.StopOptions{}); err != nil {
+		return fmt.Errorf("restarting coordinator on %s: %w", node, err)
+	}
+	if err := cluster.WaitContainerListening(ctx, coordinator, coordinatorContainer, node, coordinatorReadyTimeout, apiPort, clusterPort); err != nil {
+		return err
+	}
+
+	for _, worker := range d.cfg.Workers {
+		cli := d.hosts.Client(worker.SSH)
+		if err := cli.ContainerRestart(ctx, workerContainer, container.StopOptions{}); err != nil {
+			return fmt.Errorf("restarting worker on %s: %w", worker.Name, err)
+		}
+	}
+	for _, worker := range d.cfg.Workers {
+		if err := d.waitRegistered(ctx, worker); err != nil {
+			return err
+		}
+	}
+	d.out.Printf("[%s] cluster restarted, every worker registered again", node)
+	return nil
+}
+
+// waitRegistered blocks until a worker registers with the coordinator. The
+// log is read from the container's own start time, which the daemon stamps on
+// the same clock as the lines themselves and which a restart moves forward,
+// so an earlier run's registration is never mistaken for this one's.
+func (d *deployment) waitRegistered(ctx context.Context, worker Worker) error {
+	cli := d.hosts.Client(worker.SSH)
+	deadline := time.Now().Add(registrationTimeout)
+	for {
+		inspect, err := cli.ContainerInspect(ctx, workerContainer)
+		if err != nil {
+			return fmt.Errorf("inspecting worker on %s: %w", worker.Name, err)
+		}
+		if inspect.State == nil || !inspect.State.Running {
+			return fmt.Errorf("worker on %s exited before registering, journalctl CONTAINER_NAME=%s has the log",
+				worker.Name, workerContainer)
+		}
+		logs, err := cluster.ContainerLogsText(ctx, cli, workerContainer, inspect.State.StartedAt)
+		if err != nil {
+			return fmt.Errorf("reading worker log on %s: %w", worker.Name, err)
+		}
+		if strings.Contains(logs, registrationLine) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("worker on %s did not register after %s", worker.Name, registrationTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
+	}
 }
 
 // Down stops and removes every cluster container, workers first and then the
 // coordinator, reversing the start order. Stop failures are collected rather
 // than aborting, so one degraded host cannot leave the coordinator running.
-// Journald logs and the proving-key volumes stay in place.
+// Journald logs and the proving-key and cache volumes stay in place.
 func (cfg *Config) Down(ctx context.Context, w io.Writer) error {
 	out := cluster.NewOutput(w)
 	hosts, err := cluster.DialHosts(ctx, cfg.destinations())
@@ -235,33 +329,45 @@ func (d *deployment) startWorker(ctx context.Context, worker Worker) error {
 		d.out.Printf("[%s] starting worker, waiting for registration...", worker.Name)
 	}
 
-	deadline := time.Now().Add(registrationTimeout)
-	for {
-		inspect, err := cli.ContainerInspect(ctx, workerContainer)
-		if err != nil {
-			return fmt.Errorf("inspecting worker on %s: %w", worker.Name, err)
-		}
-		if inspect.State == nil || !inspect.State.Running {
-			return fmt.Errorf("worker on %s exited before registration, journalctl CONTAINER_NAME=%s has the log",
-				worker.Name, workerContainer)
-		}
-		logs, err := cluster.ContainerLogsText(ctx, cli, workerContainer, inspect.State.StartedAt)
-		if err != nil {
-			return fmt.Errorf("reading worker log on %s: %w", worker.Name, err)
-		}
-		if strings.Contains(logs, registrationLine) {
-			d.out.Printf("[%s] worker registered", worker.Name)
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("worker on %s not registered after %s", worker.Name, registrationTimeout)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(5 * time.Second):
-		}
+	if err := d.waitRegistered(ctx, worker); err != nil {
+		return err
 	}
+	d.out.Printf("[%s] worker registered", worker.Name)
+	return nil
+}
+
+// setupGuest registers one guest program with the coordinator and runs its
+// keygen, so the first proof of a fresh deployment is not the one paying for
+// it. The key the cluster derives is checked against the configured one,
+// which fails the deployment rather than leaving a cluster whose proofs no
+// verifier would accept. Each guest gets its own client, since a client binds
+// to a single program.
+func (d *deployment) setupGuest(ctx context.Context, guest cluster.Guest) error {
+	name := cluster.GuestELFName(guest.ELF)
+	elf, programVK, err := cluster.ResolveGuest(ctx, guest)
+	if err != nil {
+		return fmt.Errorf("resolving guest %s: %w", name, err)
+	}
+
+	client, err := DialClient(coordinatorEndpoint(d.cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	registerCtx, cancel := context.WithTimeout(ctx, registerTimeout)
+	defer cancel()
+	hashID, err := client.RegisterGuestProgram(registerCtx, elf)
+	if err != nil {
+		return fmt.Errorf("guest %s: %w", name, err)
+	}
+
+	d.out.Printf("[%s] setting up guest %s...", d.cfg.Coordinator.Name, name)
+	if err := client.Setup(ctx, hashID, programVK); err != nil {
+		return fmt.Errorf("guest %s: %w", name, err)
+	}
+	d.out.Printf("[%s] guest %s set up as program %s", d.cfg.Coordinator.Name, name, hashID)
+	return nil
 }
 
 // hostTopology observes the NUMA node count the rank-mapping derivation

@@ -26,11 +26,12 @@ type Config struct {
 	ImageTag string `yaml:"image_tag"`
 	// Verbose raises container log levels, 0 info, 1 debug, 2 trace.
 	Verbose int `yaml:"verbose"`
-	// Guests lists the guest ELF sources, local paths or URLs, provisioned
-	// as the deployment's program loadout. Program names are content
-	// digests, so a serve-side ELF must be byte-identical to its entry here.
-	Guests      []string     `yaml:"guests"`
-	Coordinator cluster.Node `yaml:"coordinator"`
+	// Guests lists the guest programs provisioned as the deployment's
+	// program loadout, each an ELF and its verifying key sourced from a
+	// local path or a URL. Program names are content digests, so a
+	// serve-side ELF must be byte-identical to its entry here.
+	Guests      []cluster.Guest `yaml:"guests"`
+	Coordinator cluster.Node    `yaml:"coordinator"`
 	// Workers list one entry per worker container, each owning one GPU of
 	// its host, so any topology is spelled out explicitly. A worker's
 	// position in the list is its cluster-wide prover id.
@@ -121,8 +122,8 @@ func validate(cfg *Config) error {
 	if cfg.Verbose < 0 || cfg.Verbose > 2 {
 		return fmt.Errorf("verbose %d is out of range 0 to 2", cfg.Verbose)
 	}
-	if len(cfg.Guests) == 0 {
-		return fmt.Errorf("at least one guest ELF source is required")
+	if err := cluster.ValidateGuests(cfg.Guests); err != nil {
+		return err
 	}
 	if len(cfg.Workers) == 0 {
 		return fmt.Errorf("at least one worker is required")
