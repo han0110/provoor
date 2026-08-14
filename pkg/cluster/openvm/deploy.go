@@ -3,6 +3,8 @@ package openvm
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -183,22 +185,22 @@ func (cfg *Config) destinations() []string {
 	return destinations
 }
 
-// resolvePrograms reads every guest source and derives its loadout entry,
-// rejecting duplicates whose keysets would collide.
-func resolvePrograms(ctx context.Context, sources []string) ([]program, error) {
-	programs := make([]program, 0, len(sources))
+// resolvePrograms reads every guest's ELF and verifying key and derives its
+// loadout entry, rejecting duplicates whose keysets would collide.
+func resolvePrograms(ctx context.Context, guests []cluster.Guest) ([]program, error) {
+	programs := make([]program, 0, len(guests))
 	seen := map[string]string{}
-	for _, source := range sources {
-		elf, err := cluster.ResolveGuestELF(ctx, source)
+	for _, guest := range guests {
+		elf, verifyingKey, err := cluster.ResolveGuest(ctx, guest)
 		if err != nil {
 			return nil, err
 		}
 		name := programName(elf)
 		if prior, ok := seen[name]; ok {
-			return nil, fmt.Errorf("guest %s duplicates %s, both hash to %s", source, prior, name)
+			return nil, fmt.Errorf("guest %s duplicates %s, both hash to %s", guest.ELF, prior, name)
 		}
-		seen[name] = source
-		programs = append(programs, program{name: name, source: source, elf: elf})
+		seen[name] = guest.ELF
+		programs = append(programs, program{name: name, source: guest.ELF, elf: elf, verifyingKey: verifyingKey})
 	}
 	return programs, nil
 }
@@ -234,9 +236,9 @@ func (d *deployment) nodes() []node {
 }
 
 // ensureArtifacts derives the keyset of every program the host's artifacts
-// volume does not hold yet. Keygen is deterministic under one VM
-// configuration, so every host derives identical artifacts independently and
-// no bytes cross hosts.
+// volume does not hold yet, then checks every keyset against its configured
+// verifying key. Keygen is deterministic under one VM configuration, so every
+// host derives identical artifacts independently and no bytes cross hosts.
 func (d *deployment) ensureArtifacts(ctx context.Context, n node) error {
 	cli := d.hosts.Client(n.ssh)
 	missing, err := d.missingPrograms(ctx, cli, n)
@@ -251,6 +253,38 @@ func (d *deployment) ensureArtifacts(ctx context.Context, n node) error {
 	if len(missing) == 0 {
 		d.out.Printf("[%s] all keysets already in volume %s", n.name, artifactsVolume(d.cfg.ImageTag))
 	}
+	return d.verifyBaselines(ctx, cli, n)
+}
+
+// verifyBaselines checks every derived verification baseline against the
+// configured verifying key, the keysets carried over from an earlier Up
+// included, so a volume holding artifacts of another guest is caught before
+// any proof is trusted. Keygen is deterministic per ELF, so a mismatch means
+// the configured key does not belong to the configured ELF, or the image
+// derives a different keyset.
+func (d *deployment) verifyBaselines(ctx context.Context, cli *client.Client, n node) error {
+	probe := fmt.Sprintf(
+		`for name in %s; do echo "${name} $(sha256sum < "%s/programs/${name}/%d/baseline.bin" | cut -d" " -f1)"; done`,
+		strings.Join(d.programNames(), " "), artifactsDir, programVersion)
+	output, err := d.probeArtifacts(ctx, cli, probe)
+	if err != nil {
+		return fmt.Errorf("digesting baselines on %s: %w", n.name, err)
+	}
+
+	digests := map[string]string{}
+	for _, line := range strings.Split(output, "\n") {
+		if fields := strings.Fields(line); len(fields) == 2 {
+			digests[fields[0]] = fields[1]
+		}
+	}
+	for _, prog := range d.programs {
+		configured := sha256.Sum256(prog.verifyingKey)
+		if want := hex.EncodeToString(configured[:]); digests[prog.name] != want {
+			return fmt.Errorf("program %s on %s derived a baseline of sha256 %q, the vk configured for %s hashes to %s",
+				prog.name, n.name, digests[prog.name], prog.source, want)
+		}
+	}
+	d.out.Printf("[%s] every keyset matches its configured vk", n.name)
 	return nil
 }
 
@@ -265,27 +299,16 @@ func (d *deployment) missingPrograms(ctx context.Context, cli *client.Client, n 
 		return nil, fmt.Errorf("inspecting volume %s on %s: %w", volumeName, n.name, err)
 	}
 
-	names := make([]string, len(d.programs))
-	for i, prog := range d.programs {
-		names[i] = prog.name
-	}
 	probe := fmt.Sprintf(
 		`for name in %s; do [ -e "%s/programs/${name}/%d/baseline.bin" ] && echo "${name}"; done; true`,
-		strings.Join(names, " "), artifactsDir, programVersion)
-	containerCfg := &container.Config{Image: d.cfg.imageRef(), Cmd: []string{"bash", "-c", probe}}
-	hostCfg := &container.HostConfig{Mounts: []mount.Mount{{
-		Type:     mount.TypeVolume,
-		Source:   volumeName,
-		Target:   artifactsDir,
-		ReadOnly: true,
-	}}}
-	var output bytes.Buffer
-	if err := cluster.RunToCompletion(ctx, cli, keygenContainer+"-probe", containerCfg, hostCfg, nil, &output); err != nil {
+		strings.Join(d.programNames(), " "), artifactsDir, programVersion)
+	output, err := d.probeArtifacts(ctx, cli, probe)
+	if err != nil {
 		return nil, fmt.Errorf("probing keysets on %s: %w", n.name, err)
 	}
 
 	present := map[string]bool{}
-	for _, name := range strings.Fields(output.String()) {
+	for _, name := range strings.Fields(output) {
 		present[name] = true
 	}
 	missing := []program{}
@@ -295,6 +318,29 @@ func (d *deployment) missingPrograms(ctx context.Context, cli *client.Client, n 
 		}
 	}
 	return missing, nil
+}
+
+func (d *deployment) programNames() []string {
+	names := make([]string, len(d.programs))
+	for i, prog := range d.programs {
+		names[i] = prog.name
+	}
+	return names
+}
+
+// probeArtifacts runs one shell snippet over the host's artifacts volume,
+// mounted read-only, and returns what it wrote.
+func (d *deployment) probeArtifacts(ctx context.Context, cli *client.Client, script string) (string, error) {
+	containerCfg := &container.Config{Image: d.cfg.imageRef(), Cmd: []string{"bash", "-c", script}}
+	hostCfg := &container.HostConfig{Mounts: []mount.Mount{{
+		Type:     mount.TypeVolume,
+		Source:   artifactsVolume(d.cfg.ImageTag),
+		Target:   artifactsDir,
+		ReadOnly: true,
+	}}}
+	var output bytes.Buffer
+	err := cluster.RunToCompletion(ctx, cli, keygenContainer+"-probe", containerCfg, hostCfg, nil, &output)
+	return output.String(), err
 }
 
 // runKeygen derives one program's keyset, injecting the guest ELF into the

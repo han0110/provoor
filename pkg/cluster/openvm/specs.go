@@ -78,11 +78,13 @@ func numProvers(cfg *Config) int {
 	return len(cfg.Workers)
 }
 
-// program is one loadout entry, named by its guest ELF's content digest.
+// program is one loadout entry, named by its guest ELF's content digest, with
+// the verifying key its proofs are checked against.
 type program struct {
-	name   string
-	source string
-	elf    []byte
+	name         string
+	source       string
+	elf          []byte
+	verifyingKey []byte
 }
 
 // programName derives the loadout name of a guest ELF, the first eight bytes

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/han0110/provoor/pkg/cluster"
 )
 
 func writeConfig(t *testing.T, content string) string {
@@ -16,11 +18,14 @@ func writeConfig(t *testing.T, content string) string {
 	return path
 }
 
+const minimalGuest = `guests:
+  - elf: /guests/stateless-validator-ethrex-openvm-v2.1.0-preview.elf
+    vk: /guests/stateless-validator-ethrex-openvm-v2.1.0-preview.vk
+`
+
 const minimalConfig = `
 zkvm: openvm
-guests:
-  - /guests/stateless-validator-ethrex-openvm-v2.1.0-preview.elf
-coordinator:
+` + minimalGuest + `coordinator:
   ssh: user@10.0.0.1
   ip: 10.0.0.1
 workers:
@@ -67,8 +72,10 @@ image: ghcr.io/example/openvm
 image_tag: 3.0.0
 verbose: 1
 guests:
-  - /guests/a.elf
-  - https://example.com/b.elf
+  - elf: /guests/a.elf
+    vk: /guests/a.vk
+  - elf: https://example.com/b.elf
+    vk: https://example.com/b.vk
 coordinator:
   name: node1
   ssh: ssh://user@203.0.113.1:2222
@@ -98,7 +105,8 @@ config:
 	if cfg.ImageTag != "3.0.0" || cfg.Verbose != 1 {
 		t.Errorf("ImageTag = %q, Verbose = %d", cfg.ImageTag, cfg.Verbose)
 	}
-	if len(cfg.Guests) != 2 || cfg.Guests[1] != "https://example.com/b.elf" {
+	wantGuest := cluster.Guest{ELF: "https://example.com/b.elf", VK: "https://example.com/b.vk"}
+	if len(cfg.Guests) != 2 || cfg.Guests[1] != wantGuest {
 		t.Errorf("Guests = %v", cfg.Guests)
 	}
 	if cfg.Workers[2].IP != "10.0.0.2" || cfg.Workers[1].GPU != 1 {
@@ -137,8 +145,18 @@ func TestLoadValidation(t *testing.T) {
 		},
 		{
 			name:    "no guests",
-			config:  strings.Replace(minimalConfig, "guests:\n  - /guests/stateless-validator-ethrex-openvm-v2.1.0-preview.elf\n", "", 1),
+			config:  strings.Replace(minimalConfig, minimalGuest, "", 1),
 			wantErr: "guest",
+		},
+		{
+			name:    "guest without elf",
+			config:  strings.Replace(minimalConfig, minimalGuest, "guests:\n  - vk: /guests/a.vk\n", 1),
+			wantErr: "guest 0 is missing elf",
+		},
+		{
+			name:    "guest without vk",
+			config:  strings.Replace(minimalConfig, minimalGuest, "guests:\n  - elf: /guests/a.elf\n", 1),
+			wantErr: "guest 0 is missing vk",
 		},
 		{
 			name: "remote worker without ip",

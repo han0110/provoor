@@ -18,6 +18,9 @@ func writeConfig(t *testing.T, content string) string {
 
 const minimalConfig = `
 zkvm: zisk
+guests:
+  - elf: /guests/a.elf
+    vk: /guests/a.vk
 coordinator:
   ssh: user@10.0.0.1
   ip: 10.0.0.1
@@ -55,6 +58,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Config.MPINp != 1 {
 		t.Errorf("Config.MPINp = %d", cfg.Config.MPINp)
 	}
+	if len(cfg.Guests) != 1 || cfg.Guests[0].ELF != "/guests/a.elf" || cfg.Guests[0].VK != "/guests/a.vk" {
+		t.Errorf("Guests = %v", cfg.Guests)
+	}
 }
 
 func TestLoadFull(t *testing.T) {
@@ -63,6 +69,11 @@ zkvm: zisk
 image: ghcr.io/example/zisk
 image_tag: 2.0.0
 verbose: 1
+guests:
+  - elf: /guests/a.elf
+    vk: /guests/a.vk
+  - elf: https://example.com/b.elf
+    vk: https://example.com/b.vk
 coordinator:
   name: node1
   ssh: ssh://user@203.0.113.1:2222
@@ -88,6 +99,9 @@ config:
 	}
 	if cfg.ImageTag != "2.0.0" || cfg.Verbose != 1 {
 		t.Errorf("ImageTag = %q, Verbose = %d", cfg.ImageTag, cfg.Verbose)
+	}
+	if len(cfg.Guests) != 2 || cfg.Guests[1].VK != "https://example.com/b.vk" {
+		t.Errorf("Guests = %v", cfg.Guests)
 	}
 	if cfg.Coordinator.Name != "node1" || cfg.Workers[1].Name != "node2" {
 		t.Errorf("names = %q, %q", cfg.Coordinator.Name, cfg.Workers[1].Name)
@@ -129,14 +143,32 @@ func TestLoadValidation(t *testing.T) {
 			wantErr: "zkvm",
 		},
 		{
+			name:    "no guests",
+			config:  strings.Replace(minimalConfig, "guests:\n  - elf: /guests/a.elf\n    vk: /guests/a.vk\n", "", 1),
+			wantErr: "guest",
+		},
+		{
+			name:    "guest without a vk",
+			config:  strings.Replace(minimalConfig, "    vk: /guests/a.vk\n", "", 1),
+			wantErr: "vk",
+		},
+		{
+			name:    "guest without an elf",
+			config:  strings.Replace(minimalConfig, "  - elf: /guests/a.elf\n    vk", "  - vk", 1),
+			wantErr: "elf",
+		},
+		{
 			name:    "no workers",
-			config:  "zkvm: zisk\ncoordinator:\n  ssh: user@10.0.0.1\nworkers: []\n",
+			config:  "zkvm: zisk\nguests:\n  - elf: a.elf\n    vk: a.vk\ncoordinator:\n  ssh: user@10.0.0.1\nworkers: []\n",
 			wantErr: "worker",
 		},
 		{
 			name: "duplicate worker host",
 			config: `
 zkvm: zisk
+guests:
+  - elf: /guests/a.elf
+    vk: /guests/a.vk
 coordinator:
   ssh: user@10.0.0.1
   ip: 10.0.0.1
@@ -150,6 +182,9 @@ workers:
 			name: "remote worker without coordinator ip",
 			config: `
 zkvm: zisk
+guests:
+  - elf: /guests/a.elf
+    vk: /guests/a.vk
 coordinator:
   ssh: user@10.0.0.1
 workers:
@@ -161,6 +196,9 @@ workers:
 			name: "coordinator name on a different host",
 			config: `
 zkvm: zisk
+guests:
+  - elf: /guests/a.elf
+    vk: /guests/a.vk
 coordinator:
   name: node1
   ssh: user@10.0.0.1
@@ -206,6 +244,9 @@ func TestLoadExampleTemplate(t *testing.T) {
 func TestLoadSingleHostWithoutIP(t *testing.T) {
 	_, err := Load(writeConfig(t, `
 zkvm: zisk
+guests:
+  - elf: /guests/a.elf
+    vk: /guests/a.vk
 coordinator:
   ssh: user@10.0.0.1
 workers:

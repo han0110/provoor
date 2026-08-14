@@ -25,6 +25,7 @@ const (
 	workerContainer      = "zisk-worker"
 	setupContainer       = "zisk-proving-key-setup"
 	provingKeyDir        = "/root/.zisk/provingKey"
+	cacheDir             = "/root/.zisk/cache"
 	setupKeyBaseURL      = "https://storage.googleapis.com/zisk-setup"
 	coordinatorConfig    = "/tmp/zisk-coordinator.toml"
 	registrationLine     = "Registration accepted: Registration successful"
@@ -40,6 +41,22 @@ func (cfg *Config) imageRef() string {
 
 func provingKeyVolume(tag string) string {
 	return "zisk-proving-key-" + tag
+}
+
+func cacheVolume(tag string) string {
+	return "zisk-cache-" + tag
+}
+
+// cacheMount is the guest artifact cache the coordinator and the workers
+// write, holding the registered ELFs, the rom setup output, and the AOT
+// assembly. Everything in it is addressed by ELF hash, so one volume serves
+// every guest and survives a down and up, sparing the next setup the work.
+func cacheMount(tag string) mount.Mount {
+	return mount.Mount{
+		Type:   mount.TypeVolume,
+		Source: cacheVolume(tag),
+		Target: cacheDir,
+	}
 }
 
 // coordinatorTOML renders the coordinator config holding a job until the
@@ -79,6 +96,7 @@ func coordinatorSpec(cfg *Config) (*container.Config, *container.HostConfig) {
 			clusterAPI: {{HostPort: strconv.Itoa(clusterPort)}},
 		},
 		LogConfig: cluster.Journald(coordinatorContainer),
+		Mounts:    []mount.Mount{cacheMount(cfg.ImageTag)},
 	}
 	return containerCfg, hostCfg
 }
@@ -92,6 +110,20 @@ func workerCoordinatorURL(cfg *Config, worker Worker) string {
 		host = "127.0.0.1"
 	}
 	return fmt.Sprintf("http://%s:%d", host, clusterPort)
+}
+
+// coordinatorEndpoint is the client API URL as seen from wherever provoor
+// runs, loopback for a coordinator on this machine and the data-network
+// address otherwise, falling back to the node name when it carries none.
+func coordinatorEndpoint(cfg *Config) string {
+	host := "127.0.0.1"
+	if cfg.Coordinator.SSH != "" {
+		host = cfg.Coordinator.IP
+		if host == "" {
+			host = cfg.Coordinator.Name
+		}
+	}
+	return fmt.Sprintf("http://%s:%d", host, apiPort)
 }
 
 // workerArgs builds the mpirun invocation, one process spanning the host's
@@ -177,7 +209,7 @@ func workerSpec(cfg *Config, worker Worker, numaNodes int) (*container.Config, *
 			Type:   mount.TypeVolume,
 			Source: provingKeyVolume(cfg.ImageTag),
 			Target: provingKeyDir,
-		}},
+		}, cacheMount(cfg.ImageTag)},
 		Resources: container.Resources{
 			Ulimits:        []*container.Ulimit{{Name: "memlock", Soft: -1, Hard: -1}},
 			DeviceRequests: []container.DeviceRequest{gpus},

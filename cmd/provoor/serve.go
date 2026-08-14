@@ -21,6 +21,7 @@ func serveCommand() *cobra.Command {
 		zkvm                string
 		statelessValidator  string
 		elfSource           string
+		verifyingKeySource  string
 		coordinatorEndpoint string
 		listen              string
 		timeout             time.Duration
@@ -39,14 +40,18 @@ func serveCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			elf, err := cluster.ResolveGuestELF(ctx, elfSource)
+			elf, err := cluster.ResolveSource(ctx, elfSource)
+			if err != nil {
+				return err
+			}
+			programVK, err := cluster.ResolveSource(ctx, verifyingKeySource)
 			if err != nil {
 				return err
 			}
 			var prover serve.Prover
 			switch zkvm {
 			case "zisk":
-				ziskProver, err := zisk.NewProver(ctx, coordinatorEndpoint, elf, elfSource)
+				ziskProver, err := zisk.NewProver(ctx, coordinatorEndpoint, elf, programVK, elfSource)
 				if err != nil {
 					return err
 				}
@@ -54,7 +59,7 @@ func serveCommand() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "stateless validator %s registered, hash %s\n", statelessValidator, ziskProver.HashID())
 				prover = ziskProver
 			case "openvm":
-				openvmProver, err := openvm.NewProver(ctx, coordinatorEndpoint, elf, elfSource)
+				openvmProver, err := openvm.NewProver(ctx, coordinatorEndpoint, elf, programVK, elfSource)
 				if err != nil {
 					return err
 				}
@@ -112,6 +117,7 @@ func serveCommand() *cobra.Command {
 	cmd.Flags().StringVar(&zkvm, "zkvm", "", "proving backend, zisk or openvm")
 	cmd.Flags().StringVar(&statelessValidator, "stateless-validator", "", "stateless validator name, for example ethrex")
 	cmd.Flags().StringVar(&elfSource, "elf", "", "guest ELF source, a local path or an ere-guests release asset URL")
+	cmd.Flags().StringVar(&verifyingKeySource, "vk", "", "guest verifying key source, a local path or an ere-guests release asset URL")
 	cmd.Flags().StringVar(&coordinatorEndpoint, "coordinator-endpoint", "", "coordinator API endpoint, for example http://10.0.0.1:7000")
 	cmd.Flags().StringVar(&listen, "listen", ":8551", "listen address")
 	cmd.Flags().DurationVar(&timeout, "timeout", serve.DefaultProveTimeout, "per-proof timeout")
@@ -119,6 +125,7 @@ func serveCommand() *cobra.Command {
 	_ = cmd.MarkFlagRequired("zkvm")
 	_ = cmd.MarkFlagRequired("stateless-validator")
 	_ = cmd.MarkFlagRequired("elf")
+	_ = cmd.MarkFlagRequired("vk")
 	_ = cmd.MarkFlagRequired("coordinator-endpoint")
 	return cmd
 }

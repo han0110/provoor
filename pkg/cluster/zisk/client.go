@@ -1,11 +1,13 @@
 package zisk
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/han0110/provoor/pkg/cluster"
 	"github.com/han0110/provoor/pkg/cluster/zisk/api"
+	"github.com/han0110/provoor/pkg/ereverifier"
 	"github.com/han0110/provoor/pkg/serve"
 )
 
@@ -64,6 +67,13 @@ func (e *ProveTimeoutError) Error() string {
 type Client struct {
 	conn *grpc.ClientConn
 	api  api.ZiskCoordinatorApiClient
+
+	// verifierMu guards the verifier binding. It is held for reading across a
+	// verification, since the binding frees a native handle that must not be
+	// released while a proof is still being checked against it.
+	verifierMu sync.RWMutex
+	programVK  []byte
+	verifier   *ereverifier.Verifier
 }
 
 // DialClient connects to a coordinator API endpoint such as
@@ -84,8 +94,15 @@ func DialClient(endpoint string) (*Client, error) {
 	return &Client{conn: conn, api: api.NewZiskCoordinatorApiClient(conn)}, nil
 }
 
-// Close releases the coordinator connection.
+// Close releases the verifier and the coordinator connection. The verifier is
+// freed under the write guard, so a proof still being checked keeps its handle
+// alive until it is done with it.
 func (c *Client) Close() error {
+	c.verifierMu.Lock()
+	c.verifier.Close()
+	c.verifier = nil
+	c.verifierMu.Unlock()
+
 	return c.conn.Close()
 }
 
@@ -100,8 +117,13 @@ func (c *Client) RegisterGuestProgram(ctx context.Context, elf []byte) (string, 
 }
 
 // Setup runs the keygen job for a registered guest program and blocks until
-// it completes. The coordinator caches the result, so repeating it is cheap.
-func (c *Client) Setup(ctx context.Context, hashID string) error {
+// it completes, binding the client to expectedProgramVK. The coordinator
+// caches the result, so repeating it is cheap.
+func (c *Client) Setup(ctx context.Context, hashID string, expectedProgramVK []byte) error {
+	if len(expectedProgramVK) == 0 {
+		return fmt.Errorf("setting up guest program %s without a program verifying key", hashID)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, setupTimeout)
 	defer cancel()
 
@@ -124,7 +146,57 @@ func (c *Client) Setup(ctx context.Context, hashID string) error {
 	if hashMode := setup.Setup.HashMode; hashMode != "" && hashMode != vadcopFinalHashFamily {
 		return fmt.Errorf("cluster hash family %q, expected %s", hashMode, vadcopFinalHashFamily)
 	}
+	// The key the client verifies against is the configured one, so a cluster
+	// deriving another key from the ELF it registered is proving a different
+	// program and every proof it returns would be rejected anyway.
+	if !bytes.Equal(setup.Setup.Vk, expectedProgramVK) {
+		return fmt.Errorf("cluster reports program vk %x for guest program %s, expected %x",
+			setup.Setup.Vk, hashID, expectedProgramVK)
+	}
+	return c.bindVerifier(expectedProgramVK)
+}
+
+// bindVerifier binds the client to a program verifying key, the Merkle root
+// of the guest program's ROM trace. A client proves one program, so a later
+// binding to another key means it was handed a second program and is refused
+// rather than replaced.
+func (c *Client) bindVerifier(programVK []byte) error {
+	c.verifierMu.Lock()
+	defer c.verifierMu.Unlock()
+
+	if c.verifier != nil {
+		if !bytes.Equal(c.programVK, programVK) {
+			return fmt.Errorf("binding to program vk %x, already bound to %x", programVK, c.programVK)
+		}
+		return nil
+	}
+	verifier, err := ereverifier.New(ereverifier.Zisk, programVK)
+	if err != nil {
+		return fmt.Errorf("binding verifier to program vk %x: %w", programVK, err)
+	}
+	c.programVK, c.verifier = programVK, verifier
 	return nil
+}
+
+// boundProgramVK returns the key the client is bound to, nil before the
+// first setup.
+func (c *Client) boundProgramVK() []byte {
+	c.verifierMu.RLock()
+	defer c.verifierMu.RUnlock()
+
+	return c.programVK
+}
+
+// verify checks a proof envelope against the bound verifier, holding the
+// binding for as long as the verifier is in use.
+func (c *Client) verify(envelope []byte) ([]byte, error) {
+	c.verifierMu.RLock()
+	defer c.verifierMu.RUnlock()
+
+	if c.verifier == nil {
+		return nil, errors.New("no verifier bound, setup has not completed")
+	}
+	return verifyProof(c.verifier, envelope)
 }
 
 // createProveJob submits one prove job for an input and returns its job id
@@ -178,10 +250,7 @@ func (c *Client) WaitProveJob(ctx context.Context, jobID string, onPhase func(ph
 		return nil, fmt.Errorf("prove job %s answered without proof or stats", jobID)
 	}
 
-	if err := verifyProof(prove.Prove.Proof.Data); err != nil {
-		return nil, fmt.Errorf("prove job %s: %w", jobID, err)
-	}
-	publicValues, err := decodeProofPublicValues(prove.Prove.Proof.Data)
+	publicValues, err := c.verify(prove.Prove.Proof.Data)
 	if err != nil {
 		return nil, fmt.Errorf("prove job %s: %w", jobID, err)
 	}
@@ -214,7 +283,9 @@ func (c *Client) Prove(ctx context.Context, hashID string, input []byte, onPhase
 		}
 		switch {
 		case errors.Is(err, errSetupNotDone):
-			if err := c.Setup(ctx, hashID); err != nil {
+			// A coordinator restart drops its setups, so the key to recover
+			// against is the one the client already binds.
+			if err := c.Setup(ctx, hashID, c.boundProgramVK()); err != nil {
 				return nil, err
 			}
 		case errors.Is(err, errClusterUnavailable):

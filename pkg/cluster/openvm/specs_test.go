@@ -16,7 +16,7 @@ func testConfig() *Config {
 		Zkvm:     "openvm",
 		Image:    "ghcr.io/han0110/openvm",
 		ImageTag: "2.1.0-preview",
-		Guests:   []string{"/guests/a.elf"},
+		Guests:   []cluster.Guest{{ELF: "/guests/a.elf", VK: "/guests/a.vk"}},
 		Coordinator: cluster.Node{
 			Name: "node1",
 			SSH:  "user@203.0.113.1",

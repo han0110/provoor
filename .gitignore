@@ -13,3 +13,7 @@ benchmarkoor.db
 /results/
 examples/*.yaml
 !examples/*.example.yaml
+
+# The verifier library is a release asset scripts/fetch-verifier.sh downloads,
+# too large to track and reproducible from its pinned version.
+pkg/ereverifier/lib/
