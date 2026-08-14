@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/han0110/provoor/compare/v0.1.1...v0.2.0) (2026-08-14)
+
+
+### Features
+
+* wire ere verifier  ([#6](https://github.com/han0110/provoor/issues/6)) ([c24a11a](https://github.com/han0110/provoor/commit/c24a11a882776ee4f8c0ac697c1767a6b5afc037))
+
 ## [0.1.1](https://github.com/han0110/provoor/compare/v0.1.0...v0.1.1) (2026-08-11)
 
 
