@@ -161,18 +161,12 @@ func TestCoordinatorSpec(t *testing.T) {
 	}
 }
 
+// TestCoordinatorEndpoint pins that the client API is addressed as the
+// coordinator host sees it, never as the data network does, since a remote
+// deployment reaches it through the coordinator's SSH destination.
 func TestCoordinatorEndpoint(t *testing.T) {
-	cfg := testConfig()
-	if got := coordinatorEndpoint(cfg); got != "http://10.0.0.1:7000" {
+	if got := coordinatorEndpoint(); got != "http://127.0.0.1:7000" {
 		t.Errorf("endpoint = %q", got)
-	}
-	cfg.Coordinator.IP = ""
-	if got := coordinatorEndpoint(cfg); got != "http://node1:7000" {
-		t.Errorf("endpoint without an ip = %q", got)
-	}
-	cfg.Coordinator.SSH = ""
-	if got := coordinatorEndpoint(cfg); got != "http://127.0.0.1:7000" {
-		t.Errorf("endpoint of a local coordinator = %q", got)
 	}
 }
 

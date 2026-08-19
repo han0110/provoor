@@ -15,6 +15,7 @@ import (
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 
 	"github.com/han0110/provoor/pkg/cluster"
 )
@@ -336,6 +337,23 @@ func (d *deployment) startWorker(ctx context.Context, worker Worker) error {
 	return nil
 }
 
+// dialCoordinator connects to the coordinator's client API. A remote
+// deployment tunnels over the coordinator's own SSH destination, the transport
+// every other step of the deployment already uses, so the API only has to be
+// reachable from the coordinator host rather than from wherever provoor runs.
+// That matters behind a bastion, whose SSH proxy routes no cluster traffic and
+// leaves the data-network address unroutable here.
+func dialCoordinator(cfg *Config) (*Client, error) {
+	dialer, err := cluster.TunnelDialer(cfg.Coordinator.SSH, fmt.Sprintf("127.0.0.1:%d", apiPort))
+	if err != nil {
+		return nil, err
+	}
+	if dialer == nil {
+		return DialClient(coordinatorEndpoint())
+	}
+	return DialClient(coordinatorEndpoint(), grpc.WithContextDialer(dialer))
+}
+
 // setupGuest registers one guest program with the coordinator and runs its
 // keygen, so the first proof of a fresh deployment is not the one paying for
 // it. The key the cluster derives is checked against the configured one,
@@ -349,7 +367,7 @@ func (d *deployment) setupGuest(ctx context.Context, guest cluster.Guest) error 
 		return fmt.Errorf("resolving guest %s: %w", name, err)
 	}
 
-	client, err := DialClient(coordinatorEndpoint(d.cfg))
+	client, err := dialCoordinator(d.cfg)
 	if err != nil {
 		return err
 	}

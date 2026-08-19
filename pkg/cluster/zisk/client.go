@@ -78,15 +78,19 @@ type Client struct {
 
 // DialClient connects to a coordinator API endpoint such as
 // http://10.0.0.1:7000. The connection is lazy, an unreachable coordinator
-// surfaces on the first call.
-func DialClient(endpoint string) (*Client, error) {
+// surfaces on the first call. Extra dial options are appended, which is how a
+// caller substitutes a tunnelling dialer for a coordinator the endpoint does
+// not route to.
+func DialClient(endpoint string, opts ...grpc.DialOption) (*Client, error) {
 	target := strings.TrimPrefix(endpoint, "http://")
 	conn, err := grpc.NewClient(target,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(maxMessageBytes),
-			grpc.MaxCallSendMsgSize(maxMessageBytes),
-		),
+		append([]grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(maxMessageBytes),
+				grpc.MaxCallSendMsgSize(maxMessageBytes),
+			),
+		}, opts...)...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dialing coordinator %s: %w", endpoint, err)

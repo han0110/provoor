@@ -19,14 +19,17 @@ once before building.
 
 ```sh
 scripts/fetch-verifier.sh
-go build -o provoor ./cmd/provoor
+scripts/build.sh provoor
 ```
 
+`scripts/build.sh benchmarkoor` builds the other binary a run needs, resetting
+every submodule to the revision this repository records first, so a submodule
+carrying uncommitted work is overwritten. It needs `make` alongside Go.
+`scripts/benchmarkoor.sh` runs that build's output rather than a binary on
+`PATH`, so build it before the first run and again after moving the submodule.
+
 The scripts under `scripts/` additionally need `envsubst` from GNU gettext and
-`python3`, and `scripts/benchmarkoor.sh` resets every submodule to the
-revision this repository records and builds `benchmarkoor` from it, so running
-a benchmark needs Go and `make` rather than a prebuilt binary on `PATH`, and a
-submodule carrying uncommitted work is overwritten.
+`python3`.
 
 The container image benchmark runs use builds from the repository root. A
 tagged release publishes the same build to `ghcr.io/han0110/provoor`, stamped
@@ -34,6 +37,15 @@ with its version rather than the `dev` a local build carries.
 
 ```sh
 docker build -t ghcr.io/han0110/provoor:latest .
+```
+
+The image links the verifier library `scripts/fetch-verifier.sh` downloads.
+Building against an ere revision that has no release yet takes the library from
+`pkg/ereverifier/lib` instead, which is what `VERIFIER_LIB=local` selects. Put
+one there first, since the build fails rather than falling back.
+
+```sh
+docker build --build-arg VERIFIER_LIB=local -t provoor:local .
 ```
 
 ## How it works
@@ -96,10 +108,11 @@ scripts/provoor.sh up --config examples/openvm-4x4.example.yaml
 SSH destinations are resolved by the local `ssh` binary, so aliases, keys, and
 the agent from `~/.ssh/config` apply. Hosts need Docker with the NVIDIA
 container runtime. A cluster of another shape is an ordinary config file,
-which `provoor up --config` takes directly. A ZisK deployment additionally
-needs the coordinator's client API reachable from wherever `up` runs, since
-that is where it sets its guests up, while an OpenVM one talks to Docker
-daemons alone.
+which `provoor up --config` takes directly. A ZisK deployment also talks to the
+coordinator's client API, where it sets its guests up, and reaches it over the
+coordinator's own SSH destination rather than over the data network, so a
+bastion whose proxy carries no cluster traffic still works. That needs TCP
+forwarding permitted on the coordinator's SSH server.
 
 Each `guests` entry pairs an `elf` source with the `vk` source published beside
 it, both a local path or an `eth-act/ere-guests` release asset URL. `up` fails
@@ -137,6 +150,7 @@ Run it on the coordinator host, which keeps witness transfer off the measured
 path.
 
 ```sh
+scripts/build.sh benchmarkoor
 scripts/benchmarkoor.sh run --config benchmarkoor/examples/provoor/openvm-eest-v0.6.2-10M.example.yaml
 ```
 

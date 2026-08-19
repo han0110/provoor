@@ -112,18 +112,13 @@ func workerCoordinatorURL(cfg *Config, worker Worker) string {
 	return fmt.Sprintf("http://%s:%d", host, clusterPort)
 }
 
-// coordinatorEndpoint is the client API URL as seen from wherever provoor
-// runs, loopback for a coordinator on this machine and the data-network
-// address otherwise, falling back to the node name when it carries none.
-func coordinatorEndpoint(cfg *Config) string {
-	host := "127.0.0.1"
-	if cfg.Coordinator.SSH != "" {
-		host = cfg.Coordinator.IP
-		if host == "" {
-			host = cfg.Coordinator.Name
-		}
-	}
-	return fmt.Sprintf("http://%s:%d", host, apiPort)
+// coordinatorEndpoint is the client API URL as the coordinator host sees it,
+// which is loopback wherever the coordinator runs. A deployment on this
+// machine dials it directly and a remote one reaches the same address through
+// the coordinator's SSH destination, so the API never has to be routable from
+// wherever provoor runs.
+func coordinatorEndpoint() string {
+	return fmt.Sprintf("http://127.0.0.1:%d", apiPort)
 }
 
 // workerArgs builds the mpirun invocation, one process spanning the host's
