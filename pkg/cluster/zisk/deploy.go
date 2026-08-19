@@ -100,12 +100,12 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 // are set up, then waits for the cluster to come back.
 //
 // Running two setups in a row, with no proof of the first between them, leaves
-// a ZisK v1.0.0-alpha worker unable to prove the earlier guest. The proof
-// fails late, either asserting in the ROM state machine that the exit
-// instruction never ran or failing recursive witness generation, both of which
-// read as a proof against another program's assembly. Provisioning several
-// guests here is exactly that pattern, so a cluster deployed with more than
-// one guest would serve the last one and fail the rest.
+// a worker unable to prove the earlier guest. The proof fails late, either
+// asserting in the ROM state machine that the exit instruction never ran or
+// failing recursive witness generation, both of which read as a proof against
+// another program's assembly. Provisioning several guests here is exactly that
+// pattern, so a cluster deployed with more than one guest would serve the last
+// one and fail the rest.
 //
 // A restart discards it. The coordinator's record of the keys it has handed
 // out and the worker's record of the programs it has set up are both held in

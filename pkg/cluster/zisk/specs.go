@@ -162,12 +162,18 @@ func workerArgs(cfg *Config, worker Worker, numaNodes int) []string {
 		"--coordinator-url", workerCoordinatorURL(cfg, worker),
 		"--worker-id", worker.Name,
 		"--gpu",
-		// Plans the memory ops on the CPU, working around the GPU planner.
-		// The flag exists in the forked image this deployment pins, not in
-		// upstream ZisK.
-		"--cpu-mops",
-		"--proving-key", provingKeyDir,
 	)
+	// The GPU memory-ops planner is linked into the worker and borrows
+	// proofman's device buffer, so exhausting its capacity aborts the process
+	// rather than failing the job, and one rank aborting takes every rank on
+	// the node with it. That capacity is 16384 chunks of 2^18 steps, which is
+	// 1024 Main segments, within reach of the blocks this deployment proves.
+	// The CPU planner has no such cap, so it stays the default despite being
+	// the slower and more memory-hungry of the two.
+	if cfg.Config.CPUMops {
+		args = append(args, "--cpu-mops")
+	}
+	args = append(args, "--proving-key", provingKeyDir)
 	if cfg.Config.MaxStreams > 0 {
 		args = append(args, "--max-streams", strconv.Itoa(cfg.Config.MaxStreams))
 	}

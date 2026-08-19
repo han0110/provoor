@@ -69,7 +69,7 @@ func TestVerifyProofRejects(t *testing.T) {
 		},
 		{
 			name:   "corrupted_public_values",
-			mutate: func(e *envelope) { e.publicValues[0] ^= 0xff },
+			mutate: func(e *envelope) { e.publicValues[programVKWords] ^= 0xff },
 		},
 	}
 	for _, tc := range cases {

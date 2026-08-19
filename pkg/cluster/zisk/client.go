@@ -350,8 +350,8 @@ func runningPhase(phase api.JobPhase) string {
 		return "contributions"
 	case api.JobPhase_JOB_PHASE_PROVE:
 		return "prove"
-	case api.JobPhase_JOB_PHASE_AGGREGATE:
-		return "aggregate"
+	case api.JobPhase_JOB_PHASE_RECURSE:
+		return "recurse"
 	default:
 		return "running"
 	}

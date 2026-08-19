@@ -66,6 +66,12 @@ type WorkerConfig struct {
 	// MinimalMemory builds collectors per instance instead of batched,
 	// freeing roughly 11 GB of heap for step-heavy blocks.
 	MinimalMemory bool `yaml:"minimal_memory"`
+	// CPUMops plans memory ops on the CPU and defaults on. The GPU planner is
+	// roughly 6% faster per proof, since the plan wait drops from around
+	// 300 ms to around 115 ms, and it holds far less host memory, but it caps
+	// a proof at 1024 Main segments and aborts the worker above that rather
+	// than failing the job.
+	CPUMops bool `yaml:"cpu_mops"`
 }
 
 // Load reads, defaults, and validates a ZisK cluster configuration file.
@@ -77,7 +83,7 @@ func Load(path string) (*Config, error) {
 
 	decoder := yaml.NewDecoder(bytes.NewReader(raw))
 	decoder.KnownFields(true)
-	cfg := &Config{}
+	cfg := newConfig()
 	if err := decoder.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
@@ -89,12 +95,20 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
+// newConfig is the decode target, carrying the defaults a zero value cannot
+// express. A field defaulting to true has to be seeded before the decode,
+// because afterwards an absent key and an explicit false are the same value.
+// Every other default is a zero value and belongs in applyDefaults.
+func newConfig() *Config {
+	return &Config{Config: WorkerConfig{CPUMops: true}}
+}
+
 func applyDefaults(cfg *Config) {
 	if cfg.Image == "" {
 		cfg.Image = "ghcr.io/han0110/zisk/zisk"
 	}
 	if cfg.ImageTag == "" {
-		cfg.ImageTag = "1.0.0-alpha"
+		cfg.ImageTag = "1.1.0-alpha"
 	}
 	nodes := []*cluster.Node{&cfg.Coordinator}
 	for i := range cfg.Workers {

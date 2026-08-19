@@ -37,7 +37,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Image != "ghcr.io/han0110/zisk/zisk" {
 		t.Errorf("Image = %q", cfg.Image)
 	}
-	if cfg.ImageTag != "1.0.0-alpha" {
+	if cfg.ImageTag != "1.1.0-alpha" {
 		t.Errorf("ImageTag = %q", cfg.ImageTag)
 	}
 	if cfg.Verbose != 0 {
@@ -57,6 +57,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Config.MPINp != 1 {
 		t.Errorf("Config.MPINp = %d", cfg.Config.MPINp)
+	}
+	if !cfg.Config.CPUMops {
+		t.Error("Config.CPUMops should default on, the planner without a segment cap")
 	}
 	if len(cfg.Guests) != 1 || cfg.Guests[0].ELF != "/guests/a.elf" || cfg.Guests[0].VK != "/guests/a.vk" {
 		t.Errorf("Guests = %v", cfg.Guests)
@@ -93,6 +96,7 @@ config:
   number_threads_witness: 8
   max_witness_stored: 4
   minimal_memory: true
+  cpu_mops: false
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -118,6 +122,9 @@ config:
 		NumberThreadsWitness: 8,
 		MaxWitnessStored:     4,
 		MinimalMemory:        true,
+		// Seeded on and turned off by the document above, so this also proves
+		// an explicit false survives the defaulting.
+		CPUMops: false,
 	}
 	if cfg.Config != want {
 		t.Errorf("Config = %+v", cfg.Config)

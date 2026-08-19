@@ -2,6 +2,7 @@ package zisk
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,7 +27,7 @@ func testConfig() *Config {
 			{Node: cluster.Node{Name: "node1", SSH: "user@203.0.113.1"}, Gpus: "all"},
 			{Node: cluster.Node{Name: "node2", SSH: "user@203.0.113.2"}, Gpus: "all"},
 		},
-		Config: WorkerConfig{ShmSizeGB: 64, MPINp: 1},
+		Config: WorkerConfig{ShmSizeGB: 64, MPINp: 1, CPUMops: true},
 	}
 }
 
@@ -61,6 +62,23 @@ func TestWorkerArgs(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("args =\n%v\nwant\n%v", got, want)
+	}
+}
+
+func TestWorkerArgsCPUMops(t *testing.T) {
+	cfg := testConfig()
+	if !slices.Contains(workerArgs(cfg, cfg.Workers[1], 1), "--cpu-mops") {
+		t.Error("cpu_mops on should pass --cpu-mops")
+	}
+	cfg.Config.CPUMops = false
+	args := workerArgs(cfg, cfg.Workers[1], 1)
+	if slices.Contains(args, "--cpu-mops") {
+		t.Errorf("cpu_mops off should leave the GPU planner in place, args = %v", args)
+	}
+	// The rest of the invocation is untouched, so the flag is the only
+	// difference between the two planners.
+	if !containsPair(args, "--proving-key", provingKeyDir) || !slices.Contains(args, "--gpu") {
+		t.Errorf("dropping --cpu-mops must not disturb its neighbours, args = %v", args)
 	}
 }
 
