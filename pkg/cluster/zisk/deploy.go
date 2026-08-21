@@ -243,7 +243,7 @@ type deployment struct {
 }
 
 func (d *deployment) ensureProvingKey(ctx context.Context, cli *client.Client, worker Worker, node string) error {
-	volumeName := provingKeyVolume(d.cfg.ImageTag)
+	volumeName := provingKeyVolume(d.cfg.ZkvmVersion)
 	if _, err := cli.VolumeInspect(ctx, volumeName); err == nil {
 		d.out.Printf("[%s] proving-key volume %s already exists", node, volumeName)
 		return nil

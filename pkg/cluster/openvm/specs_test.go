@@ -13,10 +13,11 @@ import (
 
 func testConfig() *Config {
 	return &Config{
-		Zkvm:     "openvm",
-		Image:    "ghcr.io/han0110/openvm",
-		ImageTag: "2.1.0-preview",
-		Guests:   []cluster.Guest{{ELF: "/guests/a.elf", VK: "/guests/a.vk"}},
+		Zkvm:        "openvm",
+		ZkvmVersion: "2.1.0-preview",
+		Image:       "ghcr.io/han0110/provoor/openvm",
+		ImageTag:    "2.1.0-preview",
+		Guests:      []cluster.Guest{{ELF: "/guests/a.elf", VK: "/guests/a.vk"}},
 		Coordinator: cluster.Node{
 			SSH: "user@203.0.113.1",
 			IP:  "10.0.0.1",
@@ -165,7 +166,7 @@ func TestCpusetCPUs(t *testing.T) {
 
 func TestCoordinatorSpec(t *testing.T) {
 	containerCfg, hostCfg := coordinatorSpec(testConfig(), `[{"name":"program-x","version":0}]`)
-	if containerCfg.Image != "ghcr.io/han0110/openvm:2.1.0-preview" {
+	if containerCfg.Image != "ghcr.io/han0110/provoor/openvm:2.1.0-preview" {
 		t.Errorf("Image = %q", containerCfg.Image)
 	}
 	wantCmd := []string{"edge-manager", "--config", "/tmp/openvm-manager.toml"}

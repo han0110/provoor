@@ -1,0 +1,115 @@
+# The image carries the edge-manager and edge-worker binaries, which the
+# entrypoint selects between. It takes no build context, cloning the source it
+# builds, so the same command produces it on CI and on a workstation.
+ARG BUILDER_IMAGE=nvidia/cuda:13.1.0-devel-ubuntu24.04
+ARG RUNTIME_IMAGE=nvidia/cuda:13.1.0-runtime-ubuntu24.04
+
+FROM ${BUILDER_IMAGE} AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    clang \
+    curl \
+    git \
+    openssh-client \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    wget \
+    lsb-release \
+    gnupg \
+    software-properties-common \
+    protobuf-compiler
+
+# Pinned to clang-22 to match OpenVM's rvr default.
+ARG CLANG_VERSION=22
+RUN wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh \
+    && chmod +x /tmp/llvm.sh \
+    && /tmp/llvm.sh ${CLANG_VERSION} \
+    && rm -f /tmp/llvm.sh
+ENV RVR_CC=clang-${CLANG_VERSION}
+
+# Install Rust
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Ensure github.com is a known host to avoid interactive prompts
+RUN mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+
+WORKDIR /app
+
+ARG AXIOM_EDGE_REPO=han0110/axiom-edge
+ARG AXIOM_EDGE_COMMIT=a59902e91cafd446d294411e004699c77d150e5b
+ARG PROFILE=release
+ARG FEATURES=cuda,jemalloc,parallel,rvr
+ARG CUDA_ARCH=120
+ARG RUSTFLAGS="-Ctarget-cpu=native"
+ARG JEMALLOC_SYS_WITH_MALLOC_CONF=retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true
+
+ENV CUDA_ARCH=${CUDA_ARCH}
+ENV RUSTFLAGS="${RUSTFLAGS}"
+ENV JEMALLOC_SYS_WITH_MALLOC_CONF=${JEMALLOC_SYS_WITH_MALLOC_CONF}
+
+# Fetching one commit into an empty repository rather than cloning it, since
+# git clone learned --revision after the version Ubuntu 24.04 packages. The
+# checkout carries rust-toolchain.toml, so cargo builds on the compiler the
+# source pins without this file naming one.
+RUN git init -q . \
+    && git remote add origin https://github.com/${AXIOM_EDGE_REPO} \
+    && git fetch -q --depth 1 origin ${AXIOM_EDGE_COMMIT} \
+    && git checkout -q FETCH_HEAD
+
+RUN set -eu; \
+    cargo fetch --locked; \
+    cargo build --profile "$PROFILE" -p edge-manager; \
+    cargo build --profile "$PROFILE" -p edge-worker --features "$FEATURES"
+
+FROM ${RUNTIME_IMAGE}
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libssl3 \
+    ca-certificates \
+    tini \
+    gcc \
+    binutils \
+    libc6-dev \
+    make \
+    wget \
+    lsb-release \
+    gnupg \
+    software-properties-common
+
+# Pinned to clang-22 to match OpenVM's rvr default.
+ARG CLANG_VERSION=22
+RUN wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh \
+    && chmod +x /tmp/llvm.sh \
+    && /tmp/llvm.sh ${CLANG_VERSION} \
+    && rm -f /tmp/llvm.sh \
+    && apt-get install -y --no-install-recommends lld-${CLANG_VERSION} \
+    && ln -sf /usr/bin/lld-${CLANG_VERSION} /usr/bin/lld \
+    && ln -sf /usr/bin/ld.lld-${CLANG_VERSION} /usr/bin/ld.lld
+ENV RVR_CC=clang-${CLANG_VERSION}
+ENV RVR_LD=lld
+
+WORKDIR /app
+
+ARG PROFILE=release
+ARG JEMALLOC_SYS_WITH_MALLOC_CONF=retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true
+
+# Copy the built binaries from the builder stage.
+COPY --from=builder /app/target/$PROFILE/edge-manager .
+COPY --from=builder /app/target/$PROFILE/edge-worker .
+COPY --from=builder /app/target/$PROFILE/convert_fixtures .
+
+# Copy the entrypoint script
+COPY --from=builder /app/docker/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x docker-entrypoint.sh
+
+ENV RUST_BACKTRACE=full
+ENV JEMALLOC_SYS_WITH_MALLOC_CONF=${JEMALLOC_SYS_WITH_MALLOC_CONF}
+
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["edge-worker"]

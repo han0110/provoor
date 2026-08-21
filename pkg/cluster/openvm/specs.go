@@ -55,15 +55,16 @@ func (cfg *Config) imageRef() string {
 	return cfg.Image + ":" + cfg.ImageTag
 }
 
-// The artifacts volume keys on the image tag because its keyset is derived
-// under that image's VM configuration. The RVR cache volume holds the
-// workers' native-compile cache and survives restarts.
-func artifactsVolume(tag string) string {
-	return "openvm-artifacts-" + tag
+// Both volumes key on the OpenVM release rather than the image tag, since a
+// keyset is derived under that release's VM configuration and a native compile
+// targets its runtime. An image rebuilt under another tag therefore reuses the
+// artifacts of the release it carries instead of deriving them again.
+func artifactsVolume(zkvmVersion string) string {
+	return "openvm-artifacts-" + zkvmVersion
 }
 
-func rvrCacheVolume(tag string) string {
-	return "openvm-rvr-cache-" + tag
+func rvrCacheVolume(zkvmVersion string) string {
+	return "openvm-rvr-cache-" + zkvmVersion
 }
 
 func workerContainer(gpu int) string {
@@ -276,7 +277,7 @@ func coordinatorSpec(cfg *Config, loadout string) (*container.Config, *container
 		Mounts: []mount.Mount{
 			{
 				Type:     mount.TypeVolume,
-				Source:   artifactsVolume(cfg.ImageTag),
+				Source:   artifactsVolume(cfg.ZkvmVersion),
 				Target:   artifactsDir,
 				ReadOnly: true,
 			},
@@ -320,13 +321,13 @@ func workerSpec(cfg *Config, gpu int, cpuset, loadout string) (*container.Config
 		Mounts: []mount.Mount{
 			{
 				Type:     mount.TypeVolume,
-				Source:   artifactsVolume(cfg.ImageTag),
+				Source:   artifactsVolume(cfg.ZkvmVersion),
 				Target:   artifactsDir,
 				ReadOnly: true,
 			},
 			{
 				Type:   mount.TypeVolume,
-				Source: rvrCacheVolume(cfg.ImageTag),
+				Source: rvrCacheVolume(cfg.ZkvmVersion),
 				Target: rvrCacheDir,
 			},
 		},
@@ -365,7 +366,7 @@ func keygenSpec(cfg *Config, prog program) (*container.Config, *container.HostCo
 		ShmSize: int64(cfg.Config.ShmSizeGB) << 30,
 		Mounts: []mount.Mount{{
 			Type:   mount.TypeVolume,
-			Source: artifactsVolume(cfg.ImageTag),
+			Source: artifactsVolume(cfg.ZkvmVersion),
 			Target: artifactsDir,
 		}},
 		Resources: container.Resources{

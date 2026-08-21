@@ -21,6 +21,7 @@ func writeConfig(t *testing.T, content string) string {
 
 const minimalConfig = `
 zkvm: zisk
+zkvm_version: 1.1.0-alpha
 guests:
   - elf: /guests/a.elf
     vk: /guests/a.vk
@@ -66,7 +67,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Image != "ghcr.io/han0110/zisk/zisk" {
+	if cfg.Image != "ghcr.io/han0110/provoor/zisk" {
 		t.Errorf("Image = %q", cfg.Image)
 	}
 	if cfg.ImageTag != "1.1.0-alpha" {
@@ -94,6 +95,7 @@ func TestLoadDefaults(t *testing.T) {
 func TestLoadFull(t *testing.T) {
 	cfg, err := Load(writeConfig(t, `
 zkvm: zisk
+zkvm_version: 1.1.0-alpha
 image: ghcr.io/example/zisk
 image_tag: 2.0.0
 verbose: 1
@@ -151,6 +153,31 @@ config:
 	}
 }
 
+// TestImageTagDefaultsToTheZkvmVersion pins the tie between the two, since a
+// deployment names one release and the image carrying it is tagged after that
+// release unless it says otherwise.
+func TestImageTagDefaultsToTheZkvmVersion(t *testing.T) {
+	cfg, err := Load(writeConfig(t, minimalConfig))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ImageTag != cfg.ZkvmVersion {
+		t.Errorf("ImageTag = %q, want the zkvm version %q", cfg.ImageTag, cfg.ZkvmVersion)
+	}
+	// A tag names the image alone, so the volumes and the proving key stay on
+	// the release even when an image is rebuilt under another one.
+	tagged, err := Load(writeConfig(t, minimalConfig+"image_tag: local\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tagged.ImageTag != "local" || tagged.ZkvmVersion != "1.1.0-alpha" {
+		t.Errorf("ImageTag = %q, ZkvmVersion = %q", tagged.ImageTag, tagged.ZkvmVersion)
+	}
+	if got := provingKeyVolume(tagged.ZkvmVersion); got != "zisk-proving-key-1.1.0-alpha" {
+		t.Errorf("proving-key volume = %q, want it keyed on the release", got)
+	}
+}
+
 func TestLoadRejectsUnknownField(t *testing.T) {
 	_, err := Load(writeConfig(t, minimalConfig+"cluster_endpoint: http://x\n"))
 	if err == nil {
@@ -186,13 +213,14 @@ func TestLoadValidation(t *testing.T) {
 		},
 		{
 			name:    "no workers",
-			config:  "zkvm: zisk\nguests:\n  - elf: a.elf\n    vk: a.vk\ncoordinator:\n  ssh: user@10.0.0.1\nworkers: []\n",
+			config:  "zkvm: zisk\nzkvm_version: 1.1.0-alpha\nguests:\n  - elf: a.elf\n    vk: a.vk\ncoordinator:\n  ssh: user@10.0.0.1\nworkers: []\n",
 			wantErr: "worker",
 		},
 		{
 			name: "duplicate worker host",
 			config: `
 zkvm: zisk
+zkvm_version: 1.1.0-alpha
 guests:
   - elf: /guests/a.elf
     vk: /guests/a.vk
@@ -213,6 +241,7 @@ workers:
 			name: "remote worker without coordinator ip",
 			config: `
 zkvm: zisk
+zkvm_version: 1.1.0-alpha
 guests:
   - elf: /guests/a.elf
     vk: /guests/a.vk
@@ -224,6 +253,11 @@ workers:
       count: 1
 `,
 			wantErr: "coordinator ip",
+		},
+		{
+			name:    "missing zkvm_version",
+			config:  strings.Replace(minimalConfig, "zkvm_version: 1.1.0-alpha\n", "", 1),
+			wantErr: "zkvm_version is required",
 		},
 		{
 			name:    "verbose out of range",
@@ -265,6 +299,7 @@ func TestLoadExampleTemplate(t *testing.T) {
 func TestLoadSingleHostWithoutIP(t *testing.T) {
 	_, err := Load(writeConfig(t, `
 zkvm: zisk
+zkvm_version: 1.1.0-alpha
 guests:
   - elf: /guests/a.elf
     vk: /guests/a.vk

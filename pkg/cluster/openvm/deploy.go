@@ -262,7 +262,7 @@ func (d *deployment) ensureArtifacts(ctx context.Context, n node) error {
 		}
 	}
 	if len(missing) == 0 {
-		d.out.Printf("[%s] all keysets already in volume %s", n.name(), artifactsVolume(d.cfg.ImageTag))
+		d.out.Printf("[%s] all keysets already in volume %s", n.name(), artifactsVolume(d.cfg.ZkvmVersion))
 	}
 	return d.verifyBaselines(ctx, cli, n)
 }
@@ -303,7 +303,7 @@ func (d *deployment) verifyBaselines(ctx context.Context, cli *client.Client, n 
 // when the artifacts volume does not exist yet and otherwise by each
 // program's verification baseline, the last file keygen moves into place.
 func (d *deployment) missingPrograms(ctx context.Context, cli *client.Client, n node) ([]program, error) {
-	volumeName := artifactsVolume(d.cfg.ImageTag)
+	volumeName := artifactsVolume(d.cfg.ZkvmVersion)
 	if _, err := cli.VolumeInspect(ctx, volumeName); client.IsErrNotFound(err) {
 		return d.programs, nil
 	} else if err != nil {
@@ -345,7 +345,7 @@ func (d *deployment) probeArtifacts(ctx context.Context, cli *client.Client, scr
 	containerCfg := &container.Config{Image: d.cfg.imageRef(), Cmd: []string{"bash", "-c", script}}
 	hostCfg := &container.HostConfig{Mounts: []mount.Mount{{
 		Type:     mount.TypeVolume,
-		Source:   artifactsVolume(d.cfg.ImageTag),
+		Source:   artifactsVolume(d.cfg.ZkvmVersion),
 		Target:   artifactsDir,
 		ReadOnly: true,
 	}}}

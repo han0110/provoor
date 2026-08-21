@@ -25,6 +25,7 @@ const minimalGuest = `guests:
 
 const minimalConfig = `
 zkvm: openvm
+zkvm_version: 2.1.0-preview
 ` + minimalGuest + `coordinator:
   ssh: user@10.0.0.1
   ip: 10.0.0.1
@@ -70,7 +71,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Image != "ghcr.io/han0110/openvm" {
+	if cfg.Image != "ghcr.io/han0110/provoor/openvm" {
 		t.Errorf("Image = %q", cfg.Image)
 	}
 	if cfg.ImageTag != "2.1.0-preview" {
@@ -93,6 +94,7 @@ func TestLoadDefaults(t *testing.T) {
 func TestLoadFull(t *testing.T) {
 	cfg, err := Load(writeConfig(t, `
 zkvm: openvm
+zkvm_version: 2.1.0-preview
 image: ghcr.io/example/openvm
 image_tag: 3.0.0
 verbose: 1
@@ -143,6 +145,25 @@ config:
 	}
 	if cfg.Config != want {
 		t.Errorf("Config = %+v", cfg.Config)
+	}
+}
+
+// TestImageTagDefaultsToTheZkvmVersion pins the tie between the two, and that
+// an explicit tag leaves the volumes on the release they were derived under.
+func TestImageTagDefaultsToTheZkvmVersion(t *testing.T) {
+	cfg, err := Load(writeConfig(t, minimalConfig))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ImageTag != cfg.ZkvmVersion {
+		t.Errorf("ImageTag = %q, want the zkvm version %q", cfg.ImageTag, cfg.ZkvmVersion)
+	}
+	tagged, err := Load(writeConfig(t, minimalConfig+"image_tag: local\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := artifactsVolume(tagged.ZkvmVersion); got != "openvm-artifacts-2.1.0-preview" {
+		t.Errorf("artifacts volume = %q, want it keyed on the release", got)
 	}
 }
 
@@ -208,6 +229,11 @@ func TestLoadValidation(t *testing.T) {
 			name:    "negative gpu",
 			config:  strings.Replace(minimalConfig, "  - ssh: user@10.0.0.1\n    gpu: 0\n", "  - ssh: user@10.0.0.1\n    gpu: -1\n", 1),
 			wantErr: "device id",
+		},
+		{
+			name:    "missing zkvm_version",
+			config:  strings.Replace(minimalConfig, "zkvm_version: 2.1.0-preview\n", "", 1),
+			wantErr: "zkvm_version is required",
 		},
 		{
 			name:    "verbose out of range",

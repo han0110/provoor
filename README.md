@@ -31,12 +31,12 @@ carrying uncommitted work is overwritten. It needs `make` alongside Go.
 The scripts under `scripts/` additionally need `envsubst` from GNU gettext and
 `python3`.
 
-The container image benchmark runs use builds from the repository root. A
-tagged release publishes the same build to `ghcr.io/han0110/provoor`, stamped
-with its version rather than the `dev` a local build carries.
+The container image benchmark runs use builds from `dockers/Dockerfile`. A
+tagged release publishes the same build to `ghcr.io/han0110/provoor/provoor`,
+stamped with its version rather than the `dev` a local build carries.
 
 ```sh
-docker build -t ghcr.io/han0110/provoor:latest .
+docker build -f dockers/Dockerfile -t ghcr.io/han0110/provoor/provoor:latest .
 ```
 
 The image links the verifier library `scripts/fetch-verifier.sh` downloads.
@@ -45,7 +45,7 @@ Building against an ere revision that has no release yet takes the library from
 one there first, since the build fails rather than falling back.
 
 ```sh
-docker build --build-arg VERIFIER_LIB=local -t provoor:local .
+docker build -f dockers/Dockerfile --build-arg VERIFIER_LIB=local -t provoor:local .
 ```
 
 ## How it works

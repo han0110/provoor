@@ -41,22 +41,22 @@ func (cfg *Config) imageRef() string {
 	return cfg.Image + ":" + cfg.ImageTag
 }
 
-func provingKeyVolume(tag string) string {
-	return "zisk-proving-key-" + tag
+func provingKeyVolume(zkvmVersion string) string {
+	return "zisk-proving-key-" + zkvmVersion
 }
 
-func cacheVolume(tag string) string {
-	return "zisk-cache-" + tag
+func cacheVolume(zkvmVersion string) string {
+	return "zisk-cache-" + zkvmVersion
 }
 
 // cacheMount is the guest artifact cache the coordinator and the workers
 // write, holding the registered ELFs, the rom setup output, and the AOT
 // assembly. Everything in it is addressed by ELF hash, so one volume serves
 // every guest and survives a down and up, sparing the next setup the work.
-func cacheMount(tag string) mount.Mount {
+func cacheMount(zkvmVersion string) mount.Mount {
 	return mount.Mount{
 		Type:   mount.TypeVolume,
-		Source: cacheVolume(tag),
+		Source: cacheVolume(zkvmVersion),
 		Target: cacheDir,
 	}
 }
@@ -102,7 +102,7 @@ func coordinatorSpec(cfg *Config) (*container.Config, *container.HostConfig) {
 			clusterAPI: {{HostPort: strconv.Itoa(clusterPort)}},
 		},
 		LogConfig: cluster.Journald(coordinatorContainer),
-		Mounts:    []mount.Mount{cacheMount(cfg.ImageTag)},
+		Mounts:    []mount.Mount{cacheMount(cfg.ZkvmVersion)},
 	}
 	return containerCfg, hostCfg
 }
@@ -211,9 +211,9 @@ func workerSpec(cfg *Config, worker Worker, name string, numaNodes int) (*contai
 		// it derives from, which happens on the first prove after a setup.
 		Mounts: []mount.Mount{{
 			Type:   mount.TypeVolume,
-			Source: provingKeyVolume(cfg.ImageTag),
+			Source: provingKeyVolume(cfg.ZkvmVersion),
 			Target: provingKeyDir,
-		}, cacheMount(cfg.ImageTag)},
+		}, cacheMount(cfg.ZkvmVersion)},
 		Resources: container.Resources{
 			Ulimits:        []*container.Ulimit{{Name: "memlock", Soft: -1, Hard: -1}},
 			DeviceRequests: []container.DeviceRequest{worker.GPU.DeviceRequest()},
@@ -237,7 +237,7 @@ func setupSpec(cfg *Config, gpu cluster.GPU) (*container.Config, *container.Host
 	containerCfg := &container.Config{
 		Image: cfg.imageRef(),
 		Env: []string{
-			fmt.Sprintf("KEY_URL=%s/zisk-provingkey-%s.tar.gz", setupKeyBaseURL, cfg.ImageTag),
+			fmt.Sprintf("KEY_URL=%s/zisk-provingkey-%s.tar.gz", setupKeyBaseURL, cfg.ZkvmVersion),
 			"PROVING_KEY_DIR=" + provingKeyDir,
 		},
 		Cmd: []string{"bash", "-c", setupScript},
@@ -246,7 +246,7 @@ func setupSpec(cfg *Config, gpu cluster.GPU) (*container.Config, *container.Host
 		ShmSize: 16 << 30,
 		Mounts: []mount.Mount{{
 			Type:   mount.TypeVolume,
-			Source: provingKeyVolume(cfg.ImageTag),
+			Source: provingKeyVolume(cfg.ZkvmVersion),
 			Target: provingKeyDir,
 		}},
 		Resources: container.Resources{

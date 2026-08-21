@@ -20,8 +20,12 @@ import (
 type Config struct {
 	// Zkvm names the backend and must be openvm.
 	Zkvm string `yaml:"zkvm"`
-	// Image and ImageTag name the cluster image. The artifacts volume is
-	// named after the tag, so hosts cache one keyset per release.
+	// ZkvmVersion is the OpenVM release the deployment proves under. It names
+	// the volumes a host caches its keysets in, so an image rebuilt under
+	// another tag still shares the artifacts of its release.
+	ZkvmVersion string `yaml:"zkvm_version"`
+	// Image and ImageTag name the cluster image, the tag defaulting to the
+	// OpenVM release it carries.
 	Image    string `yaml:"image"`
 	ImageTag string `yaml:"image_tag"`
 	// Verbose raises container log levels, 0 info, 1 debug, 2 trace.
@@ -98,10 +102,10 @@ func Load(path string) (*Config, error) {
 // own default rather than one this repository would have to track.
 func applyDefaults(cfg *Config) {
 	if cfg.Image == "" {
-		cfg.Image = "ghcr.io/han0110/openvm"
+		cfg.Image = "ghcr.io/han0110/provoor/openvm"
 	}
 	if cfg.ImageTag == "" {
-		cfg.ImageTag = "2.1.0-preview"
+		cfg.ImageTag = cfg.ZkvmVersion
 	}
 	if cfg.Config.AppProvers == 0 {
 		cfg.Config.AppProvers = 2
@@ -123,6 +127,9 @@ func applyDefaults(cfg *Config) {
 func validate(cfg *Config) error {
 	if cfg.Zkvm != "openvm" {
 		return fmt.Errorf("zkvm %q is not openvm", cfg.Zkvm)
+	}
+	if cfg.ZkvmVersion == "" {
+		return fmt.Errorf("zkvm_version is required, the OpenVM release the deployment proves under")
 	}
 	if cfg.Verbose < 0 || cfg.Verbose > 2 {
 		return fmt.Errorf("verbose %d is out of range 0 to 2", cfg.Verbose)

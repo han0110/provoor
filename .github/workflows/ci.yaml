@@ -9,19 +9,34 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  test-provoor:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # The verifier library is a release asset rather than a module, so it is
-      # fetched before anything compiles against it.
       - run: scripts/fetch-verifier.sh
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./...
-      # Catches a broken Dockerfile on the pull request, before the release
-      # workflow reaches its own build.
-      - run: docker build .
+      - run: docker build -f dockers/Dockerfile .
+
+  test-zkvm-image:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - zkvm: openvm
+            build-args: RUSTFLAGS=
+          - zkvm: zisk
+            build-args: ""
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: dockers/zkvm
+          file: dockers/zkvm/Dockerfile.${{ matrix.zkvm }}
+          build-args: ${{ matrix.build-args }}

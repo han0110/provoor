@@ -14,10 +14,11 @@ import (
 
 func testConfig() *Config {
 	return &Config{
-		Zkvm:     "zisk",
-		Image:    "ghcr.io/han0110/zisk/zisk",
-		ImageTag: "1.0.0-alpha",
-		Guests:   []cluster.Guest{{ELF: "/guests/a.elf", VK: "/guests/a.vk"}},
+		Zkvm:        "zisk",
+		ZkvmVersion: "1.1.0-alpha",
+		Image:       "ghcr.io/han0110/provoor/zisk",
+		ImageTag:    "1.0.0-alpha",
+		Guests:      []cluster.Guest{{ELF: "/guests/a.elf", VK: "/guests/a.vk"}},
 		Coordinator: cluster.Node{
 			SSH: "user@203.0.113.1",
 			IP:  "10.0.0.1",
@@ -128,7 +129,7 @@ func containsPair(args []string, flag, value string) bool {
 
 func TestCoordinatorSpec(t *testing.T) {
 	containerCfg, hostCfg := coordinatorSpec(testConfig())
-	if containerCfg.Image != "ghcr.io/han0110/zisk/zisk:1.0.0-alpha" {
+	if containerCfg.Image != "ghcr.io/han0110/provoor/zisk:1.0.0-alpha" {
 		t.Errorf("Image = %q", containerCfg.Image)
 	}
 	wantCmd := []string{
@@ -155,7 +156,7 @@ func TestCoordinatorSpec(t *testing.T) {
 			t.Errorf("PortBindings[%s] = %v", port, bindings)
 		}
 	}
-	if len(hostCfg.Mounts) != 1 || hostCfg.Mounts[0].Source != "zisk-cache-1.0.0-alpha" ||
+	if len(hostCfg.Mounts) != 1 || hostCfg.Mounts[0].Source != "zisk-cache-1.1.0-alpha" ||
 		hostCfg.Mounts[0].Target != "/root/.zisk/cache" || hostCfg.Mounts[0].ReadOnly {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
 	}
@@ -189,10 +190,10 @@ func TestWorkerSpec(t *testing.T) {
 		t.Errorf("LogConfig = %+v", hostCfg.LogConfig)
 	}
 	if len(hostCfg.Mounts) != 2 ||
-		hostCfg.Mounts[0].Source != "zisk-proving-key-1.0.0-alpha" ||
+		hostCfg.Mounts[0].Source != "zisk-proving-key-1.1.0-alpha" ||
 		hostCfg.Mounts[0].Target != "/root/.zisk/provingKey" ||
 		hostCfg.Mounts[0].ReadOnly ||
-		hostCfg.Mounts[1].Source != "zisk-cache-1.0.0-alpha" ||
+		hostCfg.Mounts[1].Source != "zisk-cache-1.1.0-alpha" ||
 		hostCfg.Mounts[1].Target != "/root/.zisk/cache" ||
 		hostCfg.Mounts[1].ReadOnly {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
@@ -229,7 +230,7 @@ func TestSetupSpec(t *testing.T) {
 		t.Errorf("Cmd = %v", containerCfg.Cmd)
 	}
 	wantEnv := []string{
-		"KEY_URL=https://storage.googleapis.com/zisk-setup/zisk-provingkey-1.0.0-alpha.tar.gz",
+		"KEY_URL=https://storage.googleapis.com/zisk-setup/zisk-provingkey-1.1.0-alpha.tar.gz",
 		"PROVING_KEY_DIR=/root/.zisk/provingKey",
 	}
 	if !reflect.DeepEqual(containerCfg.Env, wantEnv) {
@@ -243,7 +244,7 @@ func TestSetupSpec(t *testing.T) {
 	if hostCfg.ShmSize != 16<<30 {
 		t.Errorf("ShmSize = %d", hostCfg.ShmSize)
 	}
-	if len(hostCfg.Mounts) != 1 || hostCfg.Mounts[0].Source != "zisk-proving-key-1.0.0-alpha" ||
+	if len(hostCfg.Mounts) != 1 || hostCfg.Mounts[0].Source != "zisk-proving-key-1.1.0-alpha" ||
 		hostCfg.Mounts[0].Target != "/root/.zisk/provingKey" {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
 	}
