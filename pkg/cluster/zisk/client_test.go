@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -73,14 +75,14 @@ func (s *setupCoordinator) WaitJobResult(context.Context, *api.WaitJobResultRequ
 	}, nil
 }
 
-func dialSetupCoordinator(t *testing.T, reportedVK []byte) *Client {
+func dialFakeCoordinator(t *testing.T, coordinator api.ZiskCoordinatorApiServer) *Client {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := grpc.NewServer()
-	api.RegisterZiskCoordinatorApiServer(server, &setupCoordinator{reportedVK: reportedVK})
+	api.RegisterZiskCoordinatorApiServer(server, coordinator)
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 
@@ -90,6 +92,11 @@ func dialSetupCoordinator(t *testing.T, reportedVK []byte) *Client {
 	}
 	t.Cleanup(func() { _ = client.Close() })
 	return client
+}
+
+func dialSetupCoordinator(t *testing.T, reportedVK []byte) *Client {
+	t.Helper()
+	return dialFakeCoordinator(t, &setupCoordinator{reportedVK: reportedVK})
 }
 
 func TestSetupBindsTheConfiguredProgramVK(t *testing.T) {
@@ -135,6 +142,56 @@ func TestSetupRequiresAProgramVK(t *testing.T) {
 	client := &Client{}
 	if err := client.Setup(t.Context(), "hash", nil); err == nil {
 		t.Error("Setup() = nil, want a refusal to set up without a program vk")
+	}
+}
+
+// refusingCoordinator completes every setup and refuses every prove
+// submission for want of a setup, the answer a cluster gives when one worker
+// parked itself idle while the coordinator still records the program. It
+// counts submissions, since the recovery that answers such a refusal is served
+// from the coordinator's cache and returns at once.
+type refusingCoordinator struct {
+	setupCoordinator
+	mu      sync.Mutex
+	submits int
+}
+
+func (r *refusingCoordinator) JobRequest(ctx context.Context, request *api.JobRequestMessage) (*api.JobResponse, error) {
+	if request.GetJobKind().GetSetup() != nil {
+		return r.setupCoordinator.JobRequest(ctx, request)
+	}
+	r.mu.Lock()
+	r.submits++
+	r.mu.Unlock()
+	return nil, status.Error(codes.Unavailable, "Cluster unavailable: workers connected but setup not done; call setup() first")
+}
+
+func (r *refusingCoordinator) submissions() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.submits
+}
+
+// TestSubmitProveJobPacesSetupRecovery pins the pacing of the recovery branch.
+// Recovering a setup costs one cached round trip, so a branch that retried
+// without waiting would submit for as long as the cluster kept refusing, at
+// whatever rate the coordinator could answer.
+func TestSubmitProveJobPacesSetupRecovery(t *testing.T) {
+	programVK := readFixture(t, "program_vk.bin")
+	coordinator := &refusingCoordinator{setupCoordinator: setupCoordinator{reportedVK: programVK}}
+	client := dialFakeCoordinator(t, coordinator)
+	if err := client.Setup(t.Context(), "hash", programVK); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	if _, err := client.submitProveJob(ctx, "hash", nil, nil); err == nil {
+		t.Fatal("submitProveJob() = nil, want the deadline to end the wait")
+	}
+	// submitRetryInterval outlasts the deadline, so a paced loop submits once.
+	if got := coordinator.submissions(); got > 1 {
+		t.Errorf("submissions = %d, want the loop paced by submitRetryInterval", got)
 	}
 }
 

@@ -15,5 +15,11 @@ set -euo pipefail
 
 rewrite_config_args "$@"
 
+BENCHMARKOOR="${REPO_DIR}/benchmarkoor/bin/benchmarkoor"
+if [[ ! -x "${BENCHMARKOOR}" ]]; then
+    echo "error: ${BENCHMARKOOR} is missing, run scripts/build.sh benchmarkoor" >&2
+    exit 1
+fi
+
 cd "${REPO_DIR}/provoor-runs"
-exec "${REPO_DIR}/benchmarkoor/bin/benchmarkoor" "${args[@]+"${args[@]}"}"
+exec "${BENCHMARKOOR}" "${args[@]+"${args[@]}"}"

@@ -12,15 +12,22 @@ import (
 	"time"
 )
 
-// fakeProver answers with fixed public values or a fixed error.
+// fakeProver answers with fixed public values or a fixed error, counting
+// readiness waits so a test can pin when the gate before a proof fires.
 type fakeProver struct {
 	publicValues []byte
 	err          error
 	phases       []string
+	readyWaits   int
 }
 
 func (p *fakeProver) ClientVersion() string {
 	return "provoor/0.0.0/fake/guest"
+}
+
+func (p *fakeProver) WaitReady(context.Context) error {
+	p.readyWaits++
+	return nil
 }
 
 func (p *fakeProver) Warmup(context.Context) error {
@@ -208,6 +215,32 @@ func TestProveRejectsMalformedParams(t *testing.T) {
 		if !ok || rpcErr["code"] != float64(-32602) {
 			t.Errorf("body %s: error = %v", body, resp["error"])
 		}
+	}
+}
+
+// TestWaitReadyFollowsAFailedProof pins when the readiness gate fires. Waiting
+// before every proof would probe a cluster that never stopped being ready,
+// while waiting before none would let a worker's restart land inside the next
+// proof's measurement.
+func TestWaitReadyFollowsAFailedProof(t *testing.T) {
+	failing := &fakeProver{err: errors.New("down")}
+	server := newServer(failing, &bytes.Buffer{})
+	post(t, server, proveRequest([]byte{1}))
+	if failing.readyWaits != 0 {
+		t.Errorf("readyWaits = %d, want the first proof to go straight through", failing.readyWaits)
+	}
+	post(t, server, proveRequest([]byte{1}))
+	if failing.readyWaits != 1 {
+		t.Errorf("readyWaits = %d, want one wait after the failed proof", failing.readyWaits)
+	}
+
+	expected := []byte{1, 2, 3, 4}
+	passing := &fakeProver{publicValues: commitment(expected)}
+	server = newServer(passing, &bytes.Buffer{})
+	post(t, server, proveRequest(expected))
+	post(t, server, proveRequest(expected))
+	if passing.readyWaits != 0 {
+		t.Errorf("readyWaits = %d, want a run of passing proofs never to wait", passing.readyWaits)
 	}
 }
 

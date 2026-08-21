@@ -36,6 +36,12 @@ func NewProver(ctx context.Context, endpoint string, elf, programVK []byte, elfS
 	return &Prover{client: client, programName: name, version: guestName, sdkVersion: sdkVersion}, nil
 }
 
+// WaitReady blocks until the manager reports every expected worker registered
+// and each one answers its own readiness probe.
+func (p *Prover) WaitReady(ctx context.Context) error {
+	return p.client.WaitReady(ctx)
+}
+
 // SdkVersion is the zkVM SDK version the guest ELF name carries, empty when
 // unnamed.
 func (p *Prover) SdkVersion() string {

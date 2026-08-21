@@ -31,6 +31,10 @@ RUN go mod download
 
 COPY cmd/ cmd/
 COPY pkg/ pkg/
+# A context carrying a local library copies it in above, and COPY merges into
+# an existing directory rather than replacing it, so the directory is emptied
+# before the selected verifier lands in it.
+RUN rm -rf pkg/ereverifier/lib
 COPY --from=verifier /src/pkg/ereverifier/lib/ pkg/ereverifier/lib/
 
 RUN CGO_ENABLED=1 go build -ldflags "-X main.version=${VERSION}" -o /provoor ./cmd/provoor

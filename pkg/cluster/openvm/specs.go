@@ -40,8 +40,10 @@ const (
 	// but loadout membership matches on it, so client and deployment fix it
 	// at zero.
 	programVersion = 0
-	// Aggregation shape and watchdog knobs of the manager's proof pipeline,
-	// fixed to the values the pinned image is tuned for.
+	// Aggregation shape of the manager's proof pipeline, the values the
+	// image's own deployment defaults carry. leafPackThreshold is rendered
+	// rather than left out because the manager falls back to 48 for an absent
+	// key, which is not what a deployment of this image runs.
 	leafArity         = 4
 	internalArity     = 3
 	leafPackThreshold = 1000
@@ -66,6 +68,13 @@ func rvrCacheVolume(tag string) string {
 
 func workerContainer(gpu int) string {
 	return workerContainerPrefix + strconv.Itoa(gpu)
+}
+
+// workerName identifies one worker by its position in the configuration and
+// the GPU it owns, the same shape every backend labels a worker with. An
+// OpenVM worker owns exactly one GPU, so its label names that device.
+func workerName(index int, worker Worker) string {
+	return cluster.WorkerName(index, cluster.GPU{DeviceIDs: []int{worker.GPU}})
 }
 
 func workerConfigPath(gpu int) string {
@@ -159,7 +168,7 @@ func managerTOML(cfg *Config) string {
 			LeafArity             int    `toml:"leaf_arity"`
 			InternalArity         int    `toml:"internal_arity"`
 			LeafPackThreshold     int    `toml:"leaf_pack_threshold"`
-			TimeoutSecs           int    `toml:"timeout_secs"`
+			TimeoutSecs           int    `toml:"timeout_secs,omitempty"`
 			PersistFinalProofsDir string `toml:"persist_final_proofs_dir"`
 		} `toml:"proof"`
 		Metrics struct {
@@ -188,7 +197,7 @@ func managerTOML(cfg *Config) string {
 // coordinator's data-network address.
 func managerURL(cfg *Config, worker Worker) string {
 	host := cfg.Coordinator.IP
-	if worker.Name == cfg.Coordinator.Name {
+	if worker.SSH == cfg.Coordinator.SSH {
 		host = "127.0.0.1"
 	}
 	return fmt.Sprintf("http://%s:%d", host, apiPort)

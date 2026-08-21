@@ -19,13 +19,12 @@ func testConfig() *Config {
 		ImageTag: "1.0.0-alpha",
 		Guests:   []cluster.Guest{{ELF: "/guests/a.elf", VK: "/guests/a.vk"}},
 		Coordinator: cluster.Node{
-			Name: "node1",
-			SSH:  "user@203.0.113.1",
-			IP:   "10.0.0.1",
+			SSH: "user@203.0.113.1",
+			IP:  "10.0.0.1",
 		},
 		Workers: []Worker{
-			{Node: cluster.Node{Name: "node1", SSH: "user@203.0.113.1"}, Gpus: "all"},
-			{Node: cluster.Node{Name: "node2", SSH: "user@203.0.113.2"}, Gpus: "all"},
+			{Node: cluster.Node{SSH: "user@203.0.113.1"}, GPU: cluster.GPU{Count: 4}},
+			{Node: cluster.Node{SSH: "user@203.0.113.2"}, GPU: cluster.GPU{DeviceIDs: []int{0, 1}}},
 		},
 		Config: WorkerConfig{ShmSizeGB: 64, MPINp: 1, CPUMops: true},
 	}
@@ -38,7 +37,7 @@ func TestWorkerArgs(t *testing.T) {
 	cfg.Config.MaxWitnessStored = 4
 	cfg.Config.MinimalMemory = true
 
-	got := workerArgs(cfg, cfg.Workers[1], 2)
+	got := workerArgs(cfg, cfg.Workers[1], cluster.WorkerName(1, cfg.Workers[1].GPU), 2)
 	want := []string{
 		"--report-bindings",
 		"--allow-run-as-root",
@@ -52,7 +51,8 @@ func TestWorkerArgs(t *testing.T) {
 		"-x", "RUST_MIN_STACK=67108864",
 		"zisk-worker-gpu",
 		"--coordinator-url", "http://10.0.0.1:50051",
-		"--worker-id", "node2",
+		"--worker-id", "worker_1-gpu_0_1",
+		"--compute-capacity", "20",
 		"--gpu",
 		"--cpu-mops",
 		"--proving-key", "/root/.zisk/provingKey",
@@ -67,11 +67,11 @@ func TestWorkerArgs(t *testing.T) {
 
 func TestWorkerArgsCPUMops(t *testing.T) {
 	cfg := testConfig()
-	if !slices.Contains(workerArgs(cfg, cfg.Workers[1], 1), "--cpu-mops") {
+	if !slices.Contains(workerArgs(cfg, cfg.Workers[1], cluster.WorkerName(1, cfg.Workers[1].GPU), 1), "--cpu-mops") {
 		t.Error("cpu_mops on should pass --cpu-mops")
 	}
 	cfg.Config.CPUMops = false
-	args := workerArgs(cfg, cfg.Workers[1], 1)
+	args := workerArgs(cfg, cfg.Workers[1], cluster.WorkerName(1, cfg.Workers[1].GPU), 1)
 	if slices.Contains(args, "--cpu-mops") {
 		t.Errorf("cpu_mops off should leave the GPU planner in place, args = %v", args)
 	}
@@ -84,7 +84,7 @@ func TestWorkerArgsCPUMops(t *testing.T) {
 
 func TestWorkerArgsColocatedDialsLoopback(t *testing.T) {
 	cfg := testConfig()
-	args := workerArgs(cfg, cfg.Workers[0], 1)
+	args := workerArgs(cfg, cfg.Workers[0], cluster.WorkerName(0, cfg.Workers[0].GPU), 1)
 	if !containsPair(args, "--coordinator-url", "http://127.0.0.1:50051") {
 		t.Errorf("co-located worker should dial loopback, args = %v", args)
 	}
@@ -95,7 +95,7 @@ func TestWorkerArgsExplicitConfigSkipsDerivation(t *testing.T) {
 	cfg.Config.MPINp = 4
 	cfg.Config.MPINumaPpr = 2
 	cfg.Config.MPIThreads = 16
-	args := workerArgs(cfg, cfg.Workers[1], 0)
+	args := workerArgs(cfg, cfg.Workers[1], cluster.WorkerName(1, cfg.Workers[1].GPU), 0)
 	if !containsPair(args, "-map-by", "ppr:2:numa") {
 		t.Errorf("explicit mpi_numa_ppr not honored, args = %v", args)
 	}
@@ -106,7 +106,7 @@ func TestWorkerArgsExplicitConfigSkipsDerivation(t *testing.T) {
 
 func TestWorkerArgsDerivationFloorsAtOne(t *testing.T) {
 	cfg := testConfig()
-	args := workerArgs(cfg, cfg.Workers[1], 4)
+	args := workerArgs(cfg, cfg.Workers[1], cluster.WorkerName(1, cfg.Workers[1].GPU), 4)
 	if !containsPair(args, "-map-by", "ppr:1:numa") {
 		t.Errorf("ppr should floor at 1, args = %v", args)
 	}
@@ -172,10 +172,7 @@ func TestCoordinatorEndpoint(t *testing.T) {
 
 func TestWorkerSpec(t *testing.T) {
 	cfg := testConfig()
-	containerCfg, hostCfg, err := workerSpec(cfg, cfg.Workers[1], 1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	containerCfg, hostCfg := workerSpec(cfg, cfg.Workers[1], cluster.WorkerName(1, cfg.Workers[1].GPU), 1)
 	if !reflect.DeepEqual([]string(containerCfg.Entrypoint), []string{"mpirun"}) {
 		t.Errorf("Entrypoint = %v", containerCfg.Entrypoint)
 	}
@@ -204,7 +201,8 @@ func TestWorkerSpec(t *testing.T) {
 		hostCfg.Ulimits[0].Soft != -1 || hostCfg.Ulimits[0].Hard != -1 {
 		t.Errorf("Ulimits = %+v", hostCfg.Ulimits)
 	}
-	if len(hostCfg.DeviceRequests) != 1 || hostCfg.DeviceRequests[0].Count != -1 {
+	if len(hostCfg.DeviceRequests) != 1 ||
+		!reflect.DeepEqual(hostCfg.DeviceRequests[0].DeviceIDs, []string{"0", "1"}) {
 		t.Errorf("DeviceRequests = %+v", hostCfg.DeviceRequests)
 	}
 }
@@ -217,16 +215,16 @@ mode = "coordinator"
 [coordinator]
 # Self-reference so the embedded engine re-reads this file and applies the floor.
 config_file = "/tmp/zisk-coordinator.toml"
-# 10 compute units per worker over 2 workers.
-min_compute_units = 20
+# 10 compute units per gpu over 6 gpus.
+min_compute_units = 60
 `
-	if got := coordinatorTOML(2); got != want {
+	if got := coordinatorTOML(testConfig().Workers); got != want {
 		t.Errorf("toml =\n%s\nwant\n%s", got, want)
 	}
 }
 
 func TestSetupSpec(t *testing.T) {
-	containerCfg, hostCfg := setupSpec(testConfig())
+	containerCfg, hostCfg := setupSpec(testConfig(), cluster.GPU{Count: 4})
 	if !reflect.DeepEqual([]string(containerCfg.Cmd), []string{"bash", "-c", setupScript}) {
 		t.Errorf("Cmd = %v", containerCfg.Cmd)
 	}
@@ -249,30 +247,9 @@ func TestSetupSpec(t *testing.T) {
 		hostCfg.Mounts[0].Target != "/root/.zisk/provingKey" {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
 	}
-	if len(hostCfg.DeviceRequests) != 1 || hostCfg.DeviceRequests[0].Count != -1 {
+	// The proving-key job builds const-trees on the same GPUs the worker
+	// proves on, so it claims the host's selection rather than every device.
+	if len(hostCfg.DeviceRequests) != 1 || hostCfg.DeviceRequests[0].Count != 4 {
 		t.Errorf("DeviceRequests = %+v", hostCfg.DeviceRequests)
-	}
-}
-
-func TestParseGpus(t *testing.T) {
-	all, err := parseGpus("all")
-	if err != nil || all.Count != -1 || len(all.DeviceIDs) != 0 {
-		t.Errorf("all = %+v, err = %v", all, err)
-	}
-	two, err := parseGpus("2")
-	if err != nil || two.Count != 2 {
-		t.Errorf("2 = %+v, err = %v", two, err)
-	}
-	devices, err := parseGpus("device=0,1")
-	if err != nil || !reflect.DeepEqual(devices.DeviceIDs, []string{"0", "1"}) {
-		t.Errorf("device=0,1 = %+v, err = %v", devices, err)
-	}
-	for _, request := range []container.DeviceRequest{all, two, devices} {
-		if !reflect.DeepEqual(request.Capabilities, [][]string{{"gpu"}}) {
-			t.Errorf("Capabilities = %+v", request.Capabilities)
-		}
-	}
-	if _, err := parseGpus("none"); err == nil {
-		t.Error("expected error for invalid spec")
 	}
 }

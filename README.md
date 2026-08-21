@@ -159,7 +159,11 @@ The forwarder flags travel through the instance `extra_args`. `--elf` and
 OpenVM the ELF must be byte-identical to it. Before opening its port the
 forwarder checks the cluster's key against `--vk` and proves a small warmup
 block, so a mismatched deployment never serves a request and a cold cluster's
-one-time costs never land in a measured test.
+one-time costs never land in a measured test. After a failed test it waits for
+the cluster to report itself ready before timing the next one, so a worker
+restarting after one block does not land in another block's measurement.
+OpenVM reports that readiness, while a ZisK submission waits the recovery out
+instead.
 Results land in `provoor-runs/results` and render in the benchmarkoor UI,
 including live proof phases, per-test proving times, and opcode heatmaps.
 

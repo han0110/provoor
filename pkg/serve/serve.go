@@ -28,6 +28,11 @@ type Prover interface {
 	// ClientVersion is the guest ELF name, identifying the guest and its
 	// zkVM SDK version for run records.
 	ClientVersion() string
+	// WaitReady blocks until the cluster can take a job, returning at once on
+	// a backend whose coordinator reports nothing a client can trust. It is
+	// called outside the measured interval, so a cluster still recovering from
+	// a failed proof does not charge that recovery to the next one.
+	WaitReady(ctx context.Context) error
 	// Warmup proves a small fixed input, so a cold prover's one-time costs
 	// land before the first measured proof.
 	Warmup(ctx context.Context) error
@@ -62,8 +67,12 @@ type Server struct {
 	// Exit terminates the process, os.Exit in production.
 	Exit func(code int)
 
-	mu       sync.Mutex
-	outputMu sync.Mutex
+	mu sync.Mutex
+	// lastProveFailed reports whether the previous proof failed, so the next
+	// one waits for the cluster to come back before its own clock starts. It
+	// is read and written under mu, which one proof holds throughout.
+	lastProveFailed bool
+	outputMu        sync.Mutex
 }
 
 type request struct {
@@ -210,11 +219,23 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// A failed proof can leave the cluster restarting a worker, so the next
+	// one waits for it on the request context rather than its own budget,
+	// keeping the recovery out of both the timeout and the measurement. A
+	// cluster that stays down is left to fail this proof on its own terms.
+	if s.lastProveFailed {
+		s.printf("waiting for the cluster before proving %s", payload.BlockHash)
+		if err := s.Prover.WaitReady(requestCtx); err != nil {
+			s.printf("cluster still not ready, proving %s anyway: %v", payload.BlockHash, err)
+		}
+	}
+
 	s.printf("proving %s (%d input bytes)", payload.BlockHash, len(input))
 	started := time.Now()
 	outcome, err := s.Prover.Prove(ctx, input, func(phase string) {
 		s.printf("proving %s phase %s", payload.BlockHash, phase)
 	})
+	s.lastProveFailed = err != nil
 	if err != nil {
 		s.printf("proving %s failed: %v", payload.BlockHash, err)
 		// A client that went away says nothing about the cluster's health,

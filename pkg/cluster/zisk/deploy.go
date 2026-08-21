@@ -58,9 +58,9 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 	// downloads and builds const-trees, slow enough to look like a hang, so
 	// progress streams line by line.
 	g, gctx = errgroup.WithContext(ctx)
-	for _, worker := range cfg.Workers {
+	for i, worker := range cfg.Workers {
 		g.Go(func() error {
-			return d.ensureProvingKey(gctx, hosts.Client(worker.SSH), worker.Name)
+			return d.ensureProvingKey(gctx, hosts.Client(worker.SSH), worker, cluster.WorkerName(i, worker.GPU))
 		})
 	}
 	if err := g.Wait(); err != nil {
@@ -72,9 +72,9 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 	}
 
 	g, gctx = errgroup.WithContext(ctx)
-	for _, worker := range cfg.Workers {
+	for i, worker := range cfg.Workers {
 		g.Go(func() error {
-			return d.startWorker(gctx, worker)
+			return d.startWorker(gctx, worker, cluster.WorkerName(i, worker.GPU))
 		})
 	}
 	if err := g.Wait(); err != nil {
@@ -93,8 +93,14 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 	}
 
 	out.Printf("cluster ready, coordinator api on %s port %d, %d workers registered, %d guests set up",
-		cfg.Coordinator.Name, apiPort, len(cfg.Workers), len(cfg.Guests))
+		cfg.coordinatorHost(), apiPort, len(cfg.Workers), len(cfg.Guests))
 	return nil
+}
+
+// coordinatorHost labels the coordinator's progress lines, its SSH host being
+// the only name a deployment gives it.
+func (cfg *Config) coordinatorHost() string {
+	return cluster.HostName(cfg.Coordinator.SSH)
 }
 
 // restartAfterSetup restarts the coordinator and every worker once the guests
@@ -121,7 +127,7 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 // A ZisK release that survives consecutive setups would retire this.
 func (d *deployment) restartAfterSetup(ctx context.Context) error {
 	coordinator := d.hosts.Client(d.cfg.Coordinator.SSH)
-	node := d.cfg.Coordinator.Name
+	node := d.cfg.coordinatorHost()
 	d.out.Printf("[%s] restarting the cluster so each guest is set up again when it is proved...", node)
 
 	if err := coordinator.ContainerRestart(ctx, coordinatorContainer, container.StopOptions{}); err != nil {
@@ -131,14 +137,14 @@ func (d *deployment) restartAfterSetup(ctx context.Context) error {
 		return err
 	}
 
-	for _, worker := range d.cfg.Workers {
+	for i, worker := range d.cfg.Workers {
 		cli := d.hosts.Client(worker.SSH)
 		if err := cli.ContainerRestart(ctx, workerContainer, container.StopOptions{}); err != nil {
-			return fmt.Errorf("restarting worker on %s: %w", worker.Name, err)
+			return fmt.Errorf("restarting %s: %w", cluster.WorkerName(i, worker.GPU), err)
 		}
 	}
-	for _, worker := range d.cfg.Workers {
-		if err := d.waitRegistered(ctx, worker); err != nil {
+	for i, worker := range d.cfg.Workers {
+		if err := d.waitRegistered(ctx, worker, cluster.WorkerName(i, worker.GPU)); err != nil {
 			return err
 		}
 	}
@@ -150,27 +156,27 @@ func (d *deployment) restartAfterSetup(ctx context.Context) error {
 // log is read from the container's own start time, which the daemon stamps on
 // the same clock as the lines themselves and which a restart moves forward,
 // so an earlier run's registration is never mistaken for this one's.
-func (d *deployment) waitRegistered(ctx context.Context, worker Worker) error {
+func (d *deployment) waitRegistered(ctx context.Context, worker Worker, name string) error {
 	cli := d.hosts.Client(worker.SSH)
 	deadline := time.Now().Add(registrationTimeout)
 	for {
 		inspect, err := cli.ContainerInspect(ctx, workerContainer)
 		if err != nil {
-			return fmt.Errorf("inspecting worker on %s: %w", worker.Name, err)
+			return fmt.Errorf("inspecting %s: %w", name, err)
 		}
 		if inspect.State == nil || !inspect.State.Running {
-			return fmt.Errorf("worker on %s exited before registering, journalctl CONTAINER_NAME=%s has the log",
-				worker.Name, workerContainer)
+			return fmt.Errorf("%s exited before registering, journalctl CONTAINER_NAME=%s has the log",
+				name, workerContainer)
 		}
 		logs, err := cluster.ContainerLogsText(ctx, cli, workerContainer, inspect.State.StartedAt)
 		if err != nil {
-			return fmt.Errorf("reading worker log on %s: %w", worker.Name, err)
+			return fmt.Errorf("reading the log of %s: %w", name, err)
 		}
 		if strings.Contains(logs, registrationLine) {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("worker on %s did not register after %s", worker.Name, registrationTimeout)
+			return fmt.Errorf("%s did not register after %s", name, registrationTimeout)
 		}
 		select {
 		case <-ctx.Done():
@@ -197,11 +203,11 @@ func (cfg *Config) Down(ctx context.Context, w io.Writer) error {
 		errs []error
 	)
 	var wg sync.WaitGroup
-	for _, worker := range cfg.Workers {
+	for i, worker := range cfg.Workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := cluster.StopAndRemove(ctx, hosts.Client(worker.SSH), workerContainer, worker.Name, out); err != nil {
+			if err := cluster.StopAndRemove(ctx, hosts.Client(worker.SSH), workerContainer, cluster.WorkerName(i, worker.GPU), out); err != nil {
 				mu.Lock()
 				errs = append(errs, err)
 				mu.Unlock()
@@ -209,7 +215,7 @@ func (cfg *Config) Down(ctx context.Context, w io.Writer) error {
 		}()
 	}
 	wg.Wait()
-	if err := cluster.StopAndRemove(ctx, hosts.Client(cfg.Coordinator.SSH), coordinatorContainer, cfg.Coordinator.Name, out); err != nil {
+	if err := cluster.StopAndRemove(ctx, hosts.Client(cfg.Coordinator.SSH), coordinatorContainer, cfg.coordinatorHost(), out); err != nil {
 		errs = append(errs, err)
 	}
 	if err := errors.Join(errs...); err != nil {
@@ -236,7 +242,7 @@ type deployment struct {
 	out   *cluster.Output
 }
 
-func (d *deployment) ensureProvingKey(ctx context.Context, cli *client.Client, node string) error {
+func (d *deployment) ensureProvingKey(ctx context.Context, cli *client.Client, worker Worker, node string) error {
 	volumeName := provingKeyVolume(d.cfg.ImageTag)
 	if _, err := cli.VolumeInspect(ctx, volumeName); err == nil {
 		d.out.Printf("[%s] proving-key volume %s already exists", node, volumeName)
@@ -250,7 +256,7 @@ func (d *deployment) ensureProvingKey(ctx context.Context, cli *client.Client, n
 		return fmt.Errorf("creating volume %s on %s: %w", volumeName, node, err)
 	}
 
-	containerCfg, hostCfg := setupSpec(d.cfg)
+	containerCfg, hostCfg := setupSpec(d.cfg, worker.GPU)
 	output := d.out.Prefixed(node)
 	err := cluster.RunToCompletion(ctx, cli, setupContainer, containerCfg, hostCfg, nil, output)
 	output.Flush()
@@ -271,7 +277,7 @@ func (d *deployment) ensureProvingKey(ctx context.Context, cli *client.Client, n
 
 func (d *deployment) startCoordinator(ctx context.Context) error {
 	cli := d.hosts.Client(d.cfg.Coordinator.SSH)
-	node := d.cfg.Coordinator.Name
+	node := d.cfg.coordinatorHost()
 
 	running, err := cluster.EnsureAbsentUnlessRunning(ctx, cli, coordinatorContainer)
 	if err != nil {
@@ -285,7 +291,7 @@ func (d *deployment) startCoordinator(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("creating coordinator on %s: %w", node, err)
 		}
-		toml := coordinatorTOML(len(d.cfg.Workers))
+		toml := coordinatorTOML(d.cfg.Workers)
 		if err := cluster.CopyFileToContainer(ctx, cli, created.ID, coordinatorConfig, []byte(toml)); err != nil {
 			return fmt.Errorf("writing coordinator config on %s: %w", node, err)
 		}
@@ -302,38 +308,35 @@ func (d *deployment) startCoordinator(ctx context.Context) error {
 	return nil
 }
 
-func (d *deployment) startWorker(ctx context.Context, worker Worker) error {
+func (d *deployment) startWorker(ctx context.Context, worker Worker, name string) error {
 	cli := d.hosts.Client(worker.SSH)
 
 	running, err := cluster.EnsureAbsentUnlessRunning(ctx, cli, workerContainer)
 	if err != nil {
-		return fmt.Errorf("worker on %s: %w", worker.Name, err)
+		return fmt.Errorf("%s: %w", name, err)
 	}
 	if running {
-		d.out.Printf("[%s] %s already running, run provoor down first to apply config changes", worker.Name, workerContainer)
+		d.out.Printf("[%s] %s already running, run provoor down first to apply config changes", name, workerContainer)
 	} else {
-		numaNodes, err := d.hostTopology(ctx, cli, worker.Name)
+		numaNodes, err := d.hostTopology(ctx, cli, name)
 		if err != nil {
 			return err
 		}
-		containerCfg, hostCfg, err := workerSpec(d.cfg, worker, numaNodes)
-		if err != nil {
-			return err
-		}
+		containerCfg, hostCfg := workerSpec(d.cfg, worker, name, numaNodes)
 		created, err := cli.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, workerContainer)
 		if err != nil {
-			return fmt.Errorf("creating worker on %s: %w", worker.Name, err)
+			return fmt.Errorf("creating %s: %w", name, err)
 		}
 		if err := cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
-			return fmt.Errorf("starting worker on %s: %w", worker.Name, err)
+			return fmt.Errorf("starting %s: %w", name, err)
 		}
-		d.out.Printf("[%s] starting worker, waiting for registration...", worker.Name)
+		d.out.Printf("[%s] starting worker, waiting for registration...", name)
 	}
 
-	if err := d.waitRegistered(ctx, worker); err != nil {
+	if err := d.waitRegistered(ctx, worker, name); err != nil {
 		return err
 	}
-	d.out.Printf("[%s] worker registered", worker.Name)
+	d.out.Printf("[%s] worker registered", name)
 	return nil
 }
 
@@ -380,11 +383,11 @@ func (d *deployment) setupGuest(ctx context.Context, guest cluster.Guest) error 
 		return fmt.Errorf("guest %s: %w", name, err)
 	}
 
-	d.out.Printf("[%s] setting up guest %s...", d.cfg.Coordinator.Name, name)
+	d.out.Printf("[%s] setting up guest %s...", d.cfg.coordinatorHost(), name)
 	if err := client.Setup(ctx, hashID, programVK); err != nil {
 		return fmt.Errorf("guest %s: %w", name, err)
 	}
-	d.out.Printf("[%s] guest %s set up as program %s", d.cfg.Coordinator.Name, name, hashID)
+	d.out.Printf("[%s] guest %s set up as program %s", d.cfg.coordinatorHost(), name, hashID)
 	return nil
 }
 

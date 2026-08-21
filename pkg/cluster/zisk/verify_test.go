@@ -24,10 +24,10 @@ func TestVerifyProof(t *testing.T) {
 }
 
 // TestVerifyProofClusterEnvelope verifies an envelope a coordinator really
-// returned, for the warmup block proved by the guest ere-guests v0.15.0
-// publishes, against that release's published verifying key. Where
-// TestVerifyProof exercises the transcode against a synthesized envelope, this
-// pins it against the encoding a live cluster emits.
+// returned, for the warmup block proved by the reth guest, against the
+// verifying key that cluster derived for it. Where TestVerifyProof exercises
+// the transcode against a synthesized envelope, this pins it against the
+// encoding a live cluster emits.
 func TestVerifyProofClusterEnvelope(t *testing.T) {
 	verifier := boundToFixture(t, readFixture(t, "cluster-program-vk.bin"))
 

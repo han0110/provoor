@@ -37,8 +37,10 @@ type Config struct {
 // exposes.
 type Worker struct {
 	cluster.Node `yaml:",inline"`
-	// Gpus exposes GPUs to the container, all, a count, or device=0,1.
-	Gpus string `yaml:"gpus"`
+	// GPU selects the host's GPUs the container proves on, a count or the
+	// device ids. The compute units the worker advertises are derived from it,
+	// so the coordinator's readiness floor tracks the GPUs actually deployed.
+	GPU cluster.GPU `yaml:"gpu"`
 }
 
 // WorkerConfig applies to every worker. Each field maps onto one mpirun or
@@ -66,11 +68,12 @@ type WorkerConfig struct {
 	// MinimalMemory builds collectors per instance instead of batched,
 	// freeing roughly 11 GB of heap for step-heavy blocks.
 	MinimalMemory bool `yaml:"minimal_memory"`
-	// CPUMops plans memory ops on the CPU and defaults on. The GPU planner is
-	// roughly 6% faster per proof, since the plan wait drops from around
-	// 300 ms to around 115 ms, and it holds far less host memory, but it caps
-	// a proof at 1024 Main segments and aborts the worker above that rather
-	// than failing the job.
+	// CPUMops plans memory ops on the CPU, off by default as upstream has it.
+	// The GPU planner is roughly 6% faster per proof, since the plan wait
+	// drops from around 300 ms to around 115 ms, and it holds far less host
+	// memory, but it caps a proof at 1024 Main segments and aborts the worker
+	// above that rather than failing the job, which is why a deployment
+	// proving blocks near that size turns it on.
 	CPUMops bool `yaml:"cpu_mops"`
 }
 
@@ -83,7 +86,7 @@ func Load(path string) (*Config, error) {
 
 	decoder := yaml.NewDecoder(bytes.NewReader(raw))
 	decoder.KnownFields(true)
-	cfg := newConfig()
+	cfg := &Config{}
 	if err := decoder.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
@@ -95,14 +98,10 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// newConfig is the decode target, carrying the defaults a zero value cannot
-// express. A field defaulting to true has to be seeded before the decode,
-// because afterwards an absent key and an explicit false are the same value.
-// Every other default is a zero value and belongs in applyDefaults.
-func newConfig() *Config {
-	return &Config{Config: WorkerConfig{CPUMops: true}}
-}
-
+// applyDefaults fills in what the deployment itself decides. Every worker knob
+// the cluster reads is left at its zero value when unset, so the worker image
+// applies its own default rather than one this repository invents, and a
+// configuration file spells out only where the deployment diverges.
 func applyDefaults(cfg *Config) {
 	if cfg.Image == "" {
 		cfg.Image = "ghcr.io/han0110/zisk/zisk"
@@ -110,14 +109,6 @@ func applyDefaults(cfg *Config) {
 	if cfg.ImageTag == "" {
 		cfg.ImageTag = "1.1.0-alpha"
 	}
-	nodes := []*cluster.Node{&cfg.Coordinator}
-	for i := range cfg.Workers {
-		nodes = append(nodes, &cfg.Workers[i].Node)
-		if cfg.Workers[i].Gpus == "" {
-			cfg.Workers[i].Gpus = "all"
-		}
-	}
-	cluster.ApplyNodeDefaults(nodes...)
 	if cfg.Config.ShmSizeGB == 0 {
 		cfg.Config.ShmSizeGB = 64
 	}
@@ -140,21 +131,16 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("at least one worker is required")
 	}
 	seenSSH := map[string]bool{}
-	seenName := map[string]bool{}
-	for _, worker := range cfg.Workers {
+	for i, worker := range cfg.Workers {
 		if seenSSH[worker.SSH] {
 			return fmt.Errorf("duplicate worker host %q, one worker entry per host", worker.SSH)
 		}
-		if seenName[worker.Name] {
-			return fmt.Errorf("duplicate worker name %q", worker.Name)
-		}
 		seenSSH[worker.SSH] = true
-		seenName[worker.Name] = true
 		if err := cluster.ValidateColocation(cfg.Coordinator, worker.Node); err != nil {
 			return err
 		}
-		if _, err := parseGpus(worker.Gpus); err != nil {
-			return err
+		if err := worker.GPU.Validate(); err != nil {
+			return fmt.Errorf("worker %d: %w", i, err)
 		}
 	}
 
