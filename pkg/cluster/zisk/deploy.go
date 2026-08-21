@@ -97,8 +97,9 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 	return nil
 }
 
-// coordinatorHost labels the coordinator's progress lines, its SSH host being
-// the only name a deployment gives it.
+// coordinatorHost names the machine the coordinator runs on, which its own
+// progress lines leave out. It reports where the API answers and which host a
+// container failure has to be chased on.
 func (cfg *Config) coordinatorHost() string {
 	return cluster.HostName(cfg.Coordinator.SSH)
 }
@@ -128,7 +129,7 @@ func (cfg *Config) coordinatorHost() string {
 func (d *deployment) restartAfterSetup(ctx context.Context) error {
 	coordinator := d.hosts.Client(d.cfg.Coordinator.SSH)
 	node := d.cfg.coordinatorHost()
-	d.out.Printf("[%s] restarting the cluster so each guest is set up again when it is proved...", node)
+	d.out.Printf("[%s] restarting the cluster so each guest is set up again when it is proved...", cluster.CoordinatorName)
 
 	if err := coordinator.ContainerRestart(ctx, coordinatorContainer, container.StopOptions{}); err != nil {
 		return fmt.Errorf("restarting coordinator on %s: %w", node, err)
@@ -148,7 +149,7 @@ func (d *deployment) restartAfterSetup(ctx context.Context) error {
 			return err
 		}
 	}
-	d.out.Printf("[%s] cluster restarted, every worker registered again", node)
+	d.out.Printf("[%s] cluster restarted, every worker registered again", cluster.CoordinatorName)
 	return nil
 }
 
@@ -215,7 +216,7 @@ func (cfg *Config) Down(ctx context.Context, w io.Writer) error {
 		}()
 	}
 	wg.Wait()
-	if err := cluster.StopAndRemove(ctx, hosts.Client(cfg.Coordinator.SSH), coordinatorContainer, cfg.coordinatorHost(), out); err != nil {
+	if err := cluster.StopAndRemove(ctx, hosts.Client(cfg.Coordinator.SSH), coordinatorContainer, cluster.CoordinatorName, out); err != nil {
 		errs = append(errs, err)
 	}
 	if err := errors.Join(errs...); err != nil {
@@ -284,7 +285,7 @@ func (d *deployment) startCoordinator(ctx context.Context) error {
 		return fmt.Errorf("coordinator on %s: %w", node, err)
 	}
 	if running {
-		d.out.Printf("[%s] %s already running, run provoor down first to apply config changes", node, coordinatorContainer)
+		d.out.Printf("[%s] %s already running, run provoor down first to apply config changes", cluster.CoordinatorName, coordinatorContainer)
 	} else {
 		containerCfg, hostCfg := coordinatorSpec(d.cfg)
 		created, err := cli.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, coordinatorContainer)
@@ -298,13 +299,13 @@ func (d *deployment) startCoordinator(ctx context.Context) error {
 		if err := cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 			return fmt.Errorf("starting coordinator on %s: %w", node, err)
 		}
-		d.out.Printf("[%s] starting coordinator (api %d, cluster %d)...", node, apiPort, clusterPort)
+		d.out.Printf("[%s] starting coordinator (api %d, cluster %d)...", cluster.CoordinatorName, apiPort, clusterPort)
 	}
 
 	if err := cluster.WaitContainerListening(ctx, cli, coordinatorContainer, node, coordinatorReadyTimeout, apiPort, clusterPort); err != nil {
 		return err
 	}
-	d.out.Printf("[%s] coordinator ready (api %d, cluster %d)", node, apiPort, clusterPort)
+	d.out.Printf("[%s] coordinator ready (api %d, cluster %d)", cluster.CoordinatorName, apiPort, clusterPort)
 	return nil
 }
 
@@ -383,11 +384,11 @@ func (d *deployment) setupGuest(ctx context.Context, guest cluster.Guest) error 
 		return fmt.Errorf("guest %s: %w", name, err)
 	}
 
-	d.out.Printf("[%s] setting up guest %s...", d.cfg.coordinatorHost(), name)
+	d.out.Printf("[%s] setting up guest %s...", cluster.CoordinatorName, name)
 	if err := client.Setup(ctx, hashID, programVK); err != nil {
 		return fmt.Errorf("guest %s: %w", name, err)
 	}
-	d.out.Printf("[%s] guest %s set up as program %s", d.cfg.coordinatorHost(), name, hashID)
+	d.out.Printf("[%s] guest %s set up as program %s", cluster.CoordinatorName, name, hashID)
 	return nil
 }
 
