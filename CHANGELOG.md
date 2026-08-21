@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/han0110/provoor/compare/v0.2.0...v0.3.0) (2026-08-21)
+
+
+### Features
+
+* zisk v1.1.0-alpha ([#8](https://github.com/han0110/provoor/issues/8)) ([760d276](https://github.com/han0110/provoor/commit/760d276276ceb8c3d887ce918b576755b0ee7b1a))
+
 ## [0.2.0](https://github.com/han0110/provoor/compare/v0.1.1...v0.2.0) (2026-08-14)
 
 
