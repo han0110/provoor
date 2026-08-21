@@ -6,10 +6,10 @@ zkvm: openvm
 # provoor up downloads each guests entry, pushes the ELF bytes to every host,
 # and checks the cluster's derived key against the vk published beside it.
 guests:
-  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-reth-openvm-v2.1.0-preview.elf
-    vk: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-reth-openvm-v2.1.0-preview.vk
-  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-ethrex-openvm-v2.1.0-preview.elf
-    vk: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-ethrex-openvm-v2.1.0-preview.vk
+  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-reth-openvm-v2.1.0-preview.elf
+    vk: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-reth-openvm-v2.1.0-preview.vk
+  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-ethrex-openvm-v2.1.0-preview.elf
+    vk: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-ethrex-openvm-v2.1.0-preview.vk
   - elf: https://github.com/han0110/zesu-zkvm/releases/download/glamsterdam-devnet-7/stateless-validator-zesu-openvm-v2.1.0-preview.elf
     vk: https://github.com/han0110/zesu-zkvm/releases/download/glamsterdam-devnet-7/stateless-validator-zesu-openvm-v2.1.0-preview.vk
 
