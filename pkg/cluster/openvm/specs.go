@@ -40,8 +40,10 @@ const (
 	// but loadout membership matches on it, so client and deployment fix it
 	// at zero.
 	programVersion = 0
-	// Aggregation shape and watchdog knobs of the manager's proof pipeline,
-	// fixed to the values the pinned image is tuned for.
+	// Aggregation shape of the manager's proof pipeline, the values the
+	// image's own deployment defaults carry. leafPackThreshold is rendered
+	// rather than left out because the manager falls back to 48 for an absent
+	// key, which is not what a deployment of this image runs.
 	leafArity         = 4
 	internalArity     = 3
 	leafPackThreshold = 1000
@@ -53,19 +55,27 @@ func (cfg *Config) imageRef() string {
 	return cfg.Image + ":" + cfg.ImageTag
 }
 
-// The artifacts volume keys on the image tag because its keyset is derived
-// under that image's VM configuration. The RVR cache volume holds the
-// workers' native-compile cache and survives restarts.
-func artifactsVolume(tag string) string {
-	return "openvm-artifacts-" + tag
+// Both volumes key on the OpenVM release rather than the image tag, since a
+// keyset is derived under that release's VM configuration and a native compile
+// targets its runtime. An image rebuilt under another tag therefore reuses the
+// artifacts of the release it carries instead of deriving them again.
+func artifactsVolume(zkvmVersion string) string {
+	return "openvm-artifacts-" + zkvmVersion
 }
 
-func rvrCacheVolume(tag string) string {
-	return "openvm-rvr-cache-" + tag
+func rvrCacheVolume(zkvmVersion string) string {
+	return "openvm-rvr-cache-" + zkvmVersion
 }
 
 func workerContainer(gpu int) string {
 	return workerContainerPrefix + strconv.Itoa(gpu)
+}
+
+// workerName identifies one worker by its position in the configuration and
+// the GPU it owns, the same shape every backend labels a worker with. An
+// OpenVM worker owns exactly one GPU, so its label names that device.
+func workerName(index int, worker Worker) string {
+	return cluster.WorkerName(index, cluster.GPU{DeviceIDs: []int{worker.GPU}})
 }
 
 func workerConfigPath(gpu int) string {
@@ -159,7 +169,7 @@ func managerTOML(cfg *Config) string {
 			LeafArity             int    `toml:"leaf_arity"`
 			InternalArity         int    `toml:"internal_arity"`
 			LeafPackThreshold     int    `toml:"leaf_pack_threshold"`
-			TimeoutSecs           int    `toml:"timeout_secs"`
+			TimeoutSecs           int    `toml:"timeout_secs,omitempty"`
 			PersistFinalProofsDir string `toml:"persist_final_proofs_dir"`
 		} `toml:"proof"`
 		Metrics struct {
@@ -188,7 +198,7 @@ func managerTOML(cfg *Config) string {
 // coordinator's data-network address.
 func managerURL(cfg *Config, worker Worker) string {
 	host := cfg.Coordinator.IP
-	if worker.Name == cfg.Coordinator.Name {
+	if worker.SSH == cfg.Coordinator.SSH {
 		host = "127.0.0.1"
 	}
 	return fmt.Sprintf("http://%s:%d", host, apiPort)
@@ -267,7 +277,7 @@ func coordinatorSpec(cfg *Config, loadout string) (*container.Config, *container
 		Mounts: []mount.Mount{
 			{
 				Type:     mount.TypeVolume,
-				Source:   artifactsVolume(cfg.ImageTag),
+				Source:   artifactsVolume(cfg.ZkvmVersion),
 				Target:   artifactsDir,
 				ReadOnly: true,
 			},
@@ -311,13 +321,13 @@ func workerSpec(cfg *Config, gpu int, cpuset, loadout string) (*container.Config
 		Mounts: []mount.Mount{
 			{
 				Type:     mount.TypeVolume,
-				Source:   artifactsVolume(cfg.ImageTag),
+				Source:   artifactsVolume(cfg.ZkvmVersion),
 				Target:   artifactsDir,
 				ReadOnly: true,
 			},
 			{
 				Type:   mount.TypeVolume,
-				Source: rvrCacheVolume(cfg.ImageTag),
+				Source: rvrCacheVolume(cfg.ZkvmVersion),
 				Target: rvrCacheDir,
 			},
 		},
@@ -356,7 +366,7 @@ func keygenSpec(cfg *Config, prog program) (*container.Config, *container.HostCo
 		ShmSize: int64(cfg.Config.ShmSizeGB) << 30,
 		Mounts: []mount.Mount{{
 			Type:   mount.TypeVolume,
-			Source: artifactsVolume(cfg.ImageTag),
+			Source: artifactsVolume(cfg.ZkvmVersion),
 			Target: artifactsDir,
 		}},
 		Resources: container.Resources{

@@ -13,12 +13,12 @@ import (
 
 // readFixture loads one of the testdata fixtures, which come from two
 // sources. proof.bin, program_vk.bin and public_values.bin are the zisk
-// verifier fixtures ere v0.15.0 ships in crates/verifier/zisk/tests/fixtures,
-// a VadcopFinalProof in bincode's legacy configuration with the 32 byte
-// program vk it proves under and the 256 bytes it commits to. The
-// cluster-prefixed three are a warmup block proved by a real coordinator, the
-// envelope it returned, the verifying key ere-guests v0.15.0 publishes for
-// that guest, and the public values verification yields.
+// verifier fixtures ere ships in crates/verifier/zisk/tests/fixtures, a
+// VadcopFinalProof in bincode's legacy configuration with the 32 byte program
+// vk it proves under and the 256 bytes it commits to. The cluster-prefixed
+// three are the warmup block proved by a real ZisK 1.1.0-alpha coordinator,
+// the envelope it returned, the verifying key it derived for the reth guest,
+// and the public values verification yields.
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	fixture, err := os.ReadFile(filepath.Join("testdata", name))
@@ -55,22 +55,23 @@ func appendU64Vec(buf []byte, words []uint64) []byte {
 // accepted shape.
 type envelope struct {
 	plonk        bool
-	minimal      bool
+	kind         uint64
 	hashFamily   string
 	proofWords   []uint64
 	ziskVKWords  []uint64
-	publicValues []byte
+	publicValues []uint64
 	vkWords      []uint64
 }
 
 func validEnvelope() envelope {
+	vkWords := []uint64{5, 6, 7, 8}
 	return envelope{
-		minimal:      true,
+		kind:         vadcopKindMinimal,
 		hashFamily:   vadcopFinalHashFamily,
 		proofWords:   []uint64{1, 2, 3},
 		ziskVKWords:  []uint64{4, 300},
-		publicValues: samplePublicValues(),
-		vkWords:      []uint64{5, 6, 7, 8},
+		publicValues: samplePublicValues(vkWords),
+		vkWords:      vkWords,
 	}
 }
 
@@ -82,28 +83,24 @@ func (e envelope) encode() []byte {
 		buf = appendVarint(buf, 0)
 		buf = appendU64Vec(buf, e.proofWords)
 		buf = appendU64Vec(buf, e.ziskVKWords)
-		if e.minimal {
-			buf = append(buf, 1)
-		} else {
-			buf = append(buf, 0)
-		}
+		buf = appendVarint(buf, e.kind)
 		buf = appendVarint(buf, uint64(len(e.hashFamily)))
 		buf = append(buf, e.hashFamily...)
+		buf = appendU64Vec(buf, e.publicValues)
 	}
-	buf = appendVarint(buf, uint64(len(e.publicValues)))
-	buf = append(buf, e.publicValues...)
 	buf = appendU64Vec(buf, e.vkWords)
 	// ProgramVK closes with the hash_mode discriminant, which decoding never
 	// reaches.
 	return appendVarint(buf, 0)
 }
 
-// samplePublicValues is a 33 byte commitment counting up from 1 followed by
-// a zero tail.
-func samplePublicValues() []byte {
-	publicValues := make([]byte, 256)
+// samplePublicValues is a publics_full vector, the program vk followed by a
+// 33 word commitment counting up from 1 and a zero tail.
+func samplePublicValues(vkWords []uint64) []uint64 {
+	publicValues := make([]uint64, programVKWords+publicValuesWords)
+	copy(publicValues, vkWords)
 	for i := range 33 {
-		publicValues[i] = byte(i + 1)
+		publicValues[programVKWords+i] = uint64(i + 1)
 	}
 	return publicValues
 }
@@ -174,17 +171,17 @@ func narrowWords(t *testing.T, words []uint64) []byte {
 }
 
 // fixtureEnvelope shapes the fixture proof the way a coordinator sends it,
-// splitting the proof's public values back into the program vk and the
-// commitment the envelope carries separately.
+// its public values carried as publics_full and repeated in the envelope's
+// own program vk.
 func fixtureEnvelope(t *testing.T) envelope {
 	t.Helper()
 	decoded := decodeProof(t, readFixture(t, "proof.bin"))
 	return envelope{
-		minimal:      true,
+		kind:         vadcopKindMinimal,
 		hashFamily:   vadcopFinalHashFamily,
 		proofWords:   decoded.proofWords,
 		ziskVKWords:  []uint64{9, 10, 11, 12},
-		publicValues: narrowWords(t, decoded.publicValues[programVKWords:]),
+		publicValues: decoded.publicValues,
 		vkWords:      decoded.publicValues[:programVKWords],
 	}
 }
@@ -197,7 +194,7 @@ func TestFixtureLayout(t *testing.T) {
 	if !decoded.compressed || decoded.hashFamily != vadcopFinalHashFamily {
 		t.Fatalf("compressed = %v, hash family = %q", decoded.compressed, decoded.hashFamily)
 	}
-	if want := programVKWords + publicValuesBytes/4; len(decoded.publicValues) != want {
+	if want := programVKWords + publicValuesWords; len(decoded.publicValues) != want {
 		t.Fatalf("public values hold %d words, want %d", len(decoded.publicValues), want)
 	}
 	if got, want := widenWords(decoded.publicValues[:programVKWords]), readFixture(t, "program_vk.bin"); !bytes.Equal(got, want) {
@@ -227,9 +224,9 @@ func TestTranscodeProofRejects(t *testing.T) {
 		wantErr string
 	}{
 		{"plonk", func(e *envelope) { e.plonk = true }, "plonk"},
-		{"not_minimal", func(e *envelope) { e.minimal = false }, "vadcop"},
+		{"not_minimal", func(e *envelope) { e.kind = 0 }, "vadcop"},
 		{"wrong_hash", func(e *envelope) { e.hashFamily = "Poseidon2" }, "vadcop"},
-		{"short_publics", func(e *envelope) { e.publicValues = e.publicValues[:255] }, "public values"},
+		{"short_publics", func(e *envelope) { e.publicValues = e.publicValues[:programVKWords+publicValuesWords-1] }, "public values"},
 		{"short_vk", func(e *envelope) { e.vkWords = e.vkWords[:3] }, "program vk"},
 		{"long_vk", func(e *envelope) { e.vkWords = append(e.vkWords, 9) }, "program vk"},
 	}

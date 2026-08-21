@@ -1,12 +1,20 @@
 package cluster
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/docker/cli/cli/connhelper"
+	"github.com/docker/cli/cli/connhelper/commandconn"
+	"github.com/docker/cli/cli/connhelper/ssh"
 	"github.com/docker/docker/client"
 )
+
+// tunnelConnectTimeout bounds the ssh connect of one tunnelled dial, so an
+// unreachable bastion fails in seconds rather than on the TCP default.
+const tunnelConnectTimeout = "10"
 
 // daemonURL turns a config SSH destination into a Docker daemon URL. A bare
 // destination becomes an ssh URL so the local ssh binary resolves it, and an
@@ -60,4 +68,52 @@ func Dial(destination string) (*client.Client, error) {
 		return nil, fmt.Errorf("creating docker client for %q: %w", destination, err)
 	}
 	return cli, nil
+}
+
+// TunnelDialer reaches remoteAddr as the host behind an SSH destination sees
+// it, by spawning the local ssh binary in stdio-forward mode. It is how a
+// client reaches a service port that only the cluster's own network routes,
+// which is the ordinary case for a deployment behind a bastion whose SSH proxy
+// carries no cluster traffic. The local ssh binary does the work for the same
+// reason [Dial] uses it, so the user's SSH configuration, agent, and proxies
+// all apply and no key material is ever read.
+//
+// The returned dialer ignores the address it is called with, since the
+// destination and remoteAddr already name both ends. An empty destination
+// yields a nil dialer, leaving the caller to connect directly.
+func TunnelDialer(destination, remoteAddr string) (func(context.Context, string) (net.Conn, error), error) {
+	if destination == "" {
+		return nil, nil
+	}
+	args, err := tunnelArgs(destination, remoteAddr)
+	if err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context, _ string) (net.Conn, error) {
+		conn, err := commandconn.New(ctx, "ssh", args...)
+		if err != nil {
+			return nil, fmt.Errorf("tunnelling to %s through %q: %w", remoteAddr, destination, err)
+		}
+		return conn, nil
+	}, nil
+}
+
+// tunnelArgs builds the ssh invocation of one stdio forward. -W implies -N and
+// -T, so ssh forwards to remoteAddr and runs no remote command, which is why
+// none of the remote-shell quoting the Docker connection helper needs applies
+// here. A destination carrying no user leaves the account to the user's own
+// SSH configuration.
+func tunnelArgs(destination, remoteAddr string) ([]string, error) {
+	spec, err := ssh.ParseURL(daemonURL(destination))
+	if err != nil {
+		return nil, fmt.Errorf("ssh destination %q: %w", destination, err)
+	}
+	var args []string
+	if spec.User != "" {
+		args = append(args, "-l", spec.User)
+	}
+	if spec.Port != "" {
+		args = append(args, "-p", spec.Port)
+	}
+	return append(args, "-o", "ConnectTimeout="+tunnelConnectTimeout, "-W", remoteAddr, "--", spec.Host), nil
 }

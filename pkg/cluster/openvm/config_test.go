@@ -25,6 +25,7 @@ const minimalGuest = `guests:
 
 const minimalConfig = `
 zkvm: openvm
+zkvm_version: 2.1.0-preview
 ` + minimalGuest + `coordinator:
   ssh: user@10.0.0.1
   ip: 10.0.0.1
@@ -36,29 +37,54 @@ workers:
     gpu: 0
 `
 
+// TestDefaultsOnlyConfigDeploys pins that a configuration carrying no config
+// block renders a usable deployment. Every knob it leaves out has to reach the
+// image as an absent key rather than a zero, which the manager rejects, and
+// the prover capacities have to be rendered because the manager alone has no
+// fallback for them.
+func TestDefaultsOnlyConfigDeploys(t *testing.T) {
+	cfg, err := Load(writeConfig(t, minimalConfig))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := managerTOML(cfg)
+	if strings.Contains(manager, "timeout_secs") {
+		t.Errorf("timeout_secs must be omitted so the manager applies its own, got\n%s", manager)
+	}
+	// Only the workers carry a segment memory, so the manager's table drops it
+	// whatever the configuration says.
+	if strings.Contains(manager, "default_segment_memory") {
+		t.Errorf("the manager table must not carry a segment memory, got\n%s", manager)
+	}
+	for _, want := range []string{"max_app_provers = 2", "max_leaf_provers = 2", "max_internal_provers = 1"} {
+		if !strings.Contains(manager, want) {
+			t.Errorf("the manager config must carry %q, it has no fallback for it, got\n%s", want, manager)
+		}
+	}
+	if worker := workerTOML(cfg, cfg.Workers[0], 0); !strings.Contains(worker, "default_segment_memory = 16106127360") {
+		t.Errorf("a worker must carry the default segment memory, got\n%s", worker)
+	}
+}
+
 func TestLoadDefaults(t *testing.T) {
 	cfg, err := Load(writeConfig(t, minimalConfig))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Image != "ghcr.io/han0110/openvm" {
+	if cfg.Image != "ghcr.io/han0110/provoor/openvm" {
 		t.Errorf("Image = %q", cfg.Image)
 	}
 	if cfg.ImageTag != "2.1.0-preview" {
 		t.Errorf("ImageTag = %q", cfg.ImageTag)
 	}
-	if cfg.Coordinator.Name != "10.0.0.1" {
-		t.Errorf("Coordinator.Name = %q", cfg.Coordinator.Name)
-	}
-	if cfg.Workers[1].Name != "10.0.0.2" {
-		t.Errorf("Workers[1].Name = %q", cfg.Workers[1].Name)
-	}
 	want := ProverConfig{
 		AppProvers:      2,
 		LeafProvers:     2,
 		InternalProvers: 1,
-		TimeoutSecs:     1800,
-		ShmSizeGB:       2,
+		// Left at zero so the manager applies its own deadline.
+		TimeoutSecs:   0,
+		ShmSizeGB:     2,
+		SegmentMemory: 15 << 30,
 	}
 	if cfg.Config != want {
 		t.Errorf("Config = %+v", cfg.Config)
@@ -68,6 +94,7 @@ func TestLoadDefaults(t *testing.T) {
 func TestLoadFull(t *testing.T) {
 	cfg, err := Load(writeConfig(t, `
 zkvm: openvm
+zkvm_version: 2.1.0-preview
 image: ghcr.io/example/openvm
 image_tag: 3.0.0
 verbose: 1
@@ -77,18 +104,14 @@ guests:
   - elf: https://example.com/b.elf
     vk: https://example.com/b.vk
 coordinator:
-  name: node1
   ssh: ssh://user@203.0.113.1:2222
   ip: 10.0.0.1
 workers:
-  - name: node1
-    ssh: ssh://user@203.0.113.1:2222
+  - ssh: ssh://user@203.0.113.1:2222
     gpu: 0
-  - name: node1
-    ssh: ssh://user@203.0.113.1:2222
+  - ssh: ssh://user@203.0.113.1:2222
     gpu: 1
-  - name: node2
-    ssh: ssh://user@203.0.113.2:2222
+  - ssh: ssh://user@203.0.113.2:2222
     ip: 10.0.0.2
     gpu: 0
 config:
@@ -122,6 +145,25 @@ config:
 	}
 	if cfg.Config != want {
 		t.Errorf("Config = %+v", cfg.Config)
+	}
+}
+
+// TestImageTagDefaultsToTheZkvmVersion pins the tie between the two, and that
+// an explicit tag leaves the volumes on the release they were derived under.
+func TestImageTagDefaultsToTheZkvmVersion(t *testing.T) {
+	cfg, err := Load(writeConfig(t, minimalConfig))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ImageTag != cfg.ZkvmVersion {
+		t.Errorf("ImageTag = %q, want the zkvm version %q", cfg.ImageTag, cfg.ZkvmVersion)
+	}
+	tagged, err := Load(writeConfig(t, minimalConfig+"image_tag: local\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := artifactsVolume(tagged.ZkvmVersion); got != "openvm-artifacts-2.1.0-preview" {
+		t.Errorf("artifacts volume = %q, want it keyed on the release", got)
 	}
 }
 
@@ -187,6 +229,11 @@ func TestLoadValidation(t *testing.T) {
 			name:    "negative gpu",
 			config:  strings.Replace(minimalConfig, "  - ssh: user@10.0.0.1\n    gpu: 0\n", "  - ssh: user@10.0.0.1\n    gpu: -1\n", 1),
 			wantErr: "device id",
+		},
+		{
+			name:    "missing zkvm_version",
+			config:  strings.Replace(minimalConfig, "zkvm_version: 2.1.0-preview\n", "", 1),
+			wantErr: "zkvm_version is required",
 		},
 		{
 			name:    "verbose out of range",

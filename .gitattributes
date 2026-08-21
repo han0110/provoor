@@ -1,0 +1,3 @@
+# A fixture digest can happen to carry no NUL byte, which git would otherwise
+# read as text and rewrite on checkout.
+*.bin binary

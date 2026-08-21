@@ -1,32 +1,28 @@
-# ZisK cluster across four hosts with four GPUs each, one worker per host
-# spanning all of them. Placeholders are filled from .env by
-# scripts/provoor.sh, so real addresses stay out of version control.
 zkvm: zisk
+zkvm_version: 1.1.0-alpha
 
-# provoor up sets each guests entry up on the cluster and checks the key that
-# setup derives against the vk published beside the ELF.
 guests:
-  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-reth-zisk-v1.0.0-alpha.elf
-    vk: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-reth-zisk-v1.0.0-alpha.vk
-  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-ethrex-zisk-v1.0.0-alpha.elf
-    vk: https://github.com/eth-act/ere-guests/releases/download/v0.15.0/stateless-validator-ethrex-zisk-v1.0.0-alpha.vk
+  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-reth-zisk-v1.1.0-alpha.elf
+    vk: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-reth-zisk-v1.1.0-alpha.vk
+  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-ethrex-zisk-v1.1.0-alpha.elf
+    vk: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-ethrex-zisk-v1.1.0-alpha.vk
+  - elf: https://github.com/han0110/ere-guests/releases/download/v0.16.0/stateless-validator-zesu-zisk-v1.1.0-alpha.elf
+    vk: https://github.com/han0110/ere-guests/releases/download/v0.16.0/stateless-validator-zesu-zisk-v1.1.0-alpha.vk
 
 coordinator:
-  name: node1
   ssh: ${NODE1_SSH}
   ip: ${NODE1_IP}
 
 workers:
-  - name: node1
-    ssh: ${NODE1_SSH}
-  - name: node2
-    ssh: ${NODE2_SSH}
-  - name: node3
-    ssh: ${NODE3_SSH}
-  - name: node4
-    ssh: ${NODE4_SSH}
-
-config:
-  # Frees roughly 11 GB of heap, which step-heavy blocks need on a 32 GB card.
-  minimal_memory: true
-  max_witness_stored: 4
+  - ssh: ${NODE1_SSH}
+    gpu:
+      count: 4
+  - ssh: ${NODE2_SSH}
+    gpu:
+      count: 4
+  - ssh: ${NODE3_SSH}
+    gpu:
+      count: 4
+  - ssh: ${NODE4_SSH}
+    gpu:
+      count: 4

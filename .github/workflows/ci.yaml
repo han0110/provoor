@@ -16,12 +16,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # The verifier library is a release asset rather than a module, so it is
-      # fetched before anything compiles against it.
       - run: scripts/fetch-verifier.sh
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./...
-      # Catches a broken Dockerfile on the pull request, before the release
-      # workflow reaches its own build.
-      - run: docker build .
+      - run: docker build -f dockers/Dockerfile .

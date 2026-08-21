@@ -47,6 +47,14 @@ func NewProver(ctx context.Context, endpoint string, elf, programVK []byte, elfS
 	return &Prover{client: client, hashID: hashID, version: guestName, sdkVersion: sdkVersion}, nil
 }
 
+// WaitReady returns at once. A ZisK coordinator exposes no readiness a client
+// can trust, its one cluster metric over-reporting both while a lost worker is
+// still held and after it is dropped, so submitting is the only faithful way
+// to learn whether the cluster can take a job. Prove waits one out.
+func (p *Prover) WaitReady(context.Context) error {
+	return nil
+}
+
 // SdkVersion is the zkVM SDK version the guest ELF name carries, empty when
 // unnamed.
 func (p *Prover) SdkVersion() string {

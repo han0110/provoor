@@ -98,7 +98,7 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 	}
 
 	out.Printf("cluster ready, coordinator api on %s port %d, %d worker containers accepting work",
-		cfg.Coordinator.Name, apiPort, numProvers(cfg))
+		cfg.coordinatorHost(), apiPort, numProvers(cfg))
 	return nil
 }
 
@@ -128,7 +128,7 @@ func (cfg *Config) Down(ctx context.Context, w io.Writer) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := stopWorkers(ctx, hosts.Client(worker.SSH), worker.Name, out); err != nil {
+			if err := stopWorkers(ctx, hosts.Client(worker.SSH), cluster.HostName(worker.SSH), out); err != nil {
 				mu.Lock()
 				errs = append(errs, err)
 				mu.Unlock()
@@ -136,7 +136,7 @@ func (cfg *Config) Down(ctx context.Context, w io.Writer) error {
 		}()
 	}
 	wg.Wait()
-	if err := cluster.StopAndRemove(ctx, hosts.Client(cfg.Coordinator.SSH), coordinatorContainer, cfg.Coordinator.Name, out); err != nil {
+	if err := cluster.StopAndRemove(ctx, hosts.Client(cfg.Coordinator.SSH), coordinatorContainer, cfg.coordinatorHost(), out); err != nil {
 		errs = append(errs, err)
 	}
 	if err := errors.Join(errs...); err != nil {
@@ -185,6 +185,12 @@ func (cfg *Config) destinations() []string {
 	return destinations
 }
 
+// coordinatorHost labels the coordinator's progress lines, its SSH host being
+// the only name a deployment gives it.
+func (cfg *Config) coordinatorHost() string {
+	return cluster.HostName(cfg.Coordinator.SSH)
+}
+
 // resolvePrograms reads every guest's ELF and verifying key and derives its
 // loadout entry, rejecting duplicates whose keysets would collide.
 func resolvePrograms(ctx context.Context, guests []cluster.Guest) ([]program, error) {
@@ -218,19 +224,24 @@ type deployment struct {
 // node is one deployment host in its artifact-provisioning role, the
 // coordinator and workers deduplicated by destination.
 type node struct {
-	ssh  string
-	name string
+	ssh string
+}
+
+// name labels the host's progress lines, its SSH host being the only name a
+// deployment gives it.
+func (n node) name() string {
+	return cluster.HostName(n.ssh)
 }
 
 func (d *deployment) nodes() []node {
-	nodes := []node{{ssh: d.cfg.Coordinator.SSH, name: d.cfg.Coordinator.Name}}
+	nodes := []node{{ssh: d.cfg.Coordinator.SSH}}
 	seen := map[string]bool{d.cfg.Coordinator.SSH: true}
 	for _, worker := range d.cfg.Workers {
 		if seen[worker.SSH] {
 			continue
 		}
 		seen[worker.SSH] = true
-		nodes = append(nodes, node{ssh: worker.SSH, name: worker.Name})
+		nodes = append(nodes, node{ssh: worker.SSH})
 	}
 	return nodes
 }
@@ -251,7 +262,7 @@ func (d *deployment) ensureArtifacts(ctx context.Context, n node) error {
 		}
 	}
 	if len(missing) == 0 {
-		d.out.Printf("[%s] all keysets already in volume %s", n.name, artifactsVolume(d.cfg.ImageTag))
+		d.out.Printf("[%s] all keysets already in volume %s", n.name(), artifactsVolume(d.cfg.ZkvmVersion))
 	}
 	return d.verifyBaselines(ctx, cli, n)
 }
@@ -268,7 +279,7 @@ func (d *deployment) verifyBaselines(ctx context.Context, cli *client.Client, n 
 		strings.Join(d.programNames(), " "), artifactsDir, programVersion)
 	output, err := d.probeArtifacts(ctx, cli, probe)
 	if err != nil {
-		return fmt.Errorf("digesting baselines on %s: %w", n.name, err)
+		return fmt.Errorf("digesting baselines on %s: %w", n.name(), err)
 	}
 
 	digests := map[string]string{}
@@ -281,10 +292,10 @@ func (d *deployment) verifyBaselines(ctx context.Context, cli *client.Client, n 
 		configured := sha256.Sum256(prog.verifyingKey)
 		if want := hex.EncodeToString(configured[:]); digests[prog.name] != want {
 			return fmt.Errorf("program %s on %s derived a baseline of sha256 %q, the vk configured for %s hashes to %s",
-				prog.name, n.name, digests[prog.name], prog.source, want)
+				prog.name, n.name(), digests[prog.name], prog.source, want)
 		}
 	}
-	d.out.Printf("[%s] every keyset matches its configured vk", n.name)
+	d.out.Printf("[%s] every keyset matches its configured vk", n.name())
 	return nil
 }
 
@@ -292,11 +303,11 @@ func (d *deployment) verifyBaselines(ctx context.Context, cli *client.Client, n 
 // when the artifacts volume does not exist yet and otherwise by each
 // program's verification baseline, the last file keygen moves into place.
 func (d *deployment) missingPrograms(ctx context.Context, cli *client.Client, n node) ([]program, error) {
-	volumeName := artifactsVolume(d.cfg.ImageTag)
+	volumeName := artifactsVolume(d.cfg.ZkvmVersion)
 	if _, err := cli.VolumeInspect(ctx, volumeName); client.IsErrNotFound(err) {
 		return d.programs, nil
 	} else if err != nil {
-		return nil, fmt.Errorf("inspecting volume %s on %s: %w", volumeName, n.name, err)
+		return nil, fmt.Errorf("inspecting volume %s on %s: %w", volumeName, n.name(), err)
 	}
 
 	probe := fmt.Sprintf(
@@ -304,7 +315,7 @@ func (d *deployment) missingPrograms(ctx context.Context, cli *client.Client, n 
 		strings.Join(d.programNames(), " "), artifactsDir, programVersion)
 	output, err := d.probeArtifacts(ctx, cli, probe)
 	if err != nil {
-		return nil, fmt.Errorf("probing keysets on %s: %w", n.name, err)
+		return nil, fmt.Errorf("probing keysets on %s: %w", n.name(), err)
 	}
 
 	present := map[string]bool{}
@@ -334,7 +345,7 @@ func (d *deployment) probeArtifacts(ctx context.Context, cli *client.Client, scr
 	containerCfg := &container.Config{Image: d.cfg.imageRef(), Cmd: []string{"bash", "-c", script}}
 	hostCfg := &container.HostConfig{Mounts: []mount.Mount{{
 		Type:     mount.TypeVolume,
-		Source:   artifactsVolume(d.cfg.ImageTag),
+		Source:   artifactsVolume(d.cfg.ZkvmVersion),
 		Target:   artifactsDir,
 		ReadOnly: true,
 	}}}
@@ -349,9 +360,9 @@ func (d *deployment) probeArtifacts(ctx context.Context, cli *client.Client, scr
 // the shared proving keys stay untouched, keygen only writes them after
 // succeeding.
 func (d *deployment) runKeygen(ctx context.Context, cli *client.Client, n node, prog program) error {
-	d.out.Printf("[%s] deriving keyset for %s, minutes on GPU...", n.name, prog.name)
+	d.out.Printf("[%s] deriving keyset for %s, minutes on GPU...", n.name(), prog.name)
 	containerCfg, hostCfg := keygenSpec(d.cfg, prog)
-	output := d.out.Prefixed(n.name)
+	output := d.out.Prefixed(n.name())
 	err := cluster.RunToCompletion(ctx, cli, keygenContainer, containerCfg, hostCfg,
 		map[string][]byte{guestELFPath: prog.elf}, output)
 	output.Flush()
@@ -360,15 +371,15 @@ func (d *deployment) runKeygen(ctx context.Context, cli *client.Client, n node, 
 		cleanupCfg := &container.Config{Image: d.cfg.imageRef(), Cmd: []string{"bash", "-c", cleanup}}
 		_ = cluster.RunToCompletion(context.WithoutCancel(ctx), cli, keygenContainer,
 			cleanupCfg, &container.HostConfig{Mounts: hostCfg.Mounts}, nil, io.Discard)
-		return fmt.Errorf("keygen for %s on %s: %w", prog.name, n.name, err)
+		return fmt.Errorf("keygen for %s on %s: %w", prog.name, n.name(), err)
 	}
-	d.out.Printf("[%s] keyset ready for %s", n.name, prog.name)
+	d.out.Printf("[%s] keyset ready for %s", n.name(), prog.name)
 	return nil
 }
 
 func (d *deployment) startCoordinator(ctx context.Context) error {
 	cli := d.hosts.Client(d.cfg.Coordinator.SSH)
-	n := d.cfg.Coordinator.Name
+	n := d.cfg.coordinatorHost()
 
 	running, err := cluster.EnsureAbsentUnlessRunning(ctx, cli, coordinatorContainer)
 	if err != nil {
@@ -430,65 +441,76 @@ func (d *deployment) workerHosts() []hostWorkers {
 // accepts work.
 func (d *deployment) startWorkers(ctx context.Context, group hostWorkers) error {
 	cli := d.hosts.Client(group.node.SSH)
+	host := cluster.HostName(group.node.SSH)
 	info, err := cli.Info(ctx)
 	if err != nil {
-		return fmt.Errorf("reading docker info on %s: %w", group.node.Name, err)
+		return fmt.Errorf("reading docker info on %s: %w", host, err)
 	}
 	if info.NCPU < len(group.workers) {
-		return fmt.Errorf("%d CPUs on %s cannot be split across %d workers", info.NCPU, group.node.Name, len(group.workers))
+		return fmt.Errorf("%d CPUs on %s cannot be split across %d workers", info.NCPU, host, len(group.workers))
+	}
+
+	// The container is named after the GPU it owns, since that is what makes
+	// it unique on its host, while the label names the configuration entry it
+	// came from. Progress lines carry the label and journald the container.
+	labels := map[string]string{}
+	for _, worker := range group.workers {
+		labels[workerContainer(worker.GPU)] = workerName(worker.proverID, worker.Worker)
 	}
 
 	for position, worker := range group.workers {
 		name := workerContainer(worker.GPU)
+		label := labels[name]
 		running, err := cluster.EnsureAbsentUnlessRunning(ctx, cli, name)
 		if err != nil {
-			return fmt.Errorf("worker %s on %s: %w", name, group.node.Name, err)
+			return fmt.Errorf("%s: %w", label, err)
 		}
 		if running {
-			d.out.Printf("[%s] %s already running, run provoor down first to apply config changes", group.node.Name, name)
+			d.out.Printf("[%s] %s already running, run provoor down first to apply config changes", label, name)
 			continue
 		}
 		cpuset := cpusetCPUs(position, len(group.workers), info.NCPU)
 		containerCfg, hostCfg := workerSpec(d.cfg, worker.GPU, cpuset, d.loadout)
 		created, err := cli.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, name)
 		if err != nil {
-			return fmt.Errorf("creating worker %s on %s: %w", name, group.node.Name, err)
+			return fmt.Errorf("creating %s: %w", label, err)
 		}
 		toml := workerTOML(d.cfg, worker.Worker, worker.proverID)
 		if err := cluster.CopyFileToContainer(ctx, cli, created.ID, workerConfigPath(worker.GPU), []byte(toml)); err != nil {
-			return fmt.Errorf("writing worker config %s on %s: %w", name, group.node.Name, err)
+			return fmt.Errorf("writing the config of %s: %w", label, err)
 		}
 		if err := cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
-			return fmt.Errorf("starting worker %s on %s: %w", name, group.node.Name, err)
+			return fmt.Errorf("starting %s: %w", label, err)
 		}
 	}
-	d.out.Printf("[%s] waiting for %d workers to accept work...", group.node.Name, len(group.workers))
+	d.out.Printf("[%s] waiting for %d workers to accept work...", host, len(group.workers))
 
 	// The ready line, not the registration line, gates completion. A worker
 	// registers milliseconds after launch but only binds its socket once
 	// every loadout program is built, so proceeding on registration would
 	// hand proofs to workers that cannot answer yet.
 	pending := map[string]bool{}
-	for _, worker := range group.workers {
-		pending[workerContainer(worker.GPU)] = true
+	for name := range labels {
+		pending[name] = true
 	}
 	deadline := time.Now().Add(workerReadyTimeout)
 	for len(pending) > 0 {
 		for name := range pending {
+			label := labels[name]
 			inspect, err := cli.ContainerInspect(ctx, name)
 			if err != nil {
-				return fmt.Errorf("inspecting worker %s on %s: %w", name, group.node.Name, err)
+				return fmt.Errorf("inspecting %s: %w", label, err)
 			}
 			if inspect.State == nil || !inspect.State.Running {
-				return fmt.Errorf("worker %s on %s exited before it was ready, journalctl CONTAINER_NAME=%s has the log",
-					name, group.node.Name, name)
+				return fmt.Errorf("%s exited before it was ready, journalctl CONTAINER_NAME=%s has the log",
+					label, name)
 			}
 			logs, err := cluster.ContainerLogsText(ctx, cli, name, inspect.State.StartedAt)
 			if err != nil {
-				return fmt.Errorf("reading worker %s log on %s: %w", name, group.node.Name, err)
+				return fmt.Errorf("reading the log of %s: %w", label, err)
 			}
 			if strings.Contains(logs, workerReadyLine) {
-				d.out.Printf("[%s] %s ready", group.node.Name, name)
+				d.out.Printf("[%s] ready", label)
 				delete(pending, name)
 			}
 		}
@@ -496,7 +518,7 @@ func (d *deployment) startWorkers(ctx context.Context, group hostWorkers) error 
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("%d workers on %s not ready after %s", len(pending), group.node.Name, workerReadyTimeout)
+			return fmt.Errorf("%d workers on %s not ready after %s", len(pending), host, workerReadyTimeout)
 		}
 		select {
 		case <-ctx.Done():

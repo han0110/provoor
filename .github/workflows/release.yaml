@@ -46,8 +46,9 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
+          file: dockers/Dockerfile
           push: true
           build-args: VERSION=${{ needs.release-please.outputs.tag_name }}
           tags: |
-            ghcr.io/${{ github.repository }}:${{ needs.release-please.outputs.tag_name }}
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}/provoor:${{ needs.release-please.outputs.tag_name }}
+            ghcr.io/${{ github.repository }}/provoor:latest

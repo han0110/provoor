@@ -13,20 +13,20 @@ import (
 
 func testConfig() *Config {
 	return &Config{
-		Zkvm:     "openvm",
-		Image:    "ghcr.io/han0110/openvm",
-		ImageTag: "2.1.0-preview",
-		Guests:   []cluster.Guest{{ELF: "/guests/a.elf", VK: "/guests/a.vk"}},
+		Zkvm:        "openvm",
+		ZkvmVersion: "2.1.0-preview",
+		Image:       "ghcr.io/han0110/provoor/openvm",
+		ImageTag:    "2.1.0-preview",
+		Guests:      []cluster.Guest{{ELF: "/guests/a.elf", VK: "/guests/a.vk"}},
 		Coordinator: cluster.Node{
-			Name: "node1",
-			SSH:  "user@203.0.113.1",
-			IP:   "10.0.0.1",
+			SSH: "user@203.0.113.1",
+			IP:  "10.0.0.1",
 		},
 		Workers: []Worker{
-			{Node: cluster.Node{Name: "node1", SSH: "user@203.0.113.1"}, GPU: 0},
-			{Node: cluster.Node{Name: "node1", SSH: "user@203.0.113.1"}, GPU: 1},
-			{Node: cluster.Node{Name: "node2", SSH: "user@203.0.113.2", IP: "10.0.0.2"}, GPU: 0},
-			{Node: cluster.Node{Name: "node2", SSH: "user@203.0.113.2", IP: "10.0.0.2"}, GPU: 1},
+			{Node: cluster.Node{SSH: "user@203.0.113.1"}, GPU: 0},
+			{Node: cluster.Node{SSH: "user@203.0.113.1"}, GPU: 1},
+			{Node: cluster.Node{SSH: "user@203.0.113.2", IP: "10.0.0.2"}, GPU: 0},
+			{Node: cluster.Node{SSH: "user@203.0.113.2", IP: "10.0.0.2"}, GPU: 1},
 		},
 		Config: ProverConfig{
 			AppProvers:      2,
@@ -52,6 +52,18 @@ func TestEdgePrograms(t *testing.T) {
 	want := `[{"name":"program-9f86d081884c7d65","version":0},{"name":"program-0123456789abcdef","version":0}]`
 	if got := edgePrograms(programs); got != want {
 		t.Errorf("edgePrograms = %s", got)
+	}
+}
+
+// TestManagerTOMLOmitsUnsetTimeout pins the mechanism the whole configuration
+// rests on. An unset knob has to leave the rendered file entirely, since the
+// manager reads a zero as a zero and rejects it, and only an absent key falls
+// through to the deadline the image itself carries.
+func TestManagerTOMLOmitsUnsetTimeout(t *testing.T) {
+	cfg := testConfig()
+	cfg.Config.TimeoutSecs = 0
+	if strings.Contains(managerTOML(cfg), "timeout_secs") {
+		t.Errorf("an unset timeout must not be rendered, got\n%s", managerTOML(cfg))
 	}
 }
 
@@ -154,7 +166,7 @@ func TestCpusetCPUs(t *testing.T) {
 
 func TestCoordinatorSpec(t *testing.T) {
 	containerCfg, hostCfg := coordinatorSpec(testConfig(), `[{"name":"program-x","version":0}]`)
-	if containerCfg.Image != "ghcr.io/han0110/openvm:2.1.0-preview" {
+	if containerCfg.Image != "ghcr.io/han0110/provoor/openvm:2.1.0-preview" {
 		t.Errorf("Image = %q", containerCfg.Image)
 	}
 	wantCmd := []string{"edge-manager", "--config", "/tmp/openvm-manager.toml"}

@@ -20,8 +20,12 @@ import (
 type Config struct {
 	// Zkvm names the backend and must be openvm.
 	Zkvm string `yaml:"zkvm"`
-	// Image and ImageTag name the cluster image. The artifacts volume is
-	// named after the tag, so hosts cache one keyset per release.
+	// ZkvmVersion is the OpenVM release the deployment proves under. It names
+	// the volumes a host caches its keysets in, so an image rebuilt under
+	// another tag still shares the artifacts of its release.
+	ZkvmVersion string `yaml:"zkvm_version"`
+	// Image and ImageTag name the cluster image, the tag defaulting to the
+	// OpenVM release it carries.
 	Image    string `yaml:"image"`
 	ImageTag string `yaml:"image_tag"`
 	// Verbose raises container log levels, 0 info, 1 debug, 2 trace.
@@ -56,10 +60,13 @@ type ProverConfig struct {
 	AppProvers      int `yaml:"app_provers"`
 	LeafProvers     int `yaml:"leaf_provers"`
 	InternalProvers int `yaml:"internal_provers"`
-	// SegmentMemory sets the worker's default segment memory in bytes,
-	// left to the image default when zero.
+	// SegmentMemory sets the worker's default segment memory in bytes.
+	// Upstream leaves it unset and lets the VM pick, which on a 32 GB card
+	// two concurrent app provers can exhaust, so a deployment names a figure
+	// and this one defaults to 15 GiB.
 	SegmentMemory int64 `yaml:"segment_memory"`
-	// TimeoutSecs is the manager's watchdog deadline per proof.
+	// TimeoutSecs is the manager's watchdog deadline per proof, left to the
+	// image default of 300 when zero.
 	TimeoutSecs int `yaml:"timeout_secs"`
 	// ShmSizeGB sizes /dev/shm of the worker and keygen containers.
 	ShmSizeGB int `yaml:"shm_size_gb"`
@@ -86,18 +93,20 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
+// applyDefaults fills in only what cannot be left out. The prover capacities
+// are mandatory because the manager's own configuration carries no fallback
+// for them, unlike the worker's, and rejects a worker whose capacities differ,
+// so both files name the figures the image's deployment defaults carry. The
+// segment memory has no upstream default at all. Every other knob stays at its
+// zero value when unset and leaves the rendered file, so the image applies its
+// own default rather than one this repository would have to track.
 func applyDefaults(cfg *Config) {
 	if cfg.Image == "" {
-		cfg.Image = "ghcr.io/han0110/openvm"
+		cfg.Image = "ghcr.io/han0110/provoor/openvm"
 	}
 	if cfg.ImageTag == "" {
-		cfg.ImageTag = "2.1.0-preview"
+		cfg.ImageTag = cfg.ZkvmVersion
 	}
-	nodes := []*cluster.Node{&cfg.Coordinator}
-	for i := range cfg.Workers {
-		nodes = append(nodes, &cfg.Workers[i].Node)
-	}
-	cluster.ApplyNodeDefaults(nodes...)
 	if cfg.Config.AppProvers == 0 {
 		cfg.Config.AppProvers = 2
 	}
@@ -107,17 +116,20 @@ func applyDefaults(cfg *Config) {
 	if cfg.Config.InternalProvers == 0 {
 		cfg.Config.InternalProvers = 1
 	}
-	if cfg.Config.TimeoutSecs == 0 {
-		cfg.Config.TimeoutSecs = 1800
-	}
 	if cfg.Config.ShmSizeGB == 0 {
 		cfg.Config.ShmSizeGB = 2
+	}
+	if cfg.Config.SegmentMemory == 0 {
+		cfg.Config.SegmentMemory = 15 << 30
 	}
 }
 
 func validate(cfg *Config) error {
 	if cfg.Zkvm != "openvm" {
 		return fmt.Errorf("zkvm %q is not openvm", cfg.Zkvm)
+	}
+	if cfg.ZkvmVersion == "" {
+		return fmt.Errorf("zkvm_version is required, the OpenVM release the deployment proves under")
 	}
 	if cfg.Verbose < 0 || cfg.Verbose > 2 {
 		return fmt.Errorf("verbose %d is out of range 0 to 2", cfg.Verbose)
@@ -130,18 +142,18 @@ func validate(cfg *Config) error {
 	}
 	seenGPU := map[string]bool{}
 	seenWorkerURL := map[string]bool{}
-	for _, worker := range cfg.Workers {
+	for i, worker := range cfg.Workers {
 		if err := cluster.ValidateColocation(cfg.Coordinator, worker.Node); err != nil {
 			return err
 		}
 		// The coordinator dials every worker back at its advertised URL, so
 		// a worker off the coordinator host needs an address, the reverse
 		// of the coordinator ip rule.
-		if worker.Name != cfg.Coordinator.Name && worker.IP == "" {
-			return fmt.Errorf("worker %q gpu %d is not co-located with the coordinator, worker ip is required", worker.Name, worker.GPU)
+		if worker.SSH != cfg.Coordinator.SSH && worker.IP == "" {
+			return fmt.Errorf("%s is not co-located with the coordinator, worker ip is required", workerName(i, worker))
 		}
 		if worker.GPU < 0 {
-			return fmt.Errorf("worker %q gpu expects a device id, got %d", worker.Name, worker.GPU)
+			return fmt.Errorf("worker %d gpu expects a device id, got %d", i, worker.GPU)
 		}
 		key := fmt.Sprintf("%s/%d", worker.SSH, worker.GPU)
 		if seenGPU[key] {
@@ -152,7 +164,7 @@ func validate(cfg *Config) error {
 		// entries resolving to one url silently share a single process.
 		advertised := workerURL(worker)
 		if seenWorkerURL[advertised] {
-			return fmt.Errorf("worker %q gpu %d advertises %s, already advertised by another worker", worker.Name, worker.GPU, advertised)
+			return fmt.Errorf("%s advertises %s, already advertised by another worker", workerName(i, worker), advertised)
 		}
 		seenWorkerURL[advertised] = true
 	}
@@ -161,7 +173,6 @@ func validate(cfg *Config) error {
 		"app_provers":      cfg.Config.AppProvers,
 		"leaf_provers":     cfg.Config.LeafProvers,
 		"internal_provers": cfg.Config.InternalProvers,
-		"timeout_secs":     cfg.Config.TimeoutSecs,
 		"shm_size_gb":      cfg.Config.ShmSizeGB,
 	} {
 		if value < 1 {
@@ -170,6 +181,9 @@ func validate(cfg *Config) error {
 	}
 	if cfg.Config.SegmentMemory < 0 {
 		return fmt.Errorf("segment_memory expects a non-negative byte count, got %d", cfg.Config.SegmentMemory)
+	}
+	if cfg.Config.TimeoutSecs < 0 {
+		return fmt.Errorf("timeout_secs expects a non-negative integer, got %d", cfg.Config.TimeoutSecs)
 	}
 	return nil
 }

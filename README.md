@@ -11,50 +11,60 @@ tracked here.
 git clone --recursive https://github.com/han0110/provoor.git
 ```
 
-Build the CLI from source with Go 1.24.5 or later and a C compiler, since
-proof verification links the `libere_verifier_c` static library through cgo.
-`scripts/fetch-verifier.sh` downloads that library as a release asset of the
-ere version the Go binding is vendored from, so a fresh checkout fetches it
-once before building.
+Building needs Go 1.24.5 or later and a C compiler, because proof verification
+links `libere_verifier_c` through cgo. `scripts/fetch-verifier.sh` downloads
+that library. Run it again whenever the ere version it pins changes, since a
+stale library rejects proofs a current cluster produces.
 
 ```sh
 scripts/fetch-verifier.sh
-go build -o provoor ./cmd/provoor
+scripts/build.sh provoor
+scripts/build.sh benchmarkoor
 ```
 
-The scripts under `scripts/` additionally need `envsubst` from GNU gettext and
-`python3`, and `scripts/benchmarkoor.sh` resets every submodule to the
-revision this repository records and builds `benchmarkoor` from it, so running
-a benchmark needs Go and `make` rather than a prebuilt binary on `PATH`, and a
-submodule carrying uncommitted work is overwritten.
+`scripts/build.sh benchmarkoor` needs `make` and resets every submodule to the
+revision this repository records, overwriting uncommitted work in a submodule.
+`scripts/benchmarkoor.sh` runs that build rather than a binary on `PATH`. The
+scripts under `scripts/` also need `envsubst` from GNU gettext and `python3`.
 
-The container image benchmark runs use builds from the repository root. A
-tagged release publishes the same build to `ghcr.io/han0110/provoor`, stamped
-with its version rather than the `dev` a local build carries.
+## Container images
+
+Benchmark runs use the provoor image built from `dockers/Dockerfile`. A tagged
+release publishes it to `ghcr.io/han0110/provoor/provoor`, stamped with its
+version instead of the `dev` a local build carries.
 
 ```sh
-docker build -t ghcr.io/han0110/provoor:latest .
+docker build -f dockers/Dockerfile -t ghcr.io/han0110/provoor/provoor:latest .
+
+# Against an ere revision with no release yet, taking the library already in
+# pkg/ereverifier/lib. The build fails when it is missing rather than falling back.
+docker build -f dockers/Dockerfile --build-arg VERIFIER_LIB=local -t provoor:local .
 ```
+
+Clusters pull one image per zkVM, `ghcr.io/han0110/provoor/zisk` and
+`ghcr.io/han0110/provoor/openvm`, built from `dockers/zkvm/`. Each is tagged
+with the zkVM release it carries, which is the `zkvm_version` a cluster
+configuration names.
 
 ## How it works
 
-`provoor up` deploys a proving cluster, a coordinator plus GPU worker
-containers, over SSH-reached Docker daemons. ZisK and OpenVM are supported,
-selected by the `zkvm` field of the cluster configuration. `provoor serve` is
-a JSON-RPC forwarder that benchmarkoor starts as a client container. It
-answers `engine_proveStatelessValidator` by submitting the stateless input to the
-cluster, so a proving benchmark runs with the same lifecycle, results, and UI
-as an execution-client benchmark. Every returned proof is cryptographically
-verified through the verifier ere releases, against the verifying key the
-forwarder's own configuration names, and a test passes when the public values
-that verification proves match the fixture's expected output. A proof of another
-program, or one altered in transit, fails its test rather than being reported
-as a passing measurement. The key comes from outside the deployment, the
-signed `.vk` asset published beside the guest ELF, so the guest release rather
-than the cluster decides what a proof has to be about. The cluster's own
-derivation from the uploaded ELF is a cross-check, compared against the
-configured key at `up` and again when the forwarder starts, and a mismatch
-stops both before any proof is measured.
+`provoor up` deploys a proving cluster over SSH-reached Docker daemons, a
+coordinator plus GPU worker containers. The `zkvm` field of the cluster
+configuration selects ZisK or OpenVM.
+
+`provoor serve` is a JSON-RPC forwarder that benchmarkoor starts as a client
+container. It answers `engine_proveStatelessValidator` by submitting the
+stateless input to the cluster, so a proving benchmark runs with the same
+lifecycle, results, and UI as an execution-client benchmark.
+
+Every proof is verified with the verifier from an ere release, against the key
+published as the `.vk` asset beside the guest ELF rather than one the cluster
+supplies. A test passes only when the verified public values match the
+fixture's expected output, so a proof of another program, or one altered in
+transit, fails its test instead of passing as a measurement. The cluster's own
+key, derived from the uploaded ELF, is compared against the configured one at
+`up` and again when the forwarder starts, and a mismatch stops both before any
+proof is measured.
 
 ```mermaid
 flowchart LR
@@ -82,70 +92,71 @@ flowchart LR
 
 ## Deploy a cluster
 
-The examples under `examples/` describe a cluster of four hosts with four GPUs
-each. Their addresses come from `.env`, so copy `.env.example`, fill it in, and
-drive the CLI through `scripts/provoor.sh`, which materializes the template
-before handing it over. A placeholder with no value stops the run rather than
-deploying against an empty address.
+The examples under `examples/` describe four hosts with four GPUs each. Their
+addresses come from `.env`, so copy `.env.example`, fill it in, and drive the
+CLI through `scripts/provoor.sh`, which fills the template first. A placeholder
+with no value stops the run instead of deploying against an empty address.
 
 ```sh
 cp .env.example .env
 scripts/provoor.sh up --config examples/openvm-4x4.example.yaml
-```
-
-SSH destinations are resolved by the local `ssh` binary, so aliases, keys, and
-the agent from `~/.ssh/config` apply. Hosts need Docker with the NVIDIA
-container runtime. A cluster of another shape is an ordinary config file,
-which `provoor up --config` takes directly. A ZisK deployment additionally
-needs the coordinator's client API reachable from wherever `up` runs, since
-that is where it sets its guests up, while an OpenVM one talks to Docker
-daemons alone.
-
-Each `guests` entry pairs an `elf` source with the `vk` source published beside
-it, both a local path or an `eth-act/ere-guests` release asset URL. `up` fails
-when the key the cluster derives differs from the configured one, printing
-both.
-
-`up` is idempotent and streams its progress. The first run is slow, ZisK
-downloads and prepares the proving key, and OpenVM derives a keyset per guest
-ELF listed under `guests`, minutes per program on a GPU.
-
-A ZisK worker that runs two setups in a row, without proving the first between
-them, can no longer prove the earlier guest. `up` provisions every guest in
-exactly that order, so it restarts the cluster afterwards. Each forwarder then
-sets its own guest up and proves it immediately, reusing the assembly `up`
-compiled rather than compiling it again.
-
-```sh
 scripts/provoor.sh down --config examples/openvm-4x4.example.yaml
 ```
 
-`down` removes the containers and keeps the cached volumes and journald logs,
-so the next `up` is fast and past logs stay readable.
+- SSH destinations resolve through the local `ssh` binary, so aliases, keys,
+  and the agent from `~/.ssh/config` apply.
+- Hosts need Docker with the NVIDIA container runtime.
+- A cluster of another shape is an ordinary config file, which `provoor up
+  --config` takes directly.
+- Each `guests` entry pairs an `elf` source with the `vk` published beside it,
+  both a local path or an `eth-act/ere-guests` release asset URL. `up` fails
+  when the key the cluster derives differs, printing both.
+- `up` is idempotent and streams its progress, and `down` keeps the cached
+  volumes and journald logs so the next `up` is fast.
+
+The first `up` is slow, since ZisK downloads and prepares the proving key and
+OpenVM derives a keyset for each guest ELF, minutes per program on a GPU.
+
+A ZisK deployment also reaches the coordinator's client API over the
+coordinator's SSH destination rather than the data network, so a bastion
+carrying no cluster traffic still works. That needs TCP forwarding enabled on
+the coordinator's SSH server.
+
+A ZisK worker that runs two setups in a row, without proving the first in
+between, can no longer prove the earlier guest. `up` provisions guests in
+exactly that order, so it restarts the cluster afterwards. Each forwarder then
+sets up its own guest and proves it immediately, reusing the assembly `up`
+compiled.
 
 The coordinator and worker APIs bind every interface, and `provoor serve`
-answers unauthenticated JSON-RPC on its listen address, so keep these hosts on
-a private network or firewall their ports.
+answers unauthenticated JSON-RPC, so keep these hosts on a private network or
+firewall their ports.
 
 ## Run a benchmark
 
 Run configurations live with the harness that reads them, under
 `benchmarkoor/examples/provoor/`. `scripts/benchmarkoor.sh` fills their
 `${COORDINATOR_IP}` placeholder from `.env` and runs benchmarkoor in the
-`provoor-runs` checkout, so a config's relative `results_dir` lands there.
-Run it on the coordinator host, which keeps witness transfer off the measured
-path.
+`provoor-runs` checkout, so a config's relative `results_dir` lands there. Run
+it on the coordinator host, which keeps witness transfer off the measured path.
 
 ```sh
 scripts/benchmarkoor.sh run --config benchmarkoor/examples/provoor/openvm-eest-v0.6.2-10M.example.yaml
 ```
 
-The forwarder flags travel through the instance `extra_args`. `--elf` and
-`--vk` name the same release assets as the cluster's `guests` entry, and for
-OpenVM the ELF must be byte-identical to it. Before opening its port the
-forwarder checks the cluster's key against `--vk` and proves a small warmup
-block, so a mismatched deployment never serves a request and a cold cluster's
-one-time costs never land in a measured test.
+Forwarder flags travel through the instance `extra_args`. `--elf` and `--vk`
+name the same release assets as the cluster's `guests` entry, and for OpenVM
+the ELF must be byte-identical to it.
+
+Before opening its port the forwarder checks the cluster's key against `--vk`
+and proves a small warmup block, so a mismatched deployment never serves a
+request and a cold cluster's one-time costs never land in a measured test.
+
+After a failed test the forwarder waits for the cluster to report itself ready
+before timing the next one, so a worker restarting after one block does not
+land in another block's measurement. OpenVM reports that readiness. ZisK does
+not, so a submission waits the recovery out instead.
+
 Results land in `provoor-runs/results` and render in the benchmarkoor UI,
 including live proof phases, per-test proving times, and opcode heatmaps.
 
