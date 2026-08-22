@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/han0110/provoor/compare/v0.3.0...v0.4.0) (2026-08-22)
+
+
+### Features
+
+* add health check for zisk worker ([#10](https://github.com/han0110/provoor/issues/10)) ([37100c6](https://github.com/han0110/provoor/commit/37100c673da67da887feda16df60f3662e50b701))
+
 ## [0.3.0](https://github.com/han0110/provoor/compare/v0.2.0...v0.3.0) (2026-08-21)
 
 
