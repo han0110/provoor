@@ -136,7 +136,7 @@ func (cfg *Config) Down(ctx context.Context, w io.Writer) error {
 		}()
 	}
 	wg.Wait()
-	if err := cluster.StopAndRemove(ctx, hosts.Client(cfg.Coordinator.SSH), coordinatorContainer, cfg.coordinatorHost(), out); err != nil {
+	if err := cluster.StopAndRemove(ctx, hosts.Client(cfg.Coordinator.SSH), coordinatorContainer, cluster.CoordinatorName, out); err != nil {
 		errs = append(errs, err)
 	}
 	if err := errors.Join(errs...); err != nil {
@@ -185,8 +185,9 @@ func (cfg *Config) destinations() []string {
 	return destinations
 }
 
-// coordinatorHost labels the coordinator's progress lines, its SSH host being
-// the only name a deployment gives it.
+// coordinatorHost names the machine the coordinator runs on, which its own
+// progress lines leave out. It reports where the API answers and which host a
+// container failure has to be chased on.
 func (cfg *Config) coordinatorHost() string {
 	return cluster.HostName(cfg.Coordinator.SSH)
 }
@@ -386,7 +387,7 @@ func (d *deployment) startCoordinator(ctx context.Context) error {
 		return fmt.Errorf("coordinator on %s: %w", n, err)
 	}
 	if running {
-		d.out.Printf("[%s] %s already running, run provoor down first to apply config changes", n, coordinatorContainer)
+		d.out.Printf("[%s] %s already running, run provoor down first to apply config changes", cluster.CoordinatorName, coordinatorContainer)
 	} else {
 		containerCfg, hostCfg := coordinatorSpec(d.cfg, d.loadout)
 		created, err := cli.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, coordinatorContainer)
@@ -399,13 +400,13 @@ func (d *deployment) startCoordinator(ctx context.Context) error {
 		if err := cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 			return fmt.Errorf("starting coordinator on %s: %w", n, err)
 		}
-		d.out.Printf("[%s] starting coordinator (api %d)...", n, apiPort)
+		d.out.Printf("[%s] starting coordinator (api %d)...", cluster.CoordinatorName, apiPort)
 	}
 
 	if err := cluster.WaitContainerListening(ctx, cli, coordinatorContainer, n, coordinatorReadyTimeout, apiPort); err != nil {
 		return err
 	}
-	d.out.Printf("[%s] coordinator ready (api %d)", n, apiPort)
+	d.out.Printf("[%s] coordinator ready (api %d)", cluster.CoordinatorName, apiPort)
 	return nil
 }
 

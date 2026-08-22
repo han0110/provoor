@@ -90,6 +90,11 @@ func WorkerName(index int, gpu GPU) string {
 	return fmt.Sprintf("worker_%d-gpu_%s", index, gpu.Label())
 }
 
+// CoordinatorName labels the coordinator's progress lines, the counterpart to
+// WorkerName. A deployment has exactly one coordinator, so its role names it
+// and the host it runs on stays out of the label.
+const CoordinatorName = "coordinator"
+
 // Zkvm reads the zkvm field of a cluster configuration file, which selects
 // the backend that parses the rest.
 func Zkvm(path string) (string, error) {
