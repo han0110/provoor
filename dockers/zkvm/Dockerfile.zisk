@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xz-utils \
     jq \
     curl \
+    procps \
     build-essential \
     qemu-system \
     libomp-dev \
@@ -37,9 +38,10 @@ RUN curl -fSL "https://github.com/0xPolygonHermez/zisk/releases/download/v${ZISK
     && rm /tmp/zisk.tar.gz \
     && chmod +x /root/.zisk/bin/*
 
-# Overlay of a worker from han0110/zisk 11d6ed2d, which caches the Main instruction table upstream rebuilds every proof.
-# Remove it once a release carries the fix.
-RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-11d6ed2d639b847560a23995597e63f4586aef42/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
+# Overlay of a worker from han0110/zisk 40e2cf34, which caches the Main instruction table upstream
+# rebuilds every proof and serves the health endpoint the container healthcheck probes.
+# Remove it once a release carries both.
+RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-40e2cf34cdc7b42fe2c0943e8e67058320d0f038/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
     && tar --no-same-owner -xzf /tmp/zisk-patched.tar.gz -C /root/.zisk ./bin/zisk-worker-gpu \
     && rm /tmp/zisk-patched.tar.gz \
     && chmod +x /root/.zisk/bin/zisk-worker-gpu

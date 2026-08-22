@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
@@ -35,6 +36,16 @@ const (
 	// same way, so the floor tracks the GPUs actually deployed rather than
 	// whatever the image happens to default to.
 	computeUnitsPerGPU = 10
+	// Budget the coordinator allows the aggregation phase, over the 100s the
+	// image defaults to. The clock starts when the first worker finishes proving
+	// rather than when aggregation begins, so it bounds the straggler tail of
+	// proof generation, which on a full-gas block outlasts the default and
+	// cancels the job across the whole cluster.
+	aggregationTimeoutSeconds = 600
+	// Loopback port the worker serves its health verdict on, probed by the
+	// container healthcheck. Workers share the host network namespace, so it
+	// sits clear of the coordinator's api, cluster, and metrics ports.
+	workerHealthPort = 9101
 )
 
 func (cfg *Config) imageRef() string {
@@ -77,7 +88,11 @@ mode = "coordinator"
 config_file = %q
 # %d compute units per gpu over %d gpus.
 min_compute_units = %d
-`, coordinatorConfig, computeUnitsPerGPU, gpus, computeUnitsPerGPU*gpus)
+# Aggregation budget, covering the straggler tail of proof generation because
+# its clock starts at the first worker to finish.
+phase3_timeout_seconds = %d
+`, coordinatorConfig, computeUnitsPerGPU, gpus, computeUnitsPerGPU*gpus,
+		aggregationTimeoutSeconds)
 }
 
 func coordinatorSpec(cfg *Config) (*container.Config, *container.HostConfig) {
@@ -156,6 +171,7 @@ func workerArgs(cfg *Config, worker Worker, name string, numaNodes int) []string
 		"-x", "RUST_LOG="+cluster.RustLog(cfg.Verbose),
 		"-x", "NO_COLOR=1",
 		"-x", "ZISK_HOME=/root/.zisk",
+		"-x", fmt.Sprintf("ZISK_WORKER_HEALTH_PORT=%d", workerHealthPort),
 		// Witness generation walks PIL expression trees too deep for the
 		// 2 MiB Rust spawned-thread default. 64 MiB matches proofman-cli's
 		// stack_size.
@@ -195,11 +211,39 @@ func workerArgs(cfg *Config, worker Worker, name string, numaNodes int) []string
 	return args
 }
 
+// workerHealthCheck probes the worker's own verdict and kills the ranks when it
+// reports itself unrecoverable, so the restart policy replaces a process whose
+// prover mutex can no longer be reclaimed. Only curl's exit 22, an http status
+// of 400 or above, counts as that verdict. A refused connection reports
+// unhealthy without killing anything, so an endpoint that has not bound yet is
+// never mistaken for a wedged worker. mpirun keeps its own name, so the pattern
+// matches only the ranks, whose death aborts the job and exits the container
+// non-zero. The debounce lives in the worker, which reports unhealthy only past
+// a stall longer than the coordinator's own dead-worker threshold.
+func workerHealthProbe(port int) string {
+	return fmt.Sprintf(
+		"curl -fsS --max-time 4 127.0.0.1:%d/health && exit 0; "+
+			"[ $? -eq 22 ] && pkill -KILL -x zisk-worker-gpu; exit 1",
+		port,
+	)
+}
+
+func workerHealthCheck() *container.HealthConfig {
+	return &container.HealthConfig{
+		Test:        []string{"CMD-SHELL", workerHealthProbe(workerHealthPort)},
+		Interval:    30 * time.Second,
+		Timeout:     10 * time.Second,
+		StartPeriod: 10 * time.Minute,
+		Retries:     1,
+	}
+}
+
 func workerSpec(cfg *Config, worker Worker, name string, numaNodes int) (*container.Config, *container.HostConfig) {
 	containerCfg := &container.Config{
-		Image:      cfg.imageRef(),
-		Entrypoint: []string{"mpirun"},
-		Cmd:        workerArgs(cfg, worker, name, numaNodes),
+		Image:       cfg.imageRef(),
+		Entrypoint:  []string{"mpirun"},
+		Cmd:         workerArgs(cfg, worker, name, numaNodes),
+		Healthcheck: workerHealthCheck(),
 	}
 	hostCfg := &container.HostConfig{
 		NetworkMode:   "host",
