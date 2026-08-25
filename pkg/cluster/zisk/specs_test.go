@@ -56,7 +56,7 @@ func TestWorkerArgs(t *testing.T) {
 		"-x", "RUST_LOG=debug",
 		"-x", "NO_COLOR=1",
 		"-x", "ZISK_HOME=/root/.zisk",
-		"-x", "ZISK_WORKER_HEALTH_PORT=9101",
+		"-x", "ZISK_WORKER_HEALTH_PORT=7001",
 		"-x", "RUST_MIN_STACK=67108864",
 		"zisk-worker-gpu",
 		"--coordinator-url", "http://10.0.0.1:50051",
@@ -220,12 +220,18 @@ func TestWorkerSpec(t *testing.T) {
 // recording pkill on PATH, pinning that only the worker's own unhealthy verdict
 // kills the ranks. An endpoint that is not listening yet must report unhealthy
 // and leave the process alone, otherwise a worker would be killed every probe
-// while it is still starting or while the coordinator is unreachable.
+// while it is still starting or while the coordinator is unreachable. A service
+// that is not the worker must do the same, because workers share the host
+// network namespace and an unrelated listener on the port would otherwise pass
+// as healthy for the whole run.
 func TestWorkerHealthProbe(t *testing.T) {
 	var status atomic.Int32
+	var body atomic.Value
 	status.Store(http.StatusOK)
+	body.Store("zisk-worker ok, event loop idle 0s\n")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(int(status.Load()))
+		_, _ = w.Write([]byte(body.Load().(string)))
 	}))
 	closed := false
 	defer func() {
@@ -262,6 +268,12 @@ func TestWorkerHealthProbe(t *testing.T) {
 	status.Store(http.StatusServiceUnavailable)
 	if healthy, killed := run(); healthy || !killed {
 		t.Errorf("serving 503: healthy = %v, killed = %v, want false and true", healthy, killed)
+	}
+
+	status.Store(http.StatusOK)
+	body.Store("# HELP python_gc_objects_collected_total\n")
+	if healthy, killed := run(); healthy || killed {
+		t.Errorf("another service on the port: healthy = %v, killed = %v, want false and false", healthy, killed)
 	}
 
 	server.Close()

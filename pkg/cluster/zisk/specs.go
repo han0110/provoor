@@ -43,9 +43,11 @@ const (
 	// cancels the job across the whole cluster.
 	aggregationTimeoutSeconds = 600
 	// Loopback port the worker serves its health verdict on, probed by the
-	// container healthcheck. Workers share the host network namespace, so it
-	// sits clear of the coordinator's api, cluster, and metrics ports.
-	workerHealthPort = 9101
+	// container healthcheck. Workers share the host network namespace, so this
+	// competes with every service on the host. It sits next to the coordinator
+	// api port and clear of 9100 through 9999, which Prometheus allocates to
+	// exporters and which a monitored proving host already uses.
+	workerHealthPort = 7001
 )
 
 func (cfg *Config) imageRef() string {
@@ -211,19 +213,25 @@ func workerArgs(cfg *Config, worker Worker, name string, numaNodes int) []string
 	return args
 }
 
-// workerHealthCheck probes the worker's own verdict and kills the ranks when it
+// workerHealthProbe probes the worker's own verdict and kills the ranks when it
 // reports itself unrecoverable, so the restart policy replaces a process whose
-// prover mutex can no longer be reclaimed. Only curl's exit 22, an http status
-// of 400 or above, counts as that verdict. A refused connection reports
-// unhealthy without killing anything, so an endpoint that has not bound yet is
-// never mistaken for a wedged worker. mpirun keeps its own name, so the pattern
-// matches only the ranks, whose death aborts the job and exits the container
-// non-zero. The debounce lives in the worker, which reports unhealthy only past
-// a stall longer than the coordinator's own dead-worker threshold.
+// prover mutex can no longer be reclaimed. mpirun keeps its own name, so the
+// pattern matches only the ranks, whose death aborts the job and exits the
+// container non-zero. The debounce lives in the worker, which reports unhealthy
+// only past a stall longer than the coordinator's own dead-worker threshold.
+//
+// Three answers have to stay apart, and only the third kills anything. A curl
+// that fails to connect leaves the worker alone, because an endpoint still
+// binding must never read as a wedged worker. A body without the worker's
+// marker also leaves it alone, because the host network namespace lets an
+// unrelated service hold the port and a foreign 200 would otherwise pass as
+// healthy forever. A marked body carrying any status but 200 is the verdict.
 func workerHealthProbe(port int) string {
 	return fmt.Sprintf(
-		"curl -fsS --max-time 4 127.0.0.1:%d/health && exit 0; "+
-			"[ $? -eq 22 ] && pkill -KILL -x zisk-worker-gpu; exit 1",
+		"code=$(curl -sS -m 4 -o /tmp/zisk-health -w %%{http_code} 127.0.0.1:%d/health) || exit 1; "+
+			"grep -q '^zisk-worker ' /tmp/zisk-health || exit 1; "+
+			"[ \"$code\" = 200 ] && exit 0; "+
+			"pkill -KILL -x zisk-worker-gpu; exit 1",
 		port,
 	)
 }

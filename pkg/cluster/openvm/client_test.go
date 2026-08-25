@@ -56,6 +56,9 @@ func TestClassifyStartError(t *testing.T) {
 	if err := classifyStartError(http.StatusInternalServerError, `1 of 2 workers failed to accept work: x`); !errors.Is(err, errClusterNotReady) {
 		t.Errorf("dispatch failure = %v", err)
 	}
+	if err := classifyStartError(http.StatusInternalServerError, `Failed to upload input to workers: x`); !errors.Is(err, errClusterNotReady) {
+		t.Errorf("fan-out failure = %v", err)
+	}
 	if err := classifyStartError(http.StatusInternalServerError, `no input staged for proof`); errors.Is(err, errClusterNotReady) {
 		t.Errorf("other 500s must be fatal, got %v", err)
 	}
@@ -91,6 +94,13 @@ type fakeCoordinator struct {
 	// entry one SSE payload written before the handler returns.
 	streams [][]string
 	holdEnd bool
+	// drain answers the first readiness poll and the first submission the way
+	// a manager still holding an aborted dispatch's slot does, cleared by
+	// whichever of the two observes it first.
+	drain bool
+	// readyzReportsDrain decides whether the drain shows on /readyz or the
+	// coordinator reports ready throughout it.
+	readyzReportsDrain bool
 
 	mu            sync.Mutex
 	subscriptions int
@@ -120,11 +130,32 @@ func (f *fakeCoordinator) server() *httptest.Server {
 		f.mu.Unlock()
 		_, _ = w.Write([]byte("Input staged"))
 	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+		f.mu.Lock()
+		draining := f.drain && f.readyzReportsDrain
+		if draining {
+			f.drain = false
+		}
+		f.mu.Unlock()
+		if draining {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("workers draining an earlier proof"))
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
+	})
 	mux.HandleFunc("POST /start_proof", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
 		f.startedBody = string(body)
+		refuse := f.drain
+		f.drain = false
 		f.mu.Unlock()
+		if refuse {
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte("another proof is already running"))
+			return
+		}
 		_, _ = w.Write([]byte(`{"status":"started"}`))
 	})
 	mux.HandleFunc("GET /proof_events/{uuid}", func(w http.ResponseWriter, r *http.Request) {
@@ -240,6 +271,62 @@ func TestProveVerifiedOutcome(t *testing.T) {
 	}
 	if want := 17805 * time.Millisecond; outcome.ClusterProvingTime != want {
 		t.Errorf("cluster proving time = %s, want %s", outcome.ClusterProvingTime, want)
+	}
+}
+
+// TestDrainStaysOutOfTheMeasurement drives the flow the forwarder runs, a
+// readiness wait and then a proof on a clock that starts after it, against a
+// coordinator draining an earlier proof. A real manager answers /readyz on
+// worker registration alone and so reports itself ready while it refuses
+// work, which is why the measurement discounts the refused attempts rather
+// than trusting the gate to have covered them.
+func TestDrainStaysOutOfTheMeasurement(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		readyzReportsDrain bool
+	}{
+		{name: "readyz reports the drain", readyzReportsDrain: true},
+		{name: "readyz reports ready throughout", readyzReportsDrain: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeCoordinator{
+				t:                  t,
+				proof:              readFixture(t, proofFixture),
+				streams:            [][]string{{`"completed"`}},
+				drain:              true,
+				readyzReportsDrain: tc.readyzReportsDrain,
+			}
+			server := fake.server()
+			defer server.Close()
+			client := dialFake(t, server.URL)
+
+			gateStarted := time.Now()
+			if err := client.WaitReady(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			gated := time.Since(gateStarted)
+			started := time.Now()
+			outcome, err := client.Prove(context.Background(), []byte("input"), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			measured := time.Since(started) - outcome.SubmitWait
+			t.Logf("gate = %s, submit wait = %s, measured = %s",
+				gated.Round(time.Millisecond), outcome.SubmitWait.Round(time.Millisecond), measured.Round(time.Millisecond))
+
+			if measured > time.Second {
+				t.Errorf("measured = %s, want the drain out of the measurement", measured)
+			}
+			// Each case has to reach the drain by its own route, or it passes
+			// for want of a drain rather than for want of the accounting.
+			if tc.readyzReportsDrain {
+				if gated < time.Second {
+					t.Errorf("gate = %s, want it to have seen the drain", gated)
+				}
+			} else if outcome.SubmitWait < submitRetryInterval {
+				t.Errorf("submit wait = %s, want the refused attempt counted", outcome.SubmitWait)
+			}
+		})
 	}
 }
 
@@ -395,5 +482,32 @@ func TestWaitReady(t *testing.T) {
 
 	if err := dialFake(t, server.URL).WaitReady(context.Background()); err != nil {
 		t.Errorf("WaitReady = %v", err)
+	}
+}
+
+// TestWaitReadyWaitsOnTheContext pins that readiness carries no budget of its
+// own. A wait cut short would leave the rest of a cluster's recovery to land
+// inside the next proof's measurement, so only the caller ends it, and the
+// coordinator's own reason travels with the error.
+func TestWaitReadyWaitsOnTheContext(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /vk/{name}", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(programVerifyingKeyFixture(t))
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"ready":false,"message":"No Edge workers have registered yet"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	err := dialFake(t, server.URL).WaitReady(ctx)
+	if err == nil {
+		t.Fatal("WaitReady() = nil, want the cancelled context to end the wait")
+	}
+	if !strings.Contains(err.Error(), "No Edge workers have registered yet") {
+		t.Errorf("err = %v, want the coordinator's reason", err)
 	}
 }
