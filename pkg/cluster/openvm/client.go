@@ -30,8 +30,8 @@ const (
 	requestTimeout = 300 * time.Second
 	// connectTimeout bounds dialing the coordinator.
 	connectTimeout = 10 * time.Second
-	// submitRetryInterval paces prove submission retries while the cluster
-	// is busy or not ready.
+	// submitRetryInterval paces prove submission retries while the cluster is
+	// busy, not ready, or off the network.
 	submitRetryInterval = 5 * time.Second
 	// statusStreamReadTimeout drops a silent status stream, so a dead
 	// connection reconnects instead of hanging.
@@ -39,13 +39,8 @@ const (
 	// statusStreamReconnectDelay paces reconnects of a dropped status
 	// stream.
 	statusStreamReconnectDelay = time.Second
-	// readyTimeout bounds the startup wait for every worker's registration.
-	readyTimeout = 120 * time.Second
-	// unreachableRetries caps consecutive submissions that never reached the
-	// coordinator. A restart recovers well inside the window, while an
-	// endpoint that stays down fails the proof rather than spending its whole
-	// budget dialing.
-	unreachableRetries = 6
+	// readyPollInterval paces the wait for every worker's registration.
+	readyPollInterval = 3 * time.Second
 )
 
 // errClusterBusy reports a submission refused because the manager already
@@ -57,8 +52,7 @@ var errClusterBusy = errors.New("cluster busy")
 var errClusterNotReady = errors.New("cluster not ready")
 
 // errClusterUnreachable reports a submission that never reached the
-// coordinator. A restart cures it, an endpoint that is gone does not, so it
-// is retried on a bounded count rather than the whole prove budget.
+// coordinator, recoverable by retrying since a restart cures it.
 var errClusterUnreachable = errors.New("cluster unreachable")
 
 // ProveTimeoutError reports a proof cancelled on deadline. Cause carries the
@@ -195,21 +189,20 @@ func (c *Client) fetchProgramVerifyingKey(ctx context.Context) ([]byte, error) {
 }
 
 // WaitReady polls the coordinator until every expected worker is registered,
-// so the first proof does not queue behind cluster bring-up.
+// so the first proof does not queue behind cluster bring-up. The wait carries
+// no budget of its own and ends only with the caller's context, since a wait
+// cut short leaves the rest of the cluster's recovery to land inside the next
+// proof's measurement.
 func (c *Client) WaitReady(ctx context.Context) error {
-	deadline := time.Now().Add(readyTimeout)
 	for {
 		detail, err := c.ready(ctx)
 		if err == nil {
 			return nil
 		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("cluster not ready after %s: %s", readyTimeout, detail)
-		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(3 * time.Second):
+			return fmt.Errorf("cluster not ready: %s", detail)
+		case <-time.After(readyPollInterval):
 		}
 	}
 }
@@ -235,31 +228,9 @@ func (c *Client) ready(ctx context.Context) (detail string, err error) {
 // context expires first. Submission retries while the manager is busy with
 // another proof or its workers are not ready, bounded by the same context.
 func (c *Client) Prove(ctx context.Context, input []byte, onPhase func(phase string)) (*serve.ProveOutcome, error) {
-	var proofUUID string
-	unreachable := 0
-	for {
-		proofUUID = newProofUUID()
-		err := c.submit(ctx, proofUUID, input)
-		if err == nil {
-			break
-		}
-		switch {
-		case errors.Is(err, errClusterUnreachable):
-			// Counted consecutively, so a coordinator that comes back and
-			// then reports busy starts the allowance over.
-			if unreachable++; unreachable > unreachableRetries {
-				return nil, err
-			}
-		case errors.Is(err, errClusterBusy), errors.Is(err, errClusterNotReady):
-			unreachable = 0
-		default:
-			return nil, err
-		}
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("prove submission timed out: %w", err)
-		case <-time.After(submitRetryInterval):
-		}
+	proofUUID, submitWait, err := c.submitProof(ctx, input)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := c.waitProof(ctx, proofUUID, onPhase)
@@ -269,7 +240,44 @@ func (c *Client) Prove(ctx context.Context, input []byte, onPhase func(phase str
 		_ = c.CancelProof(cancelCtx, proofUUID)
 		return nil, &ProveTimeoutError{ProofUUID: proofUUID, Cause: err}
 	}
+	if err == nil {
+		result.SubmitWait = submitWait
+	}
 	return result, err
+}
+
+// submitProof submits one proof, waiting out a manager busy with another, a
+// coordinator whose workers are not ready, and one a restart has taken off
+// the network. Every one of them comes back on its own, so only the caller's
+// context ends the wait, and the retries are paced since an unpaced branch
+// would resubmit as fast as the manager could refuse. It returns the admitted
+// proof's identifier and how long the refused attempts took, which is not
+// time the cluster spent proving the input.
+func (c *Client) submitProof(ctx context.Context, input []byte) (string, time.Duration, error) {
+	started := time.Now()
+	var submitWait time.Duration
+	for {
+		// The wait runs to the attempt that lands, so the submission carrying
+		// the input stays in the caller's measurement.
+		submitWait = time.Since(started)
+		proofUUID := newProofUUID()
+		err := c.submit(ctx, proofUUID, input)
+		if err == nil {
+			return proofUUID, submitWait, nil
+		}
+		switch {
+		case errors.Is(err, errClusterUnreachable),
+			errors.Is(err, errClusterBusy),
+			errors.Is(err, errClusterNotReady):
+		default:
+			return "", 0, err
+		}
+		select {
+		case <-ctx.Done():
+			return "", 0, fmt.Errorf("prove submission timed out: %w", err)
+		case <-time.After(submitRetryInterval):
+		}
+	}
 }
 
 // newProofUUID generates the client-side proof identifier, a random 128-bit
@@ -361,8 +369,8 @@ func (c *Client) startProof(ctx context.Context, proofUUID string) error {
 
 // classifyStartError maps an admission failure onto the recoverable
 // conditions the prove loop handles. A rejected loadout membership is
-// permanent, while a busy manager, absent workers, and a partially failed
-// work dispatch all recover on their own.
+// permanent, while a busy manager, absent workers, and a proof the manager
+// took and then could not place all recover on their own.
 func classifyStartError(code int, body string) error {
 	switch {
 	case code == http.StatusConflict && strings.Contains(body, "program_not_in_loadout"):
@@ -371,7 +379,12 @@ func classifyStartError(code int, body string) error {
 		return fmt.Errorf("%w: %s", errClusterBusy, body)
 	case code == http.StatusServiceUnavailable:
 		return fmt.Errorf("%w: %s", errClusterNotReady, body)
-	case code == http.StatusInternalServerError && strings.Contains(body, "failed to accept work"):
+	// A manager aborts a proof it already took either because a worker
+	// refused the dispatch or because the input fan-out failed. The first
+	// holds the cluster until the aborted proof drains and the second
+	// releases it before answering, so both clear without intervention.
+	case code == http.StatusInternalServerError &&
+		(strings.Contains(body, "failed to accept work") || strings.Contains(body, "upload input to workers")):
 		return fmt.Errorf("%w: %s", errClusterNotReady, body)
 	default:
 		return fmt.Errorf("starting proof: status %d: %s", code, body)

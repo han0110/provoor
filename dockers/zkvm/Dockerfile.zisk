@@ -38,10 +38,10 @@ RUN curl -fSL "https://github.com/0xPolygonHermez/zisk/releases/download/v${ZISK
     && rm /tmp/zisk.tar.gz \
     && chmod +x /root/.zisk/bin/*
 
-# Overlay of a worker from han0110/zisk 4eedd333, which caches the Main instruction table upstream
+# Overlay of a worker from han0110/zisk 30ece0c0, which caches the Main instruction table upstream
 # rebuilds every proof and serves the health endpoint the container healthcheck probes.
 # Remove it once a release carries both.
-RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-4eedd333c8af82d0d4566e70ac46e15efe593239/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
+RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-30ece0c002e8316247c679645c6e1c35e2c65d79/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
     && tar --no-same-owner -xzf /tmp/zisk-patched.tar.gz -C /root/.zisk ./bin/zisk-worker-gpu \
     && rm /tmp/zisk-patched.tar.gz \
     && chmod +x /root/.zisk/bin/zisk-worker-gpu

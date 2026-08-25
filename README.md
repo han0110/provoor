@@ -152,10 +152,16 @@ Before opening its port the forwarder checks the cluster's key against `--vk`
 and proves a small warmup block, so a mismatched deployment never serves a
 request and a cold cluster's one-time costs never land in a measured test.
 
-After a failed test the forwarder waits for the cluster to report itself ready
-before timing the next one, so a worker restarting after one block does not
-land in another block's measurement. OpenVM reports that readiness. ZisK does
-not, so a submission waits the recovery out instead.
+The forwarder waits for the cluster to report itself ready before timing any
+test. The wait runs on the request and carries no budget of its own, since a
+wait cut short leaves the rest of a recovery to land inside the next block's
+measurement. That readiness covers a worker that dropped out, not a cluster
+that is draining an earlier proof. A coordinator answers on worker
+registration and worker health, neither of which sees a proof that still holds
+the cluster or a worker whose provers are all busy, so it reports itself ready
+while it refuses work. A measured time therefore also discounts the
+submissions the cluster refused, so only the attempt it admitted counts as
+proving the block.
 
 Results land in `provoor-runs/results` and render in the benchmarkoor UI,
 including live proof phases, per-test proving times, and opcode heatmaps.

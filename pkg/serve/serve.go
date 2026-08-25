@@ -28,10 +28,12 @@ type Prover interface {
 	// ClientVersion is the guest ELF name, identifying the guest and its
 	// zkVM SDK version for run records.
 	ClientVersion() string
-	// WaitReady blocks until the cluster can take a job, returning at once on
-	// a backend whose coordinator reports nothing a client can trust. It is
-	// called outside the measured interval, so a cluster still recovering from
-	// a failed proof does not charge that recovery to the next one.
+	// WaitReady blocks until every worker is back, returning at once on a
+	// backend whose coordinator reports nothing a client can trust. It is
+	// called outside the measured interval, so a worker that dropped out does
+	// not charge its return to the next proof. A coordinator reports itself
+	// ready while it refuses work, so this is not a gate on admission, which
+	// ProveOutcome.SubmitWait accounts for instead.
 	WaitReady(ctx context.Context) error
 	// Warmup proves a small fixed input, so a cold prover's one-time costs
 	// land before the first measured proof.
@@ -49,6 +51,11 @@ type ProveOutcome struct {
 	ProofBytes int
 	// ClusterProvingTime is the backend's self-reported proving duration.
 	ClusterProvingTime time.Duration
+	// SubmitWait is how long the backend spent on attempts the cluster
+	// refused before one was admitted. A coordinator reports itself ready
+	// while it declines work, so admission is the only trustworthy signal
+	// that proving started, and the measured time excludes this.
+	SubmitWait time.Duration
 }
 
 // Server answers the JSON-RPC methods a benchmark run needs. A mutex
@@ -67,12 +74,8 @@ type Server struct {
 	// Exit terminates the process, os.Exit in production.
 	Exit func(code int)
 
-	mu sync.Mutex
-	// lastProveFailed reports whether the previous proof failed, so the next
-	// one waits for the cluster to come back before its own clock starts. It
-	// is read and written under mu, which one proof holds throughout.
-	lastProveFailed bool
-	outputMu        sync.Mutex
+	mu       sync.Mutex
+	outputMu sync.Mutex
 }
 
 type request struct {
@@ -219,15 +222,20 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// A failed proof can leave the cluster restarting a worker, so the next
-	// one waits for it on the request context rather than its own budget,
-	// keeping the recovery out of both the timeout and the measurement. A
+	// Every proof waits for the cluster first, on the request context rather
+	// than its own budget, keeping the wait out of both the timeout and the
+	// measurement. This covers a worker that dropped out. It does not cover a
+	// cluster draining an earlier proof, which reports itself ready and
+	// refuses the job anyway, so the outcome's submit wait carries that. A
 	// cluster that stays down is left to fail this proof on its own terms.
-	if s.lastProveFailed {
-		s.printf("waiting for the cluster before proving %s", payload.BlockHash)
-		if err := s.Prover.WaitReady(requestCtx); err != nil {
-			s.printf("cluster still not ready, proving %s anyway: %v", payload.BlockHash, err)
-		}
+	// A ready cluster answers in milliseconds and a waiting one polls in
+	// seconds, so a wait past a second is the cluster holding this block up
+	// and is worth a line. Without one an indefinite wait reads as silence.
+	readyStarted := time.Now()
+	if err := s.Prover.WaitReady(requestCtx); err != nil {
+		s.printf("cluster still not ready, proving %s anyway: %v", payload.BlockHash, err)
+	} else if waited := time.Since(readyStarted); waited > time.Second {
+		s.printf("waited %s for the cluster before proving %s", waited.Round(time.Second), payload.BlockHash)
 	}
 
 	s.printf("proving %s (%d input bytes)", payload.BlockHash, len(input))
@@ -235,7 +243,6 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 	outcome, err := s.Prover.Prove(ctx, input, func(phase string) {
 		s.printf("proving %s phase %s", payload.BlockHash, phase)
 	})
-	s.lastProveFailed = err != nil
 	if err != nil {
 		s.printf("proving %s failed: %v", payload.BlockHash, err)
 		// A client that went away says nothing about the cluster's health,
@@ -245,7 +252,7 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 		}
 		return nil, &rpcError{Code: -32000, Message: err.Error()}
 	}
-	provingTime := time.Since(started)
+	provingTime := time.Since(started) - outcome.SubmitWait
 
 	matched := outputMatched(outcome.PublicValues, expected)
 	gasUsed := parseQuantity(payload.GasUsed)

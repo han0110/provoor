@@ -186,7 +186,7 @@ func TestSubmitProveJobPacesSetupRecovery(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
-	if _, err := client.submitProveJob(ctx, "hash", nil, nil); err == nil {
+	if _, _, err := client.submitProveJob(ctx, "hash", nil, nil); err == nil {
 		t.Fatal("submitProveJob() = nil, want the deadline to end the wait")
 	}
 	// submitRetryInterval outlasts the deadline, so a paced loop submits once.

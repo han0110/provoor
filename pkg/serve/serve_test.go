@@ -13,12 +13,18 @@ import (
 )
 
 // fakeProver answers with fixed public values or a fixed error, counting
-// readiness waits so a test can pin when the gate before a proof fires.
+// readiness waits so a test can pin when the gate before a proof fires. Each
+// wait costs readyDelay, the shape a cluster takes when it is still draining
+// an earlier proof.
 type fakeProver struct {
 	publicValues []byte
 	err          error
 	phases       []string
 	readyWaits   int
+	readyDelay   time.Duration
+	// submitWait is spent inside Prove and reported, the shape a backend
+	// takes when the cluster refused attempts before admitting one.
+	submitWait time.Duration
 }
 
 func (p *fakeProver) ClientVersion() string {
@@ -27,6 +33,7 @@ func (p *fakeProver) ClientVersion() string {
 
 func (p *fakeProver) WaitReady(context.Context) error {
 	p.readyWaits++
+	time.Sleep(p.readyDelay)
 	return nil
 }
 
@@ -38,6 +45,7 @@ func (p *fakeProver) Prove(_ context.Context, _ []byte, onPhase func(string)) (*
 	if p.err != nil {
 		return nil, p.err
 	}
+	time.Sleep(p.submitWait)
 	for _, phase := range p.phases {
 		onPhase(phase)
 	}
@@ -45,6 +53,7 @@ func (p *fakeProver) Prove(_ context.Context, _ []byte, onPhase func(string)) (*
 		PublicValues:       p.publicValues,
 		ProofBytes:         316119,
 		ClusterProvingTime: 4011 * time.Millisecond,
+		SubmitWait:         p.submitWait,
 	}, nil
 }
 
@@ -218,29 +227,59 @@ func TestProveRejectsMalformedParams(t *testing.T) {
 	}
 }
 
-// TestWaitReadyFollowsAFailedProof pins when the readiness gate fires. Waiting
-// before every proof would probe a cluster that never stopped being ready,
-// while waiting before none would let a worker's restart land inside the next
-// proof's measurement.
-func TestWaitReadyFollowsAFailedProof(t *testing.T) {
-	failing := &fakeProver{err: errors.New("down")}
-	server := newServer(failing, &bytes.Buffer{})
-	post(t, server, proveRequest([]byte{1}))
-	if failing.readyWaits != 0 {
-		t.Errorf("readyWaits = %d, want the first proof to go straight through", failing.readyWaits)
-	}
-	post(t, server, proveRequest([]byte{1}))
-	if failing.readyWaits != 1 {
-		t.Errorf("readyWaits = %d, want one wait after the failed proof", failing.readyWaits)
-	}
-
+// TestWaitReadyPrecedesEveryProof pins the readiness gate on every request. A
+// cluster that is still draining an earlier proof refuses the submission, and
+// the backend's retries would land inside this block's measurement, so the
+// gate cannot be limited to the proofs that follow a failure.
+func TestWaitReadyPrecedesEveryProof(t *testing.T) {
 	expected := []byte{1, 2, 3, 4}
 	passing := &fakeProver{publicValues: commitment(expected)}
-	server = newServer(passing, &bytes.Buffer{})
+	server := newServer(passing, &bytes.Buffer{})
 	post(t, server, proveRequest(expected))
 	post(t, server, proveRequest(expected))
-	if passing.readyWaits != 0 {
-		t.Errorf("readyWaits = %d, want a run of passing proofs never to wait", passing.readyWaits)
+	if passing.readyWaits != 2 {
+		t.Errorf("readyWaits = %d, want one wait before each proof", passing.readyWaits)
+	}
+
+	failing := &fakeProver{err: errors.New("down")}
+	server = newServer(failing, &bytes.Buffer{})
+	post(t, server, proveRequest([]byte{1}))
+	if failing.readyWaits != 1 {
+		t.Errorf("readyWaits = %d, want the first proof gated too", failing.readyWaits)
+	}
+}
+
+// TestNothingBeforeAdmissionIsMeasured pins the clock against both ways a
+// cluster keeps a block waiting. The readiness gate runs before the clock,
+// and the attempts a cluster refuses after reporting itself ready come off
+// the total, so neither is ever reported as this block's proving time.
+func TestNothingBeforeAdmissionIsMeasured(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		prover *fakeProver
+	}{
+		{name: "the cluster is not ready yet", prover: &fakeProver{readyDelay: 80 * time.Millisecond}},
+		{name: "the cluster reports ready and refuses", prover: &fakeProver{submitWait: 80 * time.Millisecond}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expected := []byte{1, 2, 3, 4}
+			tc.prover.publicValues = commitment(expected)
+			output := &bytes.Buffer{}
+
+			post(t, newServer(tc.prover, output), proveRequest(expected))
+
+			lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+			var metric metricLine
+			if err := json.Unmarshal([]byte(lines[len(lines)-1]), &metric); err != nil {
+				t.Fatalf("metric line %q: %v", lines[len(lines)-1], err)
+			}
+			if metric.ProvingTimeMs >= 40 {
+				t.Errorf("provingTimeMs = %d, want the 80ms wait left out", metric.ProvingTimeMs)
+			}
+			if metric.Timing.TotalMs != metric.ProvingTimeMs {
+				t.Errorf("timing = %+v, want total_ms to follow provingTimeMs", metric.Timing)
+			}
+		})
 	}
 }
 

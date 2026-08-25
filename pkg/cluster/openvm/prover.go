@@ -37,7 +37,7 @@ func NewProver(ctx context.Context, endpoint string, elf, programVK []byte, elfS
 }
 
 // WaitReady blocks until the manager reports every expected worker registered
-// and each one answers its own readiness probe.
+// and each one answers its own readiness probe, for as long as ctx allows.
 func (p *Prover) WaitReady(ctx context.Context) error {
 	return p.client.WaitReady(ctx)
 }

@@ -53,14 +53,21 @@ func (e *InputTooLargeError) Error() string {
 	return fmt.Sprintf("framed input of %d bytes exceeds the %d byte inline cap", e.FramedBytes, maxMessageBytes)
 }
 
-// ProveTimeoutError reports a prove job cancelled on deadline.
+// ProveTimeoutError reports a prove job cancelled on deadline. Cause carries
+// the last failure when one kept the job from settling.
 type ProveTimeoutError struct {
 	JobID string
+	Cause error
 }
 
 func (e *ProveTimeoutError) Error() string {
+	if e.Cause != nil {
+		return fmt.Sprintf("prove job %s timed out: %v", e.JobID, e.Cause)
+	}
 	return fmt.Sprintf("prove job %s timed out", e.JobID)
 }
+
+func (e *ProveTimeoutError) Unwrap() error { return e.Cause }
 
 // Client drives guest program registration and prove jobs against a
 // coordinator's client-facing gRPC API.
@@ -203,6 +210,67 @@ func (c *Client) verify(envelope []byte) ([]byte, error) {
 	return verifyProof(c.verifier, envelope)
 }
 
+// Prove submits an input, waits for the proof, and cancels the job when the
+// context expires first. Submission waits out a cluster that is not ready to
+// take the job, bounded by the same context as the proof itself.
+func (c *Client) Prove(ctx context.Context, hashID string, input []byte, onPhase func(phase string)) (*serve.ProveOutcome, error) {
+	jobID, submitWait, err := c.submitProveJob(ctx, hashID, input, onPhase)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := c.waitProveJob(ctx, jobID, onPhase)
+	if err != nil && ctx.Err() != nil {
+		cancelCtx, cancelCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancelCancel()
+		_, _ = c.CancelProveJob(cancelCtx, jobID)
+		return nil, &ProveTimeoutError{JobID: jobID, Cause: err}
+	}
+	if err == nil {
+		result.SubmitWait = submitWait
+	}
+	return result, err
+}
+
+// submitProveJob submits one prove job, waiting out a cluster momentarily
+// short of workers and recovering a missing setup. Both are paced, since a
+// coordinator answers a cached setup at once and an unpaced branch would
+// resubmit as fast as the coordinator could refuse. The wait is reported as a
+// phase, since it otherwise reads as a proof that is simply slow. It returns
+// the admitted job's identifier and how long the refused attempts took, which
+// is not time the cluster spent proving the input.
+func (c *Client) submitProveJob(ctx context.Context, hashID string, input []byte, onPhase func(phase string)) (string, time.Duration, error) {
+	lastPhase := ""
+	started := time.Now()
+	var submitWait time.Duration
+	for {
+		// The wait runs to the attempt that lands, so the submission carrying
+		// the input stays in the caller's measurement.
+		submitWait = time.Since(started)
+		jobID, err := c.createProveJob(ctx, hashID, input)
+		if err == nil {
+			return jobID, submitWait, nil
+		}
+		switch {
+		case errors.Is(err, errSetupNotDone):
+			// A coordinator restart drops its setups, so the key to recover
+			// against is the one the client already binds.
+			if err := c.Setup(ctx, hashID, c.boundProgramVK()); err != nil {
+				return "", 0, err
+			}
+		case errors.Is(err, errClusterUnavailable):
+		default:
+			return "", 0, err
+		}
+		cluster.ReportPhase(onPhase, &lastPhase, "waiting for the cluster")
+		select {
+		case <-ctx.Done():
+			return "", 0, fmt.Errorf("prove job submission timed out: %w", err)
+		case <-time.After(submitRetryInterval):
+		}
+	}
+}
+
 // createProveJob submits one prove job for an input and returns its job id
 // without waiting for completion.
 func (c *Client) createProveJob(ctx context.Context, hashID string, input []byte) (string, error) {
@@ -239,9 +307,10 @@ func classifySubmitError(err error) error {
 	return err
 }
 
-// WaitProveJob blocks until a prove job terminates, reporting phase
-// transitions through onPhase when non-nil.
-func (c *Client) WaitProveJob(ctx context.Context, jobID string, onPhase func(phase string)) (*serve.ProveOutcome, error) {
+// waitProveJob blocks until a prove job terminates, reporting phase
+// transitions through onPhase when non-nil, and assembles the result of a
+// completed one.
+func (c *Client) waitProveJob(ctx context.Context, jobID string, onPhase func(phase string)) (*serve.ProveOutcome, error) {
 	result, err := c.waitJob(ctx, jobID, onPhase)
 	if err != nil {
 		return nil, err
@@ -263,66 +332,6 @@ func (c *Client) WaitProveJob(ctx context.Context, jobID string, onPhase func(ph
 		ProofBytes:         len(prove.Prove.Proof.Data),
 		ClusterProvingTime: time.Duration(prove.Prove.Stats.DurationNanos), //nolint:gosec // nanoseconds fit
 	}, nil
-}
-
-// CancelProveJob cancels a job, returning false when it already terminated.
-func (c *Client) CancelProveJob(ctx context.Context, jobID string) (bool, error) {
-	resp, err := c.api.CancelJob(ctx, &api.CancelJobRequest{JobId: jobID})
-	if err != nil {
-		return false, err
-	}
-	return resp.Cancelled, nil
-}
-
-// Prove submits an input, waits for the proof, and cancels the job when the
-// context expires first. Submission waits out a cluster that is not ready to
-// take the job, bounded by the same context as the proof itself.
-func (c *Client) Prove(ctx context.Context, hashID string, input []byte, onPhase func(phase string)) (*serve.ProveOutcome, error) {
-	jobID, err := c.submitProveJob(ctx, hashID, input, onPhase)
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := c.WaitProveJob(ctx, jobID, onPhase)
-	if err != nil && ctx.Err() != nil {
-		cancelCtx, cancelCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		defer cancelCancel()
-		_, _ = c.CancelProveJob(cancelCtx, jobID)
-		return nil, &ProveTimeoutError{JobID: jobID}
-	}
-	return result, err
-}
-
-// submitProveJob submits one prove job, waiting out a cluster momentarily
-// short of workers and recovering a missing setup. Both are paced, since a
-// coordinator answers a cached setup at once and an unpaced branch would
-// resubmit as fast as the coordinator could refuse. The wait is reported as a
-// phase, since it otherwise reads as a proof that is simply slow.
-func (c *Client) submitProveJob(ctx context.Context, hashID string, input []byte, onPhase func(phase string)) (string, error) {
-	lastPhase := ""
-	for {
-		jobID, err := c.createProveJob(ctx, hashID, input)
-		if err == nil {
-			return jobID, nil
-		}
-		switch {
-		case errors.Is(err, errSetupNotDone):
-			// A coordinator restart drops its setups, so the key to recover
-			// against is the one the client already binds.
-			if err := c.Setup(ctx, hashID, c.boundProgramVK()); err != nil {
-				return "", err
-			}
-		case errors.Is(err, errClusterUnavailable):
-		default:
-			return "", err
-		}
-		cluster.ReportPhase(onPhase, &lastPhase, "waiting for the cluster")
-		select {
-		case <-ctx.Done():
-			return "", fmt.Errorf("prove job submission timed out: %w", err)
-		case <-time.After(submitRetryInterval):
-		}
-	}
 }
 
 // waitJob polls a job until it terminates and returns its result, reporting
@@ -388,6 +397,15 @@ func failureReason(failure *api.JobFailure) string {
 	default:
 		return "unknown failure"
 	}
+}
+
+// CancelProveJob cancels a job, returning false when it already terminated.
+func (c *Client) CancelProveJob(ctx context.Context, jobID string) (bool, error) {
+	resp, err := c.api.CancelJob(ctx, &api.CancelJobRequest{JobId: jobID})
+	if err != nil {
+		return false, err
+	}
+	return resp.Cancelled, nil
 }
 
 // framedStdin returns data with a little-endian u64 length prefix, padded
