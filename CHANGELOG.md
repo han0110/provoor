@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/han0110/provoor/compare/v0.4.0...v0.4.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* bump zisk release ([#12](https://github.com/han0110/provoor/issues/12)) ([7b4fee6](https://github.com/han0110/provoor/commit/7b4fee65c4a0484b35320b4a63c3f5ce1e59aab5))
+* bump zisk release ([#14](https://github.com/han0110/provoor/issues/14)) ([8543784](https://github.com/han0110/provoor/commit/85437842873c206e69fd7a9853c43c8ab563b00c))
+
 ## [0.4.0](https://github.com/han0110/provoor/compare/v0.3.0...v0.4.0) (2026-08-22)
 
 
