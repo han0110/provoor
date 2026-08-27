@@ -140,7 +140,10 @@ func TestCoordinatorSpec(t *testing.T) {
 	if containerCfg.Image != "ghcr.io/han0110/provoor/zisk:1.0.0-alpha" {
 		t.Errorf("Image = %q", containerCfg.Image)
 	}
+	// The supervisor runs the rest of the command as the coordinator, so that
+	// command has to reach it intact.
 	wantCmd := []string{
+		"zisk-supervisor",
 		"zisk-coordinator",
 		"--api-port", "7000",
 		"--cluster-port", "50051",
@@ -149,7 +152,7 @@ func TestCoordinatorSpec(t *testing.T) {
 	if !reflect.DeepEqual([]string(containerCfg.Cmd), wantCmd) {
 		t.Errorf("Cmd = %v", containerCfg.Cmd)
 	}
-	if !reflect.DeepEqual(containerCfg.Env, []string{"RUST_LOG=info"}) {
+	if !reflect.DeepEqual(containerCfg.Env, []string{"RUST_LOG=info", "RESTART_PORT=7002"}) {
 		t.Errorf("Env = %v", containerCfg.Env)
 	}
 	if hostCfg.RestartPolicy.Name != container.RestartPolicyOnFailure {
@@ -158,7 +161,7 @@ func TestCoordinatorSpec(t *testing.T) {
 	if hostCfg.LogConfig.Type != "journald" || hostCfg.LogConfig.Config["tag"] != "zisk-coordinator" {
 		t.Errorf("LogConfig = %+v", hostCfg.LogConfig)
 	}
-	for _, port := range []string{"7000/tcp", "50051/tcp"} {
+	for _, port := range []string{"7000/tcp", "50051/tcp", "7002/tcp"} {
 		bindings := hostCfg.PortBindings[nat.Port(port)]
 		if len(bindings) != 1 || bindings[0].HostPort != port[:len(port)-4] {
 			t.Errorf("PortBindings[%s] = %v", port, bindings)
@@ -167,15 +170,6 @@ func TestCoordinatorSpec(t *testing.T) {
 	if len(hostCfg.Mounts) != 1 || hostCfg.Mounts[0].Source != "zisk-cache-1.1.0-alpha" ||
 		hostCfg.Mounts[0].Target != "/root/.zisk/cache" || hostCfg.Mounts[0].ReadOnly {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
-	}
-}
-
-// TestCoordinatorEndpoint pins that the client API is addressed as the
-// coordinator host sees it, never as the data network does, since a remote
-// deployment reaches it through the coordinator's SSH destination.
-func TestCoordinatorEndpoint(t *testing.T) {
-	if got := coordinatorEndpoint(); got != "http://127.0.0.1:7000" {
-		t.Errorf("endpoint = %q", got)
 	}
 }
 
@@ -328,6 +322,39 @@ func TestSetupSpec(t *testing.T) {
 	}
 	// The proving-key job builds const-trees on the same GPUs the worker
 	// proves on, so it claims the host's selection rather than every device.
+	if len(hostCfg.DeviceRequests) != 1 || hostCfg.DeviceRequests[0].Count != 4 {
+		t.Errorf("DeviceRequests = %+v", hostCfg.DeviceRequests)
+	}
+}
+
+func TestProgramSetupSpec(t *testing.T) {
+	containerCfg, hostCfg := programSetupSpec(testConfig(), cluster.GPU{Count: 4})
+	if !reflect.DeepEqual([]string(containerCfg.Cmd), []string{"bash", "-c", programSetupScript}) {
+		t.Errorf("Cmd = %v", containerCfg.Cmd)
+	}
+	wantEnv := []string{
+		"ELF_PATH=/tmp/zisk-guest.elf",
+		"VK_PATH=/tmp/zisk-guest.vk",
+		"PROVING_KEY_DIR=/root/.zisk/provingKey",
+		"CACHE_DIR=/root/.zisk/cache",
+		"RUST_LOG=info",
+	}
+	if !reflect.DeepEqual(containerCfg.Env, wantEnv) {
+		t.Errorf("Env = %v", containerCfg.Env)
+	}
+	for _, required := range []string{"set -euo pipefail", "${ELF_PATH}", "${VK_PATH}", "${PROVING_KEY_DIR}", "${CACHE_DIR}", "program-setup"} {
+		if !strings.Contains(programSetupScript, required) {
+			t.Errorf("program setup script lacks %q", required)
+		}
+	}
+	// The assembly has to land in the cache the workers read, and the setup
+	// reads the proving key from the same volume the workers prove against.
+	if len(hostCfg.Mounts) != 2 || hostCfg.Mounts[0].Source != "zisk-proving-key-1.1.0-alpha" ||
+		hostCfg.Mounts[1].Source != "zisk-cache-1.1.0-alpha" || hostCfg.Mounts[1].Target != "/root/.zisk/cache" {
+		t.Errorf("Mounts = %+v", hostCfg.Mounts)
+	}
+	// A guest is compiled on the same GPUs the host proves on, before the
+	// worker starts and takes the whole device.
 	if len(hostCfg.DeviceRequests) != 1 || hostCfg.DeviceRequests[0].Count != 4 {
 		t.Errorf("DeviceRequests = %+v", hostCfg.DeviceRequests)
 	}

@@ -1,10 +1,12 @@
 package zisk
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -16,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/han0110/provoor/pkg/cluster/zisk/api"
+	"github.com/han0110/provoor/pkg/cluster/zisk/supervisor"
 )
 
 func TestFramedStdin(t *testing.T) {
@@ -202,5 +205,78 @@ func TestInputTooLarge(t *testing.T) {
 	var tooLarge *InputTooLargeError
 	if !errors.As(err, &tooLarge) {
 		t.Fatalf("err = %v, want InputTooLargeError", err)
+	}
+}
+
+func TestRestartAddress(t *testing.T) {
+	for _, tc := range []struct{ endpoint, want string }{
+		{"http://10.0.0.1:7000", "10.0.0.1:7002"},
+		{"10.0.0.1:7000", "10.0.0.1:7002"},
+	} {
+		got, err := restartAddress(tc.endpoint)
+		if err != nil || got != tc.want {
+			t.Errorf("restartAddress(%q) = %q, %v", tc.endpoint, got, err)
+		}
+	}
+	if _, err := restartAddress("http://10.0.0.1"); err == nil {
+		t.Error("an endpoint without a port has no supervisor address to derive")
+	}
+}
+
+// stubSupervisor speaks the supervisor's half, answering only when it refuses
+// and otherwise closing, which is how a landed request reads on the wire.
+func stubSupervisor(t *testing.T, refusal string) (address string, verb *string) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	seen := ""
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		line, _ := bufio.NewReader(conn).ReadString('\n')
+		seen = strings.TrimSpace(line)
+		if refusal != "" {
+			_, _ = io.WriteString(conn, refusal+"\n")
+		}
+	}()
+	return listener.Addr().String(), &seen
+}
+
+func TestAskRestartSendsTheVerb(t *testing.T) {
+	address, verb := stubSupervisor(t, "")
+	if err := askRestart(t.Context(), address); err != nil {
+		t.Fatalf("askRestart: %v", err)
+	}
+	if *verb != supervisor.Verb {
+		t.Errorf("supervisor was sent %q, want %q", *verb, supervisor.Verb)
+	}
+}
+
+func TestAskRestartReportsARefusal(t *testing.T) {
+	address, _ := stubSupervisor(t, "expected the verb restart")
+	err := askRestart(t.Context(), address)
+	if err == nil || !strings.Contains(err.Error(), "expected the verb restart") {
+		t.Errorf("err = %v, want the supervisor's answer reported", err)
+	}
+}
+
+// A cluster whose coordinator predates the supervisor answers nothing on the
+// restart port, and serving against it would reintroduce the corruption the
+// restart exists to prevent, so it has to fail rather than continue.
+func TestAskRestartFailsWhenNoSupervisorAnswers(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	_ = listener.Close()
+	if err := askRestart(t.Context(), address); err == nil {
+		t.Error("an unreachable supervisor has to fail the forwarder")
 	}
 }

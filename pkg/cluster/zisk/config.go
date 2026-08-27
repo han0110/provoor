@@ -27,10 +27,12 @@ type Config struct {
 	ImageTag string `yaml:"image_tag"`
 	// Verbose raises container log levels, 0 info, 1 debug, 2 trace.
 	Verbose int `yaml:"verbose"`
-	// Guests lists the guest programs the deployment sets up, each naming an
-	// ELF and the verifying key its proofs are checked against. Programs are
-	// content addressed, so a serve-side ELF must be byte-identical to its
-	// entry here.
+	// Guests lists the guest programs compiled into every worker host's
+	// artifact cache before the cluster starts, each naming an ELF and the
+	// verifying key its proofs are checked against. Compiling here is what
+	// keeps the ROM and assembly generation out of the first setup a forwarder
+	// asks for. Artifacts are addressed by ELF hash, so a serve-side ELF must
+	// be byte-identical to its entry here to reach the cache.
 	Guests      []cluster.Guest `yaml:"guests"`
 	Coordinator cluster.Node    `yaml:"coordinator"`
 	Workers     []Worker        `yaml:"workers"`

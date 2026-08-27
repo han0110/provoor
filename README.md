@@ -61,10 +61,9 @@ Every proof is verified with the verifier from an ere release, against the key
 published as the `.vk` asset beside the guest ELF rather than one the cluster
 supplies. A test passes only when the verified public values match the
 fixture's expected output, so a proof of another program, or one altered in
-transit, fails its test instead of passing as a measurement. The cluster's own
-key, derived from the uploaded ELF, is compared against the configured one at
-`up` and again when the forwarder starts, and a mismatch stops both before any
-proof is measured.
+transit, fails its test instead of passing as a measurement. The key derived
+from the ELF is compared against the configured one at `up` and again when the
+forwarder starts, and a mismatch stops both before any proof is measured.
 
 ```mermaid
 flowchart LR
@@ -110,27 +109,44 @@ scripts/provoor.sh down --config examples/openvm-4x4.example.yaml
   --config` takes directly.
 - Each `guests` entry pairs an `elf` source with the `vk` published beside it,
   both a local path or an `eth-act/ere-guests` release asset URL. `up` fails
-  when the key the cluster derives differs, printing both.
+  when the key derived from the ELF differs, printing both.
 - `up` is idempotent and streams its progress, and `down` keeps the cached
   volumes and journald logs so the next `up` is fast.
 
 The first `up` is slow, since ZisK downloads and prepares the proving key and
 OpenVM derives a keyset for each guest ELF, minutes per program on a GPU.
 
-A ZisK deployment also reaches the coordinator's client API over the
-coordinator's SSH destination rather than the data network, so a bastion
-carrying no cluster traffic still works. That needs TCP forwarding enabled on
-the coordinator's SSH server.
+A ZisK `up` compiles every guest before it starts the cluster, running
+`cargo-zisk-dev-gpu program-setup` once per guest on each worker host. That
+writes the ROM setup and the assembly emulator into the host's artifact cache
+and derives the guest's verifying key, which `up` checks against the configured
+one. The forwarder's own setup then reads the cache instead of generating
+either, so the minutes that work takes never land inside a benchmark run.
 
-A ZisK worker that runs two setups in a row, without proving the first in
-between, can no longer prove the earlier guest. `up` provisions guests in
-exactly that order, so it restarts the cluster afterwards. Each forwarder then
-sets up its own guest and proves it immediately, reusing the assembly `up`
-compiled.
+Compiling a guest allocates the whole device, which is why it runs before the
+coordinator and the workers rather than against a live cluster. Neither `up`
+nor `down` talks to the coordinator's client API.
 
-The coordinator and worker APIs bind every interface, and `provoor serve`
-answers unauthenticated JSON-RPC, so keep these hosts on a private network or
-firewall their ports.
+A ZisK coordinator runs under `zisk-supervisor`, built into the cluster image
+from `cmd/zisk-supervisor` and taking restart requests on port 7002. The
+coordinator records every guest it has set up, never drops an entry, and
+replays all of them to each worker that registers. Two entries mean
+two setups in a row on one worker process, which corrupts the earlier guest.
+Ending the coordinator is the only way to clear that record, so each forwarder
+asks for that before it registers its own guest, and the container's restart
+policy starts the replacement. That is what lets a single benchmark run cover
+several guests without a redeployment between them.
+
+The supervisor ends the coordinator and nothing else, so a coordinator that
+fails on its own carries its own exit code out of the container rather than
+being hidden in a restart loop. The cost is that the coordinator's restart
+count climbs by one per guest as well as per failure, so it is not on its own a
+count of crashes.
+
+The coordinator and worker APIs bind every interface, `provoor serve` answers
+unauthenticated JSON-RPC, and the supervisor takes a restart from anyone who
+sends it the word, so keep these hosts on a private network or firewall their
+ports.
 
 ## Run a benchmark
 
@@ -150,7 +166,9 @@ the ELF must be byte-identical to it.
 
 Before opening its port the forwarder checks the cluster's key against `--vk`
 and proves a small warmup block, so a mismatched deployment never serves a
-request and a cold cluster's one-time costs never land in a measured test.
+request and a cold cluster's one-time costs never land in a measured test. A
+ZisK forwarder restarts the coordinator first and waits out the workers
+reconnecting, so its guest is the only one the cluster has set up.
 
 The forwarder waits for the cluster to report itself ready before timing any
 test. The wait runs on the request and carries no budget of its own, since a

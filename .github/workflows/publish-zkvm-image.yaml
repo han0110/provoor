@@ -48,7 +48,7 @@ jobs:
           esac
       - uses: docker/build-push-action@v7
         with:
-          context: dockers/zkvm
+          context: .
           file: dockers/zkvm/Dockerfile.${{ inputs.zkvm }}
           push: true
           build-args: ${{ steps.image.outputs.build-args }}

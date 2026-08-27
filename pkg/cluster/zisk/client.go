@@ -1,11 +1,15 @@
 package zisk
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +21,7 @@ import (
 
 	"github.com/han0110/provoor/pkg/cluster"
 	"github.com/han0110/provoor/pkg/cluster/zisk/api"
+	"github.com/han0110/provoor/pkg/cluster/zisk/supervisor"
 	"github.com/han0110/provoor/pkg/ereverifier"
 	"github.com/han0110/provoor/pkg/serve"
 )
@@ -83,6 +88,70 @@ type Client struct {
 	verifier   *ereverifier.Verifier
 }
 
+// restartTimeout bounds the request that ends the coordinator. The wait for
+// its replacement is not part of it, since the cluster answers that.
+const restartTimeout = 30 * time.Second
+
+// RestartCoordinator ends the running coordinator, leaving the container's
+// restart policy to start its replacement.
+//
+// The coordinator holds the set of guest programs already set up in memory and
+// never removes an entry, replaying all of them to every worker that
+// registers. Two entries mean two setups in a row on one worker process, which
+// corrupts the earlier guest's assembly. A forwarder about to serve a
+// different guest therefore clears that record first, which ending the
+// coordinator is the only way to do.
+//
+// It does not wait for the replacement. A published port answers whether or
+// not the container behind it is up, so only a call the coordinator itself
+// serves tells a caller it is back, and the registration that follows is one.
+func RestartCoordinator(ctx context.Context, endpoint string) error {
+	address, err := restartAddress(endpoint)
+	if err != nil {
+		return err
+	}
+
+	return askRestart(ctx, address)
+}
+
+// askRestart sends the verb the supervisor acts on, split from the endpoint
+// handling so the wire protocol is exercised against a stub.
+func askRestart(ctx context.Context, address string) error {
+	ctx, cancel := context.WithTimeout(ctx, restartTimeout)
+	defer cancel()
+
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(ctx, "tcp", address)
+	if err != nil {
+		return fmt.Errorf("reaching the coordinator supervisor on %s, which a cluster deployed by an older provoor does not run: %w", address, err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+	if _, err := io.WriteString(conn, supervisor.Verb+"\n"); err != nil {
+		return fmt.Errorf("asking %s to restart the coordinator: %w", address, err)
+	}
+	// The supervisor writes back only when it refuses, so anything read is a
+	// refusal and a closed connection is the coordinator going down.
+	refusal, _ := bufio.NewReader(conn).ReadString('\n')
+	if strings.TrimSpace(refusal) != "" {
+		return fmt.Errorf("coordinator supervisor on %s answered %q", address, strings.TrimSpace(refusal))
+	}
+	return nil
+}
+
+// restartAddress is the supervisor's address on the host the coordinator API
+// endpoint names, so a caller configures one endpoint rather than two.
+func restartAddress(endpoint string) (string, error) {
+	host, _, err := net.SplitHostPort(strings.TrimPrefix(endpoint, "http://"))
+	if err != nil {
+		return "", fmt.Errorf("coordinator endpoint %q: %w", endpoint, err)
+	}
+	return net.JoinHostPort(host, strconv.Itoa(coordinatorRestartPort)), nil
+}
+
 // DialClient connects to a coordinator API endpoint such as
 // http://10.0.0.1:7000. The connection is lazy, an unreachable coordinator
 // surfaces on the first call. Extra dial options are appended, which is how a
@@ -141,9 +210,12 @@ func (c *Client) Setup(ctx context.Context, hashID string, expectedProgramVK []b
 	job := &api.JobRequestMessage{JobKind: &api.JobKind{Kind: &api.JobKind_Setup{Setup: &api.SetupRequest{
 		HashId: hashID,
 	}}}}
+	// Classified so a caller can tell a cluster that is not ready yet, which
+	// is the ordinary state right after a coordinator restart, from a setup
+	// that will never succeed.
 	submitted, err := c.api.JobRequest(ctx, job)
 	if err != nil {
-		return fmt.Errorf("submitting setup job: %w", err)
+		return fmt.Errorf("submitting setup job: %w", classifySubmitError(err))
 	}
 
 	result, err := c.waitJob(ctx, submitted.JobId, nil)

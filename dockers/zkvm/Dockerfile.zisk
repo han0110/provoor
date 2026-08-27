@@ -1,3 +1,13 @@
+# The supervisor the coordinator runs under, built from this repository. Only
+# its own package and stdlib are copied in, so the stage neither downloads a
+# module nor waits on the verifier the rest of the tree links through cgo.
+FROM golang:1.24.5 AS supervisor
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY cmd/zisk-supervisor ./cmd/zisk-supervisor
+COPY pkg/cluster/zisk/supervisor ./pkg/cluster/zisk/supervisor
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/zisk-supervisor ./cmd/zisk-supervisor
+
 FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -45,6 +55,8 @@ RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-30ece0c002
     && tar --no-same-owner -xzf /tmp/zisk-patched.tar.gz -C /root/.zisk ./bin/zisk-worker-gpu \
     && rm /tmp/zisk-patched.tar.gz \
     && chmod +x /root/.zisk/bin/zisk-worker-gpu
+
+COPY --from=supervisor /out/zisk-supervisor /root/.zisk/bin/zisk-supervisor
 
 ENV PATH="/root/.zisk/bin:${PATH}"
 

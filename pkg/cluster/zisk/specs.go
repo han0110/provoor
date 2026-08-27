@@ -20,16 +20,21 @@ import (
 // accepts it, worded by the pinned image, so an image that rewords it updates
 // the constant alongside the tag bump.
 const (
-	apiPort              = 7000
-	clusterPort          = 50051
-	coordinatorContainer = "zisk-coordinator"
-	workerContainer      = "zisk-worker"
-	setupContainer       = "zisk-proving-key-setup"
-	provingKeyDir        = "/root/.zisk/provingKey"
-	cacheDir             = "/root/.zisk/cache"
-	setupKeyBaseURL      = "https://storage.googleapis.com/zisk-setup"
-	coordinatorConfig    = "/tmp/zisk-coordinator.toml"
-	registrationLine     = "Registration accepted: Registration successful"
+	apiPort               = 7000
+	clusterPort           = 50051
+	coordinatorContainer  = "zisk-coordinator"
+	workerContainer       = "zisk-worker"
+	setupContainer        = "zisk-proving-key-setup"
+	programSetupContainer = "zisk-program-setup"
+	provingKeyDir         = "/root/.zisk/provingKey"
+	cacheDir              = "/root/.zisk/cache"
+	setupKeyBaseURL       = "https://storage.googleapis.com/zisk-setup"
+	coordinatorConfig     = "/tmp/zisk-coordinator.toml"
+	// In-container paths the guest artifacts are copied to for a program
+	// setup, which reads them from the filesystem rather than over the API.
+	guestELFPath     = "/tmp/zisk-guest.elf"
+	guestVKPath      = "/tmp/zisk-guest.vk"
+	registrationLine = "Registration accepted: Registration successful"
 	// Compute units one GPU is worth to the coordinator, the unit the worker
 	// image advertises per GPU. A worker is told to advertise this times the
 	// GPUs it was given and the coordinator derives its readiness floor the
@@ -48,6 +53,10 @@ const (
 	// api port and clear of 9100 through 9999, which Prometheus allocates to
 	// exporters and which a monitored proving host already uses.
 	workerHealthPort = 7001
+	// Port the coordinator's supervisor takes restart requests on, published
+	// beside the api and cluster ports because the caller is a forwarder that
+	// reaches the coordinator host over the network and nothing else.
+	coordinatorRestartPort = 7002
 )
 
 func (cfg *Config) imageRef() string {
@@ -100,23 +109,31 @@ phase3_timeout_seconds = %d
 func coordinatorSpec(cfg *Config) (*container.Config, *container.HostConfig) {
 	api := nat.Port(fmt.Sprintf("%d/tcp", apiPort))
 	clusterAPI := nat.Port(fmt.Sprintf("%d/tcp", clusterPort))
+	restart := nat.Port(fmt.Sprintf("%d/tcp", coordinatorRestartPort))
 
 	containerCfg := &container.Config{
 		Image: cfg.imageRef(),
-		Env:   []string{"RUST_LOG=" + cluster.RustLog(cfg.Verbose)},
+		Env: []string{
+			"RUST_LOG=" + cluster.RustLog(cfg.Verbose),
+			fmt.Sprintf("RESTART_PORT=%d", coordinatorRestartPort),
+		},
+		// The supervisor runs the rest of the command as the coordinator and
+		// ends it on request, leaving the restart policy to start the next one.
 		Cmd: []string{
+			"zisk-supervisor",
 			"zisk-coordinator",
 			"--api-port", strconv.Itoa(apiPort),
 			"--cluster-port", strconv.Itoa(clusterPort),
 			"--config", coordinatorConfig,
 		},
-		ExposedPorts: nat.PortSet{api: {}, clusterAPI: {}},
+		ExposedPorts: nat.PortSet{api: {}, clusterAPI: {}, restart: {}},
 	}
 	hostCfg := &container.HostConfig{
 		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyOnFailure},
 		PortBindings: nat.PortMap{
 			api:        {{HostPort: strconv.Itoa(apiPort)}},
 			clusterAPI: {{HostPort: strconv.Itoa(clusterPort)}},
+			restart:    {{HostPort: strconv.Itoa(coordinatorRestartPort)}},
 		},
 		LogConfig: cluster.Journald(coordinatorContainer),
 		Mounts:    []mount.Mount{cacheMount(cfg.ZkvmVersion)},
@@ -133,15 +150,6 @@ func workerCoordinatorURL(cfg *Config, worker Worker) string {
 		host = "127.0.0.1"
 	}
 	return fmt.Sprintf("http://%s:%d", host, clusterPort)
-}
-
-// coordinatorEndpoint is the client API URL as the coordinator host sees it,
-// which is loopback wherever the coordinator runs. A deployment on this
-// machine dials it directly and a remote one reaches the same address through
-// the coordinator's SSH destination, so the API never has to be routable from
-// wherever provoor runs.
-func coordinatorEndpoint() string {
-	return fmt.Sprintf("http://127.0.0.1:%d", apiPort)
 }
 
 // workerArgs builds the mpirun invocation, one process spanning the host's
@@ -276,11 +284,14 @@ func workerSpec(cfg *Config, worker Worker, name string, numaNodes int) (*contai
 
 // setupScript is embedded from its sidecar file so it stays editable and
 // lintable as shell, with its parameters supplied as container environment.
-// Embedded scripts sit next to the Go file that embeds them, one file per
+// Embedded scripts live under the backend's script directory, one file per
 // script, named after the embedding variable.
 //
-//go:embed setup.sh
+//go:embed script/setup.sh
 var setupScript string
+
+//go:embed script/program-setup.sh
+var programSetupScript string
 
 // setupSpec builds the one-off proving-key job of one worker host, given the
 // same GPUs that host proves on so const-trees are built against the devices
@@ -301,6 +312,37 @@ func setupSpec(cfg *Config, gpu cluster.GPU) (*container.Config, *container.Host
 			Source: provingKeyVolume(cfg.ZkvmVersion),
 			Target: provingKeyDir,
 		}},
+		Resources: container.Resources{
+			Ulimits:        []*container.Ulimit{{Name: "memlock", Soft: -1, Hard: -1}},
+			DeviceRequests: []container.DeviceRequest{gpu.DeviceRequest()},
+		},
+	}
+	return containerCfg, hostCfg
+}
+
+// programSetupSpec builds the one-off job that compiles one guest's ROM setup
+// and assembly into the host's artifact cache, given the same GPUs that host
+// proves on. It runs before the cluster starts, since it allocates the whole
+// device the worker would otherwise hold.
+func programSetupSpec(cfg *Config, gpu cluster.GPU) (*container.Config, *container.HostConfig) {
+	containerCfg := &container.Config{
+		Image: cfg.imageRef(),
+		Env: []string{
+			"ELF_PATH=" + guestELFPath,
+			"VK_PATH=" + guestVKPath,
+			"PROVING_KEY_DIR=" + provingKeyDir,
+			"CACHE_DIR=" + cacheDir,
+			"RUST_LOG=" + cluster.RustLog(cfg.Verbose),
+		},
+		Cmd: []string{"bash", "-c", programSetupScript},
+	}
+	hostCfg := &container.HostConfig{
+		ShmSize: int64(cfg.Config.ShmSizeGB) << 30,
+		Mounts: []mount.Mount{{
+			Type:   mount.TypeVolume,
+			Source: provingKeyVolume(cfg.ZkvmVersion),
+			Target: provingKeyDir,
+		}, cacheMount(cfg.ZkvmVersion)},
 		Resources: container.Resources{
 			Ulimits:        []*container.Ulimit{{Name: "memlock", Soft: -1, Hard: -1}},
 			DeviceRequests: []container.DeviceRequest{gpu.DeviceRequest()},
