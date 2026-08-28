@@ -134,14 +134,13 @@ replays all of them to each worker that registers. Two entries mean
 two setups in a row on one worker process, which corrupts the earlier guest.
 Ending the coordinator is the only way to clear that record, so each forwarder
 asks for that before it registers its own guest, and the container's restart
-policy starts the replacement. That is what lets a single benchmark run cover
-several guests without a redeployment between them.
+policy starts the replacement. One benchmark run therefore covers several
+guests without a redeployment between them.
 
 The supervisor ends the coordinator and nothing else, so a coordinator that
-fails on its own carries its own exit code out of the container rather than
-being hidden in a restart loop. The cost is that the coordinator's restart
-count climbs by one per guest as well as per failure, so it is not on its own a
-count of crashes.
+fails on its own carries its own exit code out of the container. The
+coordinator's restart count climbs by one per guest as well as per failure, so
+it does not count crashes on its own.
 
 The coordinator and worker APIs bind every interface, `provoor serve` answers
 unauthenticated JSON-RPC, and the supervisor takes a restart from anyone who

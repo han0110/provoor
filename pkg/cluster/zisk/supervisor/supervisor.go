@@ -7,10 +7,6 @@
 // to clear that record, so a client about to serve a different guest asks for
 // it first and the container's restart policy starts the replacement.
 //
-// Ending on request exits the same way a crash does, since the restart policy
-// is what brings the coordinator back either way. That leaves nothing to
-// distinguish and no loop to hide a failing coordinator in.
-//
 // It sits apart from the zisk package because the binary that runs it ships
 // inside the cluster image, where the verifier that package links through cgo
 // has no place.
@@ -32,9 +28,9 @@ import (
 )
 
 const (
-	// Verb is the line a request has to carry. A bare connection is not a
-	// request, so a port scan or a health probe that only opens the socket
-	// leaves a running proof alone.
+	// Verb is the line a request has to carry. The deployment's own readiness
+	// probe writes a newline to this port, so anything but the verb has to
+	// leave a running proof alone.
 	Verb = "restart"
 
 	// readTimeout bounds how long a connection may hold a handler without
@@ -70,9 +66,13 @@ func Run(command []string, listener net.Listener) (int, error) {
 		end(cmd.Process)
 	}()
 
-	go serve(listener, cmd.Process, &requested)
+	// ended is closed once the coordinator is gone, which is what a request
+	// holds its connection open for.
+	ended := make(chan struct{})
+	go serve(listener, cmd.Process, &requested, ended)
 
 	status := exitCode(cmd.Wait())
+	close(ended)
 	if requested.Load() && status == 0 {
 		fmt.Println("coordinator ended on request")
 		status = 1
@@ -81,19 +81,20 @@ func Run(command []string, listener net.Listener) (int, error) {
 }
 
 // serve ends the coordinator on every request that carries the verb.
-func serve(listener net.Listener, process *os.Process, requested *atomic.Bool) {
+func serve(listener net.Listener, process *os.Process, requested *atomic.Bool, ended <-chan struct{}) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			return
 		}
-		go answer(conn, process, requested)
+		go answer(conn, process, requested, ended)
 	}
 }
 
-// answer handles one connection. It writes only when it refuses, so a caller
-// reading nothing back knows the coordinator is going down.
-func answer(conn net.Conn, process *os.Process, requested *atomic.Bool) {
+// answer handles one connection. It writes only when it refuses and closes
+// only once the coordinator has exited, so a caller reading nothing back has
+// the record cleared by the time it reconnects.
+func answer(conn net.Conn, process *os.Process, requested *atomic.Bool, ended <-chan struct{}) {
 	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(readTimeout))
@@ -107,6 +108,7 @@ func answer(conn net.Conn, process *os.Process, requested *atomic.Bool) {
 	}
 	requested.Store(true)
 	end(process)
+	<-ended
 }
 
 // end asks the coordinator to leave and kills it if it will not.

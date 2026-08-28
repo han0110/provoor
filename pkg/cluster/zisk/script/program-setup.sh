@@ -17,13 +17,13 @@ touch "${marker}"
 cargo-zisk-dev-gpu program-setup --elf "${ELF_PATH}" --proving-key "${PROVING_KEY_DIR}" -g
 
 derived=$(find "${CACHE_DIR}" -maxdepth 1 -name '*.verkey.bin' -newer "${marker}")
-if [ "$(printf '%s' "${derived}" | grep -c .)" -ne 1 ]; then
-    echo "program setup produced $(printf '%s' "${derived}" | grep -c .) verifying keys, expected exactly one" >&2
+count=$(printf '%s' "${derived}" | grep -c .)
+if [ "${count}" -ne 1 ]; then
+    echo "program setup produced ${count} verifying keys, expected exactly one" >&2
     exit 1
 fi
 
 if ! cmp -s "${derived}" "${VK_PATH}"; then
-    echo "guest verifying key mismatch, the cluster derives $(od -An -tx1 -v "${derived}" | tr -d ' \n')" >&2
-    echo "and the configured vk is $(od -An -tx1 -v "${VK_PATH}" | tr -d ' \n')" >&2
+    echo "guest verifying key mismatch, the cluster derives $(od -An -tx1 -v "${derived}" | tr -d ' \n') and the configured vk is $(od -An -tx1 -v "${VK_PATH}" | tr -d ' \n')" >&2
     exit 1
 fi

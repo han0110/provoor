@@ -112,10 +112,11 @@ func TestSetupBindsTheConfiguredProgramVK(t *testing.T) {
 	if !bytes.Equal(client.boundProgramVK(), programVK) {
 		t.Errorf("bound program vk = %x, want %x", client.boundProgramVK(), programVK)
 	}
-	// The bound verifier is reachable only through a verification, so a
-	// malformed envelope standing in for a proof shows it is in place.
-	if _, err := client.verify([]byte("not-an-envelope")); err == nil {
-		t.Error("verify() = nil, want the bound verifier to reject a malformed envelope")
+	// A bound verifier rejects a malformed envelope on its contents, while an
+	// unbound client refuses before reading any, so the reason separates them.
+	_, err := client.verify([]byte("not-an-envelope"))
+	if err == nil || strings.Contains(err.Error(), "no verifier bound") {
+		t.Errorf("verify() = %v, want the envelope rejected by a bound verifier", err)
 	}
 }
 
@@ -225,36 +226,39 @@ func TestRestartAddress(t *testing.T) {
 
 // stubSupervisor speaks the supervisor's half, answering only when it refuses
 // and otherwise closing, which is how a landed request reads on the wire.
-func stubSupervisor(t *testing.T, refusal string) (address string, verb *string) {
+func stubSupervisor(t *testing.T, refusal string) (address string, verb <-chan string) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = listener.Close() })
-	seen := ""
+	// Carried on a channel rather than a shared variable, since the socket
+	// closing is not an ordering the race detector recognises.
+	seen := make(chan string, 1)
 	go func() {
+		defer close(seen)
 		conn, err := listener.Accept()
 		if err != nil {
 			return
 		}
 		defer func() { _ = conn.Close() }()
 		line, _ := bufio.NewReader(conn).ReadString('\n')
-		seen = strings.TrimSpace(line)
 		if refusal != "" {
 			_, _ = io.WriteString(conn, refusal+"\n")
 		}
+		seen <- strings.TrimSpace(line)
 	}()
-	return listener.Addr().String(), &seen
+	return listener.Addr().String(), seen
 }
 
 func TestAskRestartSendsTheVerb(t *testing.T) {
-	address, verb := stubSupervisor(t, "")
+	address, seen := stubSupervisor(t, "")
 	if err := askRestart(t.Context(), address); err != nil {
 		t.Fatalf("askRestart: %v", err)
 	}
-	if *verb != supervisor.Verb {
-		t.Errorf("supervisor was sent %q, want %q", *verb, supervisor.Verb)
+	if verb := <-seen; verb != supervisor.Verb {
+		t.Errorf("supervisor was sent %q, want %q", verb, supervisor.Verb)
 	}
 }
 
@@ -278,5 +282,31 @@ func TestAskRestartFailsWhenNoSupervisorAnswers(t *testing.T) {
 	_ = listener.Close()
 	if err := askRestart(t.Context(), address); err == nil {
 		t.Error("an unreachable supervisor has to fail the forwarder")
+	}
+}
+
+// A supervisor that accepts and then goes silent leaves the coordinator's
+// state unknown. Reporting that as a restart would serve the next guest
+// against the record the restart exists to clear, so it has to fail.
+func TestAskRestartFailsWhenTheSupervisorGoesSilent(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	silent := t.Context()
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		<-silent.Done()
+		_ = conn.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(silent, time.Second)
+	defer cancel()
+	if err := askRestart(ctx, listener.Addr().String()); err == nil {
+		t.Error("a supervisor that never answers has to fail the forwarder")
 	}
 }

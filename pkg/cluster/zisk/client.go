@@ -102,9 +102,11 @@ const restartTimeout = 30 * time.Second
 // different guest therefore clears that record first, which ending the
 // coordinator is the only way to do.
 //
-// It does not wait for the replacement. A published port answers whether or
-// not the container behind it is up, so only a call the coordinator itself
-// serves tells a caller it is back, and the registration that follows is one.
+// It returns once the old coordinator has exited, which the supervisor signals
+// by holding the connection open until then. The replacement is not waited
+// for, since a published port answers whether or not the container behind it
+// is up, so only a call the coordinator itself serves tells a caller it is
+// back, and the registration that follows is one.
 func RestartCoordinator(ctx context.Context, endpoint string) error {
 	address, err := restartAddress(endpoint)
 	if err != nil {
@@ -123,7 +125,7 @@ func askRestart(ctx context.Context, address string) error {
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
-		return fmt.Errorf("reaching the coordinator supervisor on %s, which a cluster deployed by an older provoor does not run: %w", address, err)
+		return fmt.Errorf("reaching the coordinator supervisor on %s: %w", address, err)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -133,11 +135,16 @@ func askRestart(ctx context.Context, address string) error {
 	if _, err := io.WriteString(conn, supervisor.Verb+"\n"); err != nil {
 		return fmt.Errorf("asking %s to restart the coordinator: %w", address, err)
 	}
-	// The supervisor writes back only when it refuses, so anything read is a
-	// refusal and a closed connection is the coordinator going down.
-	refusal, _ := bufio.NewReader(conn).ReadString('\n')
-	if strings.TrimSpace(refusal) != "" {
-		return fmt.Errorf("coordinator supervisor on %s answered %q", address, strings.TrimSpace(refusal))
+	// The supervisor writes back only to refuse and holds the connection until
+	// the coordinator has exited. A clean end of stream is therefore the
+	// restart landing, and any other read failure leaves the coordinator's
+	// state unknown, which must not pass as success.
+	refusal, err := bufio.NewReader(conn).ReadString('\n')
+	if answer := strings.TrimSpace(refusal); answer != "" {
+		return fmt.Errorf("coordinator supervisor on %s answered %q", address, answer)
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("waiting for the coordinator on %s to end: %w", address, err)
 	}
 	return nil
 }
@@ -154,19 +161,15 @@ func restartAddress(endpoint string) (string, error) {
 
 // DialClient connects to a coordinator API endpoint such as
 // http://10.0.0.1:7000. The connection is lazy, an unreachable coordinator
-// surfaces on the first call. Extra dial options are appended, which is how a
-// caller substitutes a tunnelling dialer for a coordinator the endpoint does
-// not route to.
-func DialClient(endpoint string, opts ...grpc.DialOption) (*Client, error) {
+// surfaces on the first call.
+func DialClient(endpoint string) (*Client, error) {
 	target := strings.TrimPrefix(endpoint, "http://")
 	conn, err := grpc.NewClient(target,
-		append([]grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithDefaultCallOptions(
-				grpc.MaxCallRecvMsgSize(maxMessageBytes),
-				grpc.MaxCallSendMsgSize(maxMessageBytes),
-			),
-		}, opts...)...,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxMessageBytes),
+			grpc.MaxCallSendMsgSize(maxMessageBytes),
+		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dialing coordinator %s: %w", endpoint, err)
@@ -210,11 +213,11 @@ func (c *Client) Setup(ctx context.Context, hashID string, expectedProgramVK []b
 	job := &api.JobRequestMessage{JobKind: &api.JobKind{Kind: &api.JobKind_Setup{Setup: &api.SetupRequest{
 		HashId: hashID,
 	}}}}
-	// Classified so a caller can tell a cluster that is not ready yet, which
-	// is the ordinary state right after a coordinator restart, from a setup
-	// that will never succeed.
 	submitted, err := c.api.JobRequest(ctx, job)
 	if err != nil {
+		// Classified so a caller can tell a cluster that is not ready yet,
+		// the ordinary state right after a coordinator restart, from a setup
+		// that will never succeed.
 		return fmt.Errorf("submitting setup job: %w", classifySubmitError(err))
 	}
 

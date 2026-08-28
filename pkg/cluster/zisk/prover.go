@@ -21,10 +21,11 @@ type Prover struct {
 	sdkVersion string
 }
 
-// setupRetryBudget bounds the wait for a cluster that is not ready to take a
-// setup. It covers every worker reconnecting after the coordinator restart
-// this prover asks for, which is the only reason the refusal is expected.
-const setupRetryBudget = 300 * time.Second
+// clusterReadyBudget bounds the wait for a cluster not yet ready to take a
+// registration or a setup. It covers every worker reconnecting after the
+// coordinator restart this prover asks for, which is the only reason the
+// refusal is expected.
+const clusterReadyBudget = 300 * time.Second
 
 // NewProver restarts the coordinator, registers the guest ELF, and runs the
 // program setup, binding a verifier to programVK and failing when the cluster
@@ -64,7 +65,7 @@ func NewProver(ctx context.Context, endpoint string, elf, programVK []byte, elfS
 // prover just ended while its replacement starts. Registration is idempotent
 // and content addressed, so repeating it costs nothing.
 func registerWhenReady(ctx context.Context, client *Client, elf []byte) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, setupRetryBudget)
+	ctx, cancel := context.WithTimeout(ctx, clusterReadyBudget)
 	defer cancel()
 	for {
 		registerCtx, cancelRegister := context.WithTimeout(ctx, registerTimeout)
@@ -86,7 +87,7 @@ func registerWhenReady(ctx context.Context, client *Client, elf []byte) (string,
 // the coordinator refuses a setup it accepts once they are back. Every other
 // failure is returned at once, since a mismatched key never becomes right.
 func setupWhenReady(ctx context.Context, client *Client, hashID string, programVK []byte) error {
-	ctx, cancel := context.WithTimeout(ctx, setupRetryBudget)
+	ctx, cancel := context.WithTimeout(ctx, clusterReadyBudget)
 	defer cancel()
 	for {
 		err := client.Setup(ctx, hashID, programVK)

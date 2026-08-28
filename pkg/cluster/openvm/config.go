@@ -10,11 +10,18 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/han0110/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/serve"
 )
+
+// defaultTimeoutSecs is the manager's watchdog deadline per proof, over the
+// 300 the image defaults to. It tracks the forwarder's own budget, so the
+// cluster does not fail a proof the forwarder is still waiting on.
+const defaultTimeoutSecs = int(serve.DefaultProveTimeout / time.Second)
 
 // Config describes one OpenVM cluster deployment.
 type Config struct {
@@ -65,8 +72,7 @@ type ProverConfig struct {
 	// two concurrent app provers can exhaust, so a deployment names a figure
 	// and this one defaults to 15 GiB.
 	SegmentMemory int64 `yaml:"segment_memory"`
-	// TimeoutSecs is the manager's watchdog deadline per proof, left to the
-	// image default of 300 when zero.
+	// TimeoutSecs is the manager's watchdog deadline per proof.
 	TimeoutSecs int `yaml:"timeout_secs"`
 	// ShmSizeGB sizes /dev/shm of the worker and keygen containers.
 	ShmSizeGB int `yaml:"shm_size_gb"`
@@ -121,6 +127,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Config.SegmentMemory == 0 {
 		cfg.Config.SegmentMemory = 15 << 30
+	}
+	if cfg.Config.TimeoutSecs == 0 {
+		cfg.Config.TimeoutSecs = defaultTimeoutSecs
 	}
 }
 

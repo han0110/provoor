@@ -28,8 +28,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "listening for restart requests: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() { _ = listener.Close() }()
-
 	status, err := supervisor.Run(os.Args[1:], listener)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
