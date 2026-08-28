@@ -48,8 +48,10 @@ func TestDefaultsOnlyConfigDeploys(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := managerTOML(cfg)
-	if strings.Contains(manager, "timeout_secs") {
-		t.Errorf("timeout_secs must be omitted so the manager applies its own, got\n%s", manager)
+	// The image's own deadline is shorter than the forwarder's budget, so the
+	// watchdog has to be rendered rather than left out.
+	if !strings.Contains(manager, "timeout_secs = 600") {
+		t.Errorf("the manager must carry the watchdog deadline, got\n%s", manager)
 	}
 	// Only the workers carry a segment memory, so the manager's table drops it
 	// whatever the configuration says.
@@ -81,10 +83,9 @@ func TestLoadDefaults(t *testing.T) {
 		AppProvers:      2,
 		LeafProvers:     2,
 		InternalProvers: 1,
-		// Left at zero so the manager applies its own deadline.
-		TimeoutSecs:   0,
-		ShmSizeGB:     2,
-		SegmentMemory: 15 << 30,
+		TimeoutSecs:     600,
+		ShmSizeGB:       2,
+		SegmentMemory:   15 << 30,
 	}
 	if cfg.Config != want {
 		t.Errorf("Config = %+v", cfg.Config)

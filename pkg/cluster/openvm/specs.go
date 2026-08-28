@@ -345,10 +345,10 @@ func workerSpec(cfg *Config, gpu int, cpuset, loadout string) (*container.Config
 
 // keygenScript is embedded from its sidecar file so it stays editable and
 // lintable as shell, with its parameters supplied as container environment.
-// Embedded scripts sit next to the Go file that embeds them, one file per
+// Embedded scripts live under the backend's script directory, one file per
 // script, named after the embedding variable.
 //
-//go:embed keygen.sh
+//go:embed script/keygen.sh
 var keygenScript string
 
 func keygenSpec(cfg *Config, prog program) (*container.Config, *container.HostConfig) {

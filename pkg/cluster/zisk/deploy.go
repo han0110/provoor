@@ -15,7 +15,6 @@ import (
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 
 	"github.com/han0110/provoor/pkg/cluster"
 )
@@ -28,10 +27,11 @@ const (
 	registrationTimeout     = 300 * time.Second
 )
 
-// Up deploys the cluster and blocks until the coordinator accepts
-// connections, every worker has registered, and every configured guest is set
-// up. It is idempotent, a container already running is left in place and a
-// proving-key volume already present is reused.
+// Up compiles every configured guest into each worker host's artifact cache,
+// then deploys the cluster and blocks until the coordinator accepts
+// connections and every worker has registered. It is idempotent, a container
+// already running is left in place and a proving-key volume already present is
+// reused.
 func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 	out := cluster.NewOutput(w)
 	hosts, err := cluster.DialHosts(ctx, cfg.destinations())
@@ -67,6 +67,23 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 		return err
 	}
 
+	// Compile every guest into each worker host's artifact cache. Hosts run in
+	// parallel and the guests of one host run in turn, since a setup allocates
+	// the whole device.
+	guests, err := d.resolveGuests(ctx)
+	if err != nil {
+		return err
+	}
+	g, gctx = errgroup.WithContext(ctx)
+	for i, worker := range cfg.Workers {
+		g.Go(func() error {
+			return d.setupGuests(gctx, worker, cluster.WorkerName(i, worker.GPU), guests)
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
 	if err := d.startCoordinator(ctx); err != nil {
 		return err
 	}
@@ -81,18 +98,7 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 		return err
 	}
 
-	// A setup reserves every worker, so guests are provisioned one at a time.
-	for _, guest := range cfg.Guests {
-		if err := d.setupGuest(ctx, guest); err != nil {
-			return err
-		}
-	}
-
-	if err := d.restartAfterSetup(ctx); err != nil {
-		return err
-	}
-
-	out.Printf("cluster ready, coordinator api on %s port %d, %d workers registered, %d guests set up",
+	out.Printf("cluster ready, coordinator api on %s port %d, %d workers registered, %d guests compiled",
 		cfg.coordinatorHost(), apiPort, len(cfg.Workers), len(cfg.Guests))
 	return nil
 }
@@ -102,55 +108,6 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 // container failure has to be chased on.
 func (cfg *Config) coordinatorHost() string {
 	return cluster.HostName(cfg.Coordinator.SSH)
-}
-
-// restartAfterSetup restarts the coordinator and every worker once the guests
-// are set up, then waits for the cluster to come back.
-//
-// Running two setups in a row, with no proof of the first between them, leaves
-// a worker unable to prove the earlier guest. The proof fails late, either
-// asserting in the ROM state machine that the exit instruction never ran or
-// failing recursive witness generation, both of which read as a proof against
-// another program's assembly. Provisioning several guests here is exactly that
-// pattern, so a cluster deployed with more than one guest would serve the last
-// one and fail the rest.
-//
-// A restart discards it. The coordinator's record of the keys it has handed
-// out and the worker's record of the programs it has set up are both held in
-// memory, so both start empty, while the artifact cache volume keeps the
-// assembly this pass compiled. Each forwarder then runs a real setup for its
-// own guest and proves it immediately, the order that works, and pays only a
-// cache hit for the assembly rather than compiling it again.
-//
-// Switching between guests is otherwise sound. Once each has been set up and
-// proved once, a later forwarder proves its guest correctly even when the
-// coordinator answers its setup from cache and the worker is never reached.
-// A ZisK release that survives consecutive setups would retire this.
-func (d *deployment) restartAfterSetup(ctx context.Context) error {
-	coordinator := d.hosts.Client(d.cfg.Coordinator.SSH)
-	node := d.cfg.coordinatorHost()
-	d.out.Printf("[%s] restarting the cluster so each guest is set up again when it is proved...", cluster.CoordinatorName)
-
-	if err := coordinator.ContainerRestart(ctx, coordinatorContainer, container.StopOptions{}); err != nil {
-		return fmt.Errorf("restarting coordinator on %s: %w", node, err)
-	}
-	if err := cluster.WaitContainerListening(ctx, coordinator, coordinatorContainer, node, coordinatorReadyTimeout, apiPort, clusterPort); err != nil {
-		return err
-	}
-
-	for i, worker := range d.cfg.Workers {
-		cli := d.hosts.Client(worker.SSH)
-		if err := cli.ContainerRestart(ctx, workerContainer, container.StopOptions{}); err != nil {
-			return fmt.Errorf("restarting %s: %w", cluster.WorkerName(i, worker.GPU), err)
-		}
-	}
-	for i, worker := range d.cfg.Workers {
-		if err := d.waitRegistered(ctx, worker, cluster.WorkerName(i, worker.GPU)); err != nil {
-			return err
-		}
-	}
-	d.out.Printf("[%s] cluster restarted, every worker registered again", cluster.CoordinatorName)
-	return nil
 }
 
 // waitRegistered blocks until a worker registers with the coordinator. The
@@ -302,7 +259,7 @@ func (d *deployment) startCoordinator(ctx context.Context) error {
 		d.out.Printf("[%s] starting coordinator (api %d, cluster %d)...", cluster.CoordinatorName, apiPort, clusterPort)
 	}
 
-	if err := cluster.WaitContainerListening(ctx, cli, coordinatorContainer, node, coordinatorReadyTimeout, apiPort, clusterPort); err != nil {
+	if err := cluster.WaitContainerListening(ctx, cli, coordinatorContainer, node, coordinatorReadyTimeout, apiPort, clusterPort, coordinatorRestartPort); err != nil {
 		return err
 	}
 	d.out.Printf("[%s] coordinator ready (api %d, cluster %d)", cluster.CoordinatorName, apiPort, clusterPort)
@@ -341,54 +298,50 @@ func (d *deployment) startWorker(ctx context.Context, worker Worker, name string
 	return nil
 }
 
-// dialCoordinator connects to the coordinator's client API. A remote
-// deployment tunnels over the coordinator's own SSH destination, the transport
-// every other step of the deployment already uses, so the API only has to be
-// reachable from the coordinator host rather than from wherever provoor runs.
-// That matters behind a bastion, whose SSH proxy routes no cluster traffic and
-// leaves the data-network address unroutable here.
-func dialCoordinator(cfg *Config) (*Client, error) {
-	dialer, err := cluster.TunnelDialer(cfg.Coordinator.SSH, fmt.Sprintf("127.0.0.1:%d", apiPort))
-	if err != nil {
-		return nil, err
-	}
-	if dialer == nil {
-		return DialClient(coordinatorEndpoint())
-	}
-	return DialClient(coordinatorEndpoint(), grpc.WithContextDialer(dialer))
+// resolvedGuest carries one guest's artifacts, read once on this machine and
+// copied into every host's setup container.
+type resolvedGuest struct {
+	name         string
+	elf          []byte
+	verifyingKey []byte
 }
 
-// setupGuest registers one guest program with the coordinator and runs its
-// keygen, so the first proof of a fresh deployment is not the one paying for
-// it. The key the cluster derives is checked against the configured one,
-// which fails the deployment rather than leaving a cluster whose proofs no
-// verifier would accept. Each guest gets its own client, since a client binds
-// to a single program.
-func (d *deployment) setupGuest(ctx context.Context, guest cluster.Guest) error {
-	name := cluster.GuestELFName(guest.ELF)
-	elf, programVK, err := cluster.ResolveGuest(ctx, guest)
-	if err != nil {
-		return fmt.Errorf("resolving guest %s: %w", name, err)
+// resolveGuests reads every configured guest's ELF and verifying key, so a
+// missing or unreachable artifact fails the deployment before any host starts
+// compiling.
+func (d *deployment) resolveGuests(ctx context.Context) ([]resolvedGuest, error) {
+	guests := make([]resolvedGuest, len(d.cfg.Guests))
+	for i, guest := range d.cfg.Guests {
+		name := cluster.GuestELFName(guest.ELF)
+		elf, verifyingKey, err := cluster.ResolveGuest(ctx, guest)
+		if err != nil {
+			return nil, fmt.Errorf("resolving guest %s: %w", name, err)
+		}
+		guests[i] = resolvedGuest{name: name, elf: elf, verifyingKey: verifyingKey}
 	}
+	return guests, nil
+}
 
-	client, err := dialCoordinator(d.cfg)
-	if err != nil {
-		return err
+// setupGuests compiles every guest into one host's artifact cache, so the
+// first setup a forwarder asks for is a cache hit rather than the minutes of
+// ROM and assembly generation it would otherwise pay inside a measured run.
+// The setup also derives the guest's verifying key and checks it against the
+// configured one, which fails the deployment rather than leaving a cluster
+// whose proofs no verifier would accept.
+func (d *deployment) setupGuests(ctx context.Context, worker Worker, node string, guests []resolvedGuest) error {
+	cli := d.hosts.Client(worker.SSH)
+	containerCfg, hostCfg := programSetupSpec(d.cfg, worker.GPU)
+	for _, guest := range guests {
+		d.out.Printf("[%s] compiling guest %s...", node, guest.name)
+		files := map[string][]byte{guestELFPath: guest.elf, guestVKPath: guest.verifyingKey}
+		output := d.out.Prefixed(node)
+		err := cluster.RunToCompletion(ctx, cli, programSetupContainer, containerCfg, hostCfg, files, output)
+		output.Flush()
+		if err != nil {
+			return fmt.Errorf("compiling guest %s on %s: %w", guest.name, node, err)
+		}
+		d.out.Printf("[%s] guest %s cached", node, guest.name)
 	}
-	defer func() { _ = client.Close() }()
-
-	registerCtx, cancel := context.WithTimeout(ctx, registerTimeout)
-	defer cancel()
-	hashID, err := client.RegisterGuestProgram(registerCtx, elf)
-	if err != nil {
-		return fmt.Errorf("guest %s: %w", name, err)
-	}
-
-	d.out.Printf("[%s] setting up guest %s...", cluster.CoordinatorName, name)
-	if err := client.Setup(ctx, hashID, programVK); err != nil {
-		return fmt.Errorf("guest %s: %w", name, err)
-	}
-	d.out.Printf("[%s] guest %s set up as program %s", cluster.CoordinatorName, name, hashID)
 	return nil
 }
 
