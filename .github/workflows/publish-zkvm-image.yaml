@@ -42,7 +42,7 @@ jobs:
               echo "build-args=RUSTFLAGS=" >> "${GITHUB_OUTPUT}"
               ;;
             zisk)
-              echo "tag=1.1.0-alpha" >> "${GITHUB_OUTPUT}"
+              echo "tag=1.2.0-alpha" >> "${GITHUB_OUTPUT}"
               echo "build-args=" >> "${GITHUB_OUTPUT}"
               ;;
           esac

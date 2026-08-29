@@ -22,7 +22,7 @@ import (
 func testConfig() *Config {
 	return &Config{
 		Zkvm:        "zisk",
-		ZkvmVersion: "1.1.0-alpha",
+		ZkvmVersion: "1.2.0-alpha",
 		Image:       "ghcr.io/han0110/provoor/zisk",
 		ImageTag:    "1.0.0-alpha",
 		Guests:      []cluster.Guest{{ELF: "/guests/a.elf", VK: "/guests/a.vk"}},
@@ -167,7 +167,7 @@ func TestCoordinatorSpec(t *testing.T) {
 			t.Errorf("PortBindings[%s] = %v", port, bindings)
 		}
 	}
-	if len(hostCfg.Mounts) != 1 || hostCfg.Mounts[0].Source != "zisk-cache-1.1.0-alpha" ||
+	if len(hostCfg.Mounts) != 1 || hostCfg.Mounts[0].Source != "zisk-cache-1.2.0-alpha" ||
 		hostCfg.Mounts[0].Target != "/root/.zisk/cache" || hostCfg.Mounts[0].ReadOnly {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
 	}
@@ -192,10 +192,10 @@ func TestWorkerSpec(t *testing.T) {
 		t.Errorf("LogConfig = %+v", hostCfg.LogConfig)
 	}
 	if len(hostCfg.Mounts) != 2 ||
-		hostCfg.Mounts[0].Source != "zisk-proving-key-1.1.0-alpha" ||
+		hostCfg.Mounts[0].Source != "zisk-proving-key-1.2.0-alpha" ||
 		hostCfg.Mounts[0].Target != "/root/.zisk/provingKey" ||
 		hostCfg.Mounts[0].ReadOnly ||
-		hostCfg.Mounts[1].Source != "zisk-cache-1.1.0-alpha" ||
+		hostCfg.Mounts[1].Source != "zisk-cache-1.2.0-alpha" ||
 		hostCfg.Mounts[1].Target != "/root/.zisk/cache" ||
 		hostCfg.Mounts[1].ReadOnly {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
@@ -302,7 +302,7 @@ func TestSetupSpec(t *testing.T) {
 		t.Errorf("Cmd = %v", containerCfg.Cmd)
 	}
 	wantEnv := []string{
-		"KEY_URL=https://storage.googleapis.com/zisk-setup/zisk-provingkey-1.1.0-alpha.tar.gz",
+		"KEY_URL=https://storage.googleapis.com/zisk-setup/zisk-provingkey-1.2.0-alpha.tar.gz",
 		"PROVING_KEY_DIR=/root/.zisk/provingKey",
 	}
 	if !reflect.DeepEqual(containerCfg.Env, wantEnv) {
@@ -316,7 +316,7 @@ func TestSetupSpec(t *testing.T) {
 	if hostCfg.ShmSize != 16<<30 {
 		t.Errorf("ShmSize = %d", hostCfg.ShmSize)
 	}
-	if len(hostCfg.Mounts) != 1 || hostCfg.Mounts[0].Source != "zisk-proving-key-1.1.0-alpha" ||
+	if len(hostCfg.Mounts) != 1 || hostCfg.Mounts[0].Source != "zisk-proving-key-1.2.0-alpha" ||
 		hostCfg.Mounts[0].Target != "/root/.zisk/provingKey" {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
 	}
@@ -349,8 +349,8 @@ func TestProgramSetupSpec(t *testing.T) {
 	}
 	// The assembly has to land in the cache the workers read, and the setup
 	// reads the proving key from the same volume the workers prove against.
-	if len(hostCfg.Mounts) != 2 || hostCfg.Mounts[0].Source != "zisk-proving-key-1.1.0-alpha" ||
-		hostCfg.Mounts[1].Source != "zisk-cache-1.1.0-alpha" || hostCfg.Mounts[1].Target != "/root/.zisk/cache" {
+	if len(hostCfg.Mounts) != 2 || hostCfg.Mounts[0].Source != "zisk-proving-key-1.2.0-alpha" ||
+		hostCfg.Mounts[1].Source != "zisk-cache-1.2.0-alpha" || hostCfg.Mounts[1].Target != "/root/.zisk/cache" {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
 	}
 	// A guest is compiled on the same GPUs the host proves on, before the
