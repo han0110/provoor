@@ -36,7 +36,10 @@ type Config struct {
 	Guests      []cluster.Guest `yaml:"guests"`
 	Coordinator cluster.Node    `yaml:"coordinator"`
 	Workers     []Worker        `yaml:"workers"`
-	Config      WorkerConfig    `yaml:"config"`
+	// Telemetry configures the GPU metric sidecar that runs beside the
+	// workers on every host. An absent block leaves it on.
+	Telemetry cluster.Telemetry `yaml:"telemetry"`
+	Config    WorkerConfig      `yaml:"config"`
 }
 
 // Worker is one GPU host, whose single worker container spans the GPUs it

@@ -1,0 +1,16 @@
+DCGM_FI_PROF_SM_CYCLES_ELAPSED_TOTAL, counter, SM cycles elapsed summed over every SM
+DCGM_FI_PROF_SM_CYCLES_ACTIVE_TOTAL, counter, SM cycles with at least one active warp
+DCGM_FI_PROF_INT_CYCLES_ACTIVE_TOTAL, counter, Integer pipe active cycles
+DCGM_FI_PROF_FP32_CYCLES_ACTIVE_TOTAL, counter, FP32 pipe active cycles
+DCGM_FI_PROF_PCIE_TX_BYTES_TOTAL, counter, Bytes sent over PCIe
+DCGM_FI_PROF_PCIE_RX_BYTES_TOTAL, counter, Bytes received over PCIe
+DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION, counter, Energy in millijoules since driver load
+DCGM_FI_DEV_POWER_VIOLATION, counter, Nanoseconds throttled by the power cap
+DCGM_FI_DEV_THERMAL_VIOLATION, counter, Nanoseconds throttled by temperature
+DCGM_FI_DEV_PCIE_REPLAY_COUNTER, counter, PCIe replays
+DCGM_FI_PROF_DRAM_ACTIVE, gauge, Device memory bandwidth utilization from 0 to 1
+DCGM_FI_PROF_SM_OCCUPANCY, gauge, Resident warps against the maximum from 0 to 1
+DCGM_FI_DEV_CLOCKS_EVENT_REASONS, gauge, Bitmask of the reasons the clock is capped
+DCGM_FI_DEV_GPU_TEMP_MARGIN_CELSIUS, gauge, Degrees Celsius below the throttle limit
+DCGM_FI_DEV_FB_USED, gauge, Frame buffer in use in MiB
+DCGM_FI_DEV_FB_TOTAL, gauge, Frame buffer capacity in MiB

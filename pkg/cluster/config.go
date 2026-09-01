@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -80,6 +81,28 @@ func (g GPU) Validate() error {
 		seen[id] = true
 	}
 	return nil
+}
+
+// Telemetry configures the GPU metric sidecar. An absent block leaves
+// telemetry on, because every deployment proves on GPUs and a run without GPU
+// numbers cannot answer where the time went.
+type Telemetry struct {
+	Enabled    *bool `yaml:"enabled"`
+	IntervalMs int   `yaml:"interval_ms"`
+}
+
+// On reports whether the sidecar runs.
+func (t Telemetry) On() bool {
+	return t.Enabled == nil || *t.Enabled
+}
+
+// Interval is the sampling period. DCGM refreshes profiling fields at 10 Hz
+// whatever a client requests, so a shorter period only stores duplicates.
+func (t Telemetry) Interval() time.Duration {
+	if t.IntervalMs <= 0 {
+		return 100 * time.Millisecond
+	}
+	return time.Duration(t.IntervalMs) * time.Millisecond
 }
 
 // WorkerName identifies one worker by its position in the configuration and
