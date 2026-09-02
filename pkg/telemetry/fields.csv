@@ -1,7 +1,6 @@
 DCGM_FI_PROF_SM_CYCLES_ELAPSED_TOTAL, counter, SM cycles elapsed summed over every SM
 DCGM_FI_PROF_SM_CYCLES_ACTIVE_TOTAL, counter, SM cycles with at least one active warp
 DCGM_FI_PROF_INT_CYCLES_ACTIVE_TOTAL, counter, Integer pipe active cycles
-DCGM_FI_PROF_FP32_CYCLES_ACTIVE_TOTAL, counter, FP32 pipe active cycles
 DCGM_FI_PROF_PCIE_TX_BYTES_TOTAL, counter, Bytes sent over PCIe
 DCGM_FI_PROF_PCIE_RX_BYTES_TOTAL, counter, Bytes received over PCIe
 DCGM_FI_DEV_POWER_USAGE, gauge, Power draw in watts

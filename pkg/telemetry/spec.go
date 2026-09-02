@@ -44,8 +44,9 @@ const NodeImage = "quay.io/prometheus/node-exporter:v1.12.1"
 
 // NodePort is where the node sidecar publishes /metrics. The nodes run a node
 // exporter of their own on 9100 bound to loopback, which a benchmark host
-// cannot reach, so the sidecar takes the next port.
-const NodePort = 9101
+// cannot reach, and another exporter holds 9101, so the sidecar sits beside
+// the DCGM one.
+const NodePort = 9402
 
 // sidecarPrefix names the container of each kind. The DCGM prefix predates the
 // kinds and stays, so a redeploy replaces the sidecar a rig already runs
