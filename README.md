@@ -161,7 +161,7 @@ Run configurations live with the harness that reads them, under
 it on the coordinator host, which keeps witness transfer off the measured path.
 
 ```sh
-scripts/benchmarkoor.sh run --config benchmarkoor/examples/provoor/openvm-eest-v0.6.2-10M.example.yaml
+scripts/benchmarkoor.sh run --config benchmarkoor/examples/provoor/openvm-eest-v0.8.2-10M.example.yaml
 ```
 
 Forwarder flags travel through the instance `extra_args`. `--elf` and `--vk`
