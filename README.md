@@ -169,8 +169,9 @@ name the same release assets as the cluster's `guests` entry, and for OpenVM
 the ELF must be byte-identical to it.
 
 Before opening its port the forwarder checks the cluster's key against `--vk`
-and proves a small warmup block, so a mismatched deployment never serves a
-request and a cold cluster's one-time costs never land in a measured test. A
+and proves a 60M gas warmup block that reaches every worker, so a mismatched
+deployment never serves a request and a cold cluster's one-time costs never
+land in a measured test. A
 ZisK forwarder restarts the coordinator first and waits out the workers
 reconnecting, so its guest is the only one the cluster has set up.
 

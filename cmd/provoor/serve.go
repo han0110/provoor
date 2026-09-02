@@ -82,14 +82,19 @@ func serveCommand() *cobra.Command {
 				Exit:                  os.Exit,
 			}
 
-			// A warmup proof drives a cold cluster through its one-time
-			// compile and cache costs, so no measured proof pays them.
+			// A warmup proof drives every worker of a cold cluster through its
+			// one-time compile and cache costs, so no measured proof pays them.
 			warmupStart := time.Now()
 			warmupCtx, cancelWarmup := context.WithTimeout(ctx, timeout)
-			err = prover.Warmup(warmupCtx)
+			warmupOutput, err := prover.Warmup(warmupCtx)
 			cancelWarmup()
 			if err != nil {
 				return fmt.Errorf("warming up the prover: %w", err)
+			}
+			// A guest built for another input format commits to an error in
+			// a fraction of a second and warms no worker at all.
+			if !serve.OutputMatched(warmupOutput, cluster.WarmupOutput) {
+				return fmt.Errorf("the warmup block committed 0x%x, want 0x%x, so this guest does not compute it", warmupOutput, cluster.WarmupOutput)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "prover warmed in %s\n", time.Since(warmupStart).Round(time.Second))
 

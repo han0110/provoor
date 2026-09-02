@@ -16,7 +16,7 @@ import (
 // verifier fixtures ere ships in crates/verifier/zisk/tests/fixtures, a
 // VadcopFinalProof in bincode's legacy configuration with the 32 byte program
 // vk it proves under and the 256 bytes it commits to. The cluster-prefixed
-// three are the warmup block proved by a real ZisK 1.1.0-alpha coordinator,
+// three are the warmup block proved by a real ZisK 1.2.0-alpha coordinator,
 // the envelope it returned, the verifying key it derived for the reth guest,
 // and the public values verification yields.
 func readFixture(t *testing.T, name string) []byte {

@@ -59,10 +59,14 @@ func (p *Prover) ClientVersion() string {
 	return p.version
 }
 
-// Warmup proves the shared warmup input once and discards the result.
-func (p *Prover) Warmup(ctx context.Context) error {
-	_, err := p.client.Prove(ctx, cluster.WarmupInput, nil)
-	return err
+// Warmup proves the shared warmup input once and reports the output it
+// committed to.
+func (p *Prover) Warmup(ctx context.Context) ([]byte, error) {
+	outcome, err := p.client.Prove(ctx, cluster.WarmupInput, nil)
+	if err != nil {
+		return nil, err
+	}
+	return outcome.PublicValues, nil
 }
 
 // Prove proves one stateless payload, bounded by the context deadline.

@@ -37,8 +37,8 @@ func (p *fakeProver) WaitReady(context.Context) error {
 	return nil
 }
 
-func (p *fakeProver) Warmup(context.Context) error {
-	return nil
+func (p *fakeProver) Warmup(context.Context) ([]byte, error) {
+	return nil, nil
 }
 
 func (p *fakeProver) Prove(_ context.Context, _ []byte, onPhase func(string)) (*ProveOutcome, error) {
@@ -283,23 +283,49 @@ func TestNothingBeforeAdmissionIsMeasured(t *testing.T) {
 	}
 }
 
+// TestWaitsPastASecondAreReported covers the two waits the measurement leaves
+// out. Without a line for each, a block that took a minute longer than its
+// proof leaves no trace of where the minute went.
+func TestWaitsPastASecondAreReported(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		prover *fakeProver
+		want   string
+	}{
+		{name: "readiness", prover: &fakeProver{readyDelay: 1100 * time.Millisecond}, want: "waited 1s for the cluster before proving 0xabc123"},
+		{name: "admission", prover: &fakeProver{submitWait: 1100 * time.Millisecond}, want: "waited 1s for the cluster to admit 0xabc123"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expected := []byte{1, 2, 3, 4}
+			tc.prover.publicValues = commitment(expected)
+			output := &bytes.Buffer{}
+
+			post(t, newServer(tc.prover, output), proveRequest(expected))
+
+			if !strings.Contains(output.String(), tc.want) {
+				t.Errorf("output %q lacks %q", output.String(), tc.want)
+			}
+		})
+	}
+}
+
 func TestOutputMatched(t *testing.T) {
 	publicValues := commitment([]byte{1, 2, 3})
-	if !outputMatched(publicValues, []byte{1, 2, 3}) {
+	if !OutputMatched(publicValues, []byte{1, 2, 3}) {
 		t.Error("expected prefix with zero tail to match")
 	}
-	if !outputMatched(publicValues, publicValues) {
+	if !OutputMatched(publicValues, publicValues) {
 		t.Error("expected full-length equality to match")
 	}
-	if outputMatched(publicValues, []byte{1, 2}) {
+	if OutputMatched(publicValues, []byte{1, 2}) {
 		t.Error("expected mismatch when the tail starts with a nonzero byte")
 	}
-	if outputMatched([]byte{1}, []byte{1, 2}) {
+	if OutputMatched([]byte{1}, []byte{1, 2}) {
 		t.Error("expected mismatch when expected is longer than the commitment")
 	}
 	dirty := commitment([]byte{1, 2, 3})
 	dirty[200] = 1
-	if outputMatched(dirty, []byte{1, 2, 3}) {
+	if OutputMatched(dirty, []byte{1, 2, 3}) {
 		t.Error("expected mismatch on a nonzero trailing byte")
 	}
 }
