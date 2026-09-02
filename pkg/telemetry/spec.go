@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+
+	"github.com/han0110/provoor/pkg/cluster"
 )
 
 // Image is NVIDIA's dcgm-exporter. Release 4.8.3 is the floor, because it is
@@ -37,12 +39,28 @@ const FieldsPath = "/etc/dcgm-exporter/provoor.csv"
 //go:embed fields.csv
 var Fields []byte
 
-// SidecarName labels one node's telemetry container. A node name comes from
+// NodeImage is the Prometheus node exporter.
+const NodeImage = "quay.io/prometheus/node-exporter:v1.12.1"
+
+// NodePort is where the node sidecar publishes /metrics. The nodes run a node
+// exporter of their own on 9100 bound to loopback, which a benchmark host
+// cannot reach, so the sidecar takes the next port.
+const NodePort = 9101
+
+// sidecarPrefix names the container of each kind. The DCGM prefix predates the
+// kinds and stays, so a redeploy replaces the sidecar a rig already runs
+// rather than racing it for the port.
+var sidecarPrefix = map[string]string{
+	cluster.SidecarDCGM: "provoor-dcgm-",
+	cluster.SidecarNode: "provoor-node-",
+}
+
+// SidecarName labels one node's sidecar of one kind. A node name comes from
 // an SSH destination, which Docker does not constrain, so anything outside the
 // character set Docker accepts for a container name becomes a dash.
-func SidecarName(node string) string {
+func SidecarName(kind, node string) string {
 	var b strings.Builder
-	b.WriteString("provoor-dcgm-")
+	b.WriteString(sidecarPrefix[kind])
 	for _, r := range node {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
@@ -55,7 +73,7 @@ func SidecarName(node string) string {
 	return b.String()
 }
 
-// Spec builds the telemetry sidecar.
+// Spec builds the DCGM telemetry sidecar.
 //
 // The container needs no GPU of its own and no capabilities. It never touches
 // a device, because the node's own DCGM service already holds the profiling
@@ -87,6 +105,32 @@ func Spec(interval time.Duration) (*container.Config, *container.HostConfig) {
 		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
 		CapDrop:       []string{"ALL"},
 		SecurityOpt:   []string{"no-new-privileges"},
+	}
+	return containerCfg, hostCfg
+}
+
+// NodeSpec builds the node telemetry sidecar.
+//
+// Only the processor and memory collectors run, which keeps a scrape to a few
+// hundred lines. Both read /proc/stat and /proc/meminfo, which describe the
+// whole machine from inside any container, so nothing is mounted from the
+// host. Host networking publishes the port on the node's addresses.
+func NodeSpec() (*container.Config, *container.HostConfig) {
+	containerCfg := &container.Config{
+		Image: NodeImage,
+		Cmd: []string{
+			"--web.listen-address=:" + strconv.Itoa(NodePort),
+			"--collector.disable-defaults",
+			"--collector.cpu",
+			"--collector.meminfo",
+		},
+	}
+	hostCfg := &container.HostConfig{
+		NetworkMode:    "host",
+		ReadonlyRootfs: true,
+		RestartPolicy:  container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
+		CapDrop:        []string{"ALL"},
+		SecurityOpt:    []string{"no-new-privileges"},
 	}
 	return containerCfg, hostCfg
 }

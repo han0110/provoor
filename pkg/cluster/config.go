@@ -83,26 +83,58 @@ func (g GPU) Validate() error {
 	return nil
 }
 
-// Telemetry configures the GPU metric sidecar. An absent block leaves
-// telemetry on, because every deployment proves on GPUs and a run without GPU
-// numbers cannot answer where the time went.
+// Sidecar kinds, each named after the exporter it runs.
+const (
+	SidecarDCGM = "dcgm-exporter"
+	SidecarNode = "node-exporter"
+)
+
+// Telemetry lists the metric sidecars a deployment runs. Each entry names a
+// host by its SSH destination and the exporter it runs, so a deployment
+// states exactly which metrics it collects. An empty list runs none.
 type Telemetry struct {
-	Enabled    *bool `yaml:"enabled"`
-	IntervalMs int   `yaml:"interval_ms"`
+	// IntervalMs is the sampling period of the DCGM sidecar. DCGM refreshes
+	// profiling fields at 10 Hz whatever a client requests, so a shorter
+	// period only stores duplicates.
+	IntervalMs int       `yaml:"interval_ms"`
+	Sidecars   []Sidecar `yaml:"sidecars"`
 }
 
-// On reports whether the sidecar runs.
-func (t Telemetry) On() bool {
-	return t.Enabled == nil || *t.Enabled
+// Sidecar is one exporter on one host.
+type Sidecar struct {
+	SSH  string `yaml:"ssh"`
+	Kind string `yaml:"kind"`
 }
 
-// Interval is the sampling period. DCGM refreshes profiling fields at 10 Hz
-// whatever a client requests, so a shorter period only stores duplicates.
+// Interval is the sampling period of the DCGM sidecar.
 func (t Telemetry) Interval() time.Duration {
 	if t.IntervalMs <= 0 {
 		return 100 * time.Millisecond
 	}
 	return time.Duration(t.IntervalMs) * time.Millisecond
+}
+
+// Validate rejects a sidecar of an unknown kind, one repeated on a host, or
+// one on a host the deployment does not dial.
+func (t Telemetry) Validate(destinations []string) error {
+	dialed := map[string]bool{}
+	for _, destination := range destinations {
+		dialed[destination] = true
+	}
+	seen := map[Sidecar]bool{}
+	for i, sidecar := range t.Sidecars {
+		if sidecar.Kind != SidecarDCGM && sidecar.Kind != SidecarNode {
+			return fmt.Errorf("telemetry sidecar %d kind %q is not %s or %s", i, sidecar.Kind, SidecarDCGM, SidecarNode)
+		}
+		if !dialed[sidecar.SSH] {
+			return fmt.Errorf("telemetry sidecar %d names host %q, which runs no coordinator or worker", i, sidecar.SSH)
+		}
+		if seen[sidecar] {
+			return fmt.Errorf("telemetry sidecar %s on host %q repeats", sidecar.Kind, sidecar.SSH)
+		}
+		seen[sidecar] = true
+	}
+	return nil
 }
 
 // WorkerName identifies one worker by its position in the configuration and

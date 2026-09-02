@@ -26,3 +26,22 @@ workers:
   - ssh: ${NODE4_SSH}
     gpu:
       count: 4
+
+telemetry:
+  sidecars:
+    - ssh: ${NODE1_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE1_SSH}
+      kind: node-exporter
+    - ssh: ${NODE2_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE2_SSH}
+      kind: node-exporter
+    - ssh: ${NODE3_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE3_SSH}
+      kind: node-exporter
+    - ssh: ${NODE4_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE4_SSH}
+      kind: node-exporter

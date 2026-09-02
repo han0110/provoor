@@ -47,8 +47,7 @@ type Config struct {
 	// its host, so any topology is spelled out explicitly. A worker's
 	// position in the list is its cluster-wide prover id.
 	Workers []Worker `yaml:"workers"`
-	// Telemetry configures the GPU metric sidecar that runs beside the
-	// workers on every host. An absent block leaves it on.
+	// Telemetry lists the metric sidecars, one per host and exporter kind.
 	Telemetry cluster.Telemetry `yaml:"telemetry"`
 	Config    ProverConfig      `yaml:"config"`
 }
@@ -151,6 +150,9 @@ func validate(cfg *Config) error {
 	}
 	if len(cfg.Workers) == 0 {
 		return fmt.Errorf("at least one worker is required")
+	}
+	if err := cfg.Telemetry.Validate(cfg.destinations()); err != nil {
+		return err
 	}
 	seenGPU := map[string]bool{}
 	seenWorkerURL := map[string]bool{}

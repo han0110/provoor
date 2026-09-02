@@ -68,10 +68,10 @@ func startSidecar(t *testing.T, node string) {
 		t.Fatalf("dialing the local docker daemon: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = Stop(context.Background(), cli, node)
+		_ = Stop(context.Background(), cli, cluster.SidecarDCGM, node)
 		_ = cli.Close()
 	})
-	if err := Start(ctx, cli, node, 100*time.Millisecond); err != nil {
+	if err := Start(ctx, cli, cluster.SidecarDCGM, node, 100*time.Millisecond); err != nil {
 		t.Fatalf("starting the sidecar: %v", err)
 	}
 	// The profiling watch warms up over the first few seconds.
@@ -115,7 +115,7 @@ func TestSidecarPublishesNoHostname(t *testing.T) {
 
 // TestBracketingAWindowYieldsSaneRatios covers the arithmetic a consumer
 // performs. Subtracting a cumulative counter at two instants must give a
-// fraction for the cycle counters and real energy for the power counter.
+// fraction for the cycle counters, and the power gauge must read a real draw.
 func TestBracketingAWindowYieldsSaneRatios(t *testing.T) {
 	startSidecar(t, "brackettest")
 
@@ -128,16 +128,16 @@ func TestBracketingAWindowYieldsSaneRatios(t *testing.T) {
 		t.Fatal("elapsed cycles did not advance across the window")
 	}
 	active := after["DCGM_FI_PROF_SM_CYCLES_ACTIVE_TOTAL"] - before["DCGM_FI_PROF_SM_CYCLES_ACTIVE_TOTAL"]
-	energy := after["DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION"] - before["DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION"]
+	power := after["DCGM_FI_DEV_POWER_USAGE"]
 
-	t.Logf("window: smActive=%.4f energy=%.1fJ fbUsed=%.0fMiB",
-		active/elapsed, energy/1000, after["DCGM_FI_DEV_FB_USED"])
+	t.Logf("window smActive=%.4f, latest power=%.1fW, fbUsed=%.0fMiB",
+		active/elapsed, power, after["DCGM_FI_DEV_FB_USED"])
 
 	if ratio := active / elapsed; ratio < 0 || ratio > 1.01 {
 		t.Errorf("sm active ratio is %v, want a fraction", ratio)
 	}
-	if energy <= 0 {
-		t.Error("energy did not advance, and a powered GPU always consumes some")
+	if power <= 0 {
+		t.Errorf("power reads %v, want a positive draw", power)
 	}
 	if total := after["DCGM_FI_DEV_FB_TOTAL"]; total <= 0 {
 		t.Errorf("frame buffer capacity reads %v, want the card size", total)

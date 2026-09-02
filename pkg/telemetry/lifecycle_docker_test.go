@@ -28,22 +28,22 @@ func TestStartReplacesALeftoverSidecar(t *testing.T) {
 	defer func() { _ = cli.Close() }()
 
 	const node = "replacetest"
-	t.Cleanup(func() { _ = Stop(context.Background(), cli, node) })
+	t.Cleanup(func() { _ = Stop(context.Background(), cli, cluster.SidecarDCGM, node) })
 
-	if err := Start(ctx, cli, node, time.Second); err != nil {
+	if err := Start(ctx, cli, cluster.SidecarDCGM, node, time.Second); err != nil {
 		t.Fatalf("first start: %v", err)
 	}
-	first, err := cli.ContainerInspect(ctx, SidecarName(node))
+	first, err := cli.ContainerInspect(ctx, SidecarName(cluster.SidecarDCGM, node))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// A sidecar left from an earlier deployment must be replaced, so the
 	// sample stream always matches the field set this build requests.
-	if err := Start(ctx, cli, node, time.Second); err != nil {
+	if err := Start(ctx, cli, cluster.SidecarDCGM, node, time.Second); err != nil {
 		t.Fatalf("second start: %v", err)
 	}
-	second, err := cli.ContainerInspect(ctx, SidecarName(node))
+	second, err := cli.ContainerInspect(ctx, SidecarName(cluster.SidecarDCGM, node))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestStopIsIdempotent(t *testing.T) {
 
 	// Removing a sidecar that never existed must not fail, so a deployment
 	// tears down the same way whether or not telemetry ran.
-	if err := Stop(ctx, cli, "neverstarted"); err != nil {
+	if err := Stop(ctx, cli, cluster.SidecarDCGM, "neverstarted"); err != nil {
 		t.Errorf("stopping an absent sidecar returned %v, want nil", err)
 	}
 }
@@ -80,12 +80,12 @@ func TestSidecarRunsWithoutDeviceAccess(t *testing.T) {
 	defer func() { _ = cli.Close() }()
 
 	const node = "nodevicetest"
-	t.Cleanup(func() { _ = Stop(context.Background(), cli, node) })
+	t.Cleanup(func() { _ = Stop(context.Background(), cli, cluster.SidecarDCGM, node) })
 
-	if err := Start(ctx, cli, node, time.Second); err != nil {
+	if err := Start(ctx, cli, cluster.SidecarDCGM, node, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	info, err := cli.ContainerInspect(ctx, SidecarName(node))
+	info, err := cli.ContainerInspect(ctx, SidecarName(cluster.SidecarDCGM, node))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,33 +13,39 @@ import (
 	"github.com/han0110/provoor/pkg/cluster"
 )
 
-// settle is how long Start watches a new sidecar before calling it up. The
-// exporter exits within a second when the host engine is unreachable or too
-// old, so a container still running after this window started cleanly.
+// settle is how long Start watches a new sidecar before calling it up. An
+// exporter exits within a second when it cannot serve, for the DCGM one when
+// the host engine is unreachable or too old, so a container still running
+// after this window started cleanly.
 const settle = 5 * time.Second
 
-// Start runs the telemetry sidecar on one node. A sidecar left from an
-// earlier deployment is replaced rather than reused, so the field set always
-// matches this build.
-func Start(ctx context.Context, cli *client.Client, node string, interval time.Duration) error {
-	name := SidecarName(node)
+// Start runs one sidecar on one node. A sidecar left from an earlier
+// deployment is replaced rather than reused, so the field set always matches
+// this build.
+func Start(ctx context.Context, cli *client.Client, kind, node string, interval time.Duration) error {
+	name := SidecarName(kind, node)
+	containerCfg, hostCfg := NodeSpec()
+	if kind == cluster.SidecarDCGM {
+		containerCfg, hostCfg = Spec(interval)
+	}
 	// A pull failure is fatal only when the host has no copy already, which
 	// keeps a node usable while its registry is unreachable.
-	if pullErr := cluster.PullImage(ctx, cli, Image); pullErr != nil {
-		if _, _, err := cli.ImageInspectWithRaw(ctx, Image); err != nil {
-			return fmt.Errorf("pulling the telemetry image on %s: %w", node, pullErr)
+	if pullErr := cluster.PullImage(ctx, cli, containerCfg.Image); pullErr != nil {
+		if _, _, err := cli.ImageInspectWithRaw(ctx, containerCfg.Image); err != nil {
+			return fmt.Errorf("pulling the %s image on %s: %w", kind, node, pullErr)
 		}
 	}
 	_ = cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true})
 
-	containerCfg, hostCfg := Spec(interval)
 	hostCfg.LogConfig = cluster.Journald(name)
 	created, err := cli.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, name)
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", name, err)
 	}
-	if err := cluster.CopyFileToContainer(ctx, cli, created.ID, FieldsPath, Fields); err != nil {
-		return fmt.Errorf("writing the field list into %s: %w", name, err)
+	if kind == cluster.SidecarDCGM {
+		if err := cluster.CopyFileToContainer(ctx, cli, created.ID, FieldsPath, Fields); err != nil {
+			return fmt.Errorf("writing the field list into %s: %w", name, err)
+		}
 	}
 	if err := cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 		return fmt.Errorf("starting %s: %w", name, err)
@@ -82,38 +88,41 @@ func lastLogLine(ctx context.Context, cli *client.Client, name string) string {
 	return lines[len(lines)-1]
 }
 
-// Stop removes the telemetry sidecar. A missing container is not an error, so
-// a deployment tears down the same way whether or not telemetry ran.
-func Stop(ctx context.Context, cli *client.Client, node string) error {
-	err := cli.ContainerRemove(ctx, SidecarName(node), container.RemoveOptions{Force: true})
+// Stop removes one sidecar. A missing container is not an error, so a
+// deployment tears down the same way whether or not telemetry ran.
+func Stop(ctx context.Context, cli *client.Client, kind, node string) error {
+	err := cli.ContainerRemove(ctx, SidecarName(kind, node), container.RemoveOptions{Force: true})
 	if client.IsErrNotFound(err) {
 		return nil
 	}
 	return err
 }
 
-// StartAll runs the sidecar on every host of a deployment. Every node is
-// attempted even after one fails, because a node without telemetry still
-// proves.
+// StartAll runs every configured sidecar. Every sidecar is attempted even
+// after one fails, because a node without telemetry still proves.
 func StartAll(ctx context.Context, cfg cluster.Telemetry, hosts *cluster.Hosts, out *cluster.Output) error {
-	if !cfg.On() {
+	if len(cfg.Sidecars) == 0 {
+		out.Printf("telemetry: no sidecars configured")
 		return nil
 	}
 	var errs []error
-	for _, destination := range hosts.Destinations() {
-		node := cluster.HostName(destination)
-		out.Printf("[%s] starting telemetry sidecar", node)
-		if err := Start(ctx, hosts.Client(destination), node, cfg.Interval()); err != nil {
+	for _, sidecar := range cfg.Sidecars {
+		node := cluster.HostName(sidecar.SSH)
+		out.Printf("[%s] starting %s sidecar", node, sidecar.Kind)
+		if err := Start(ctx, hosts.Client(sidecar.SSH), sidecar.Kind, node, cfg.Interval()); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// StopAll removes the sidecar from every host. Failures are ignored, because
-// a leftover sidecar must not keep a cluster from coming down.
+// StopAll removes every kind of sidecar from every host. Failures are
+// ignored, because a leftover sidecar must not keep a cluster from coming
+// down.
 func StopAll(ctx context.Context, hosts *cluster.Hosts) {
 	for _, destination := range hosts.Destinations() {
-		_ = Stop(ctx, hosts.Client(destination), cluster.HostName(destination))
+		for kind := range sidecarPrefix {
+			_ = Stop(ctx, hosts.Client(destination), kind, cluster.HostName(destination))
+		}
 	}
 }

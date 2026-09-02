@@ -112,6 +112,11 @@ scripts/provoor.sh down --config examples/openvm-4x4.example.yaml
   when the key derived from the ELF differs, printing both.
 - `up` is idempotent and streams its progress, and `down` keeps the cached
   volumes and journald logs so the next `up` is fast.
+- `telemetry.sidecars` lists the metric exporters to run, one entry per host
+  and kind. `dcgm-exporter` publishes GPU counters on port 9401 and reads the
+  node's own `nvidia-dcgm.service` on loopback port 5555. `node-exporter`
+  publishes processor and memory counters on port 9101 and needs nothing from
+  the host. An empty list runs no sidecar, and `up` says so.
 
 The first `up` is slow, since ZisK downloads and prepares the proving key and
 OpenVM derives a keyset for each guest ELF, minutes per program on a GPU.

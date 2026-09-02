@@ -1,11 +1,15 @@
 package telemetry
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/han0110/provoor/pkg/cluster"
 )
 
 func TestSpecNeedsNoDeviceAndNoCapability(t *testing.T) {
@@ -110,7 +114,8 @@ func TestFieldsCarryTheCumulativeCounters(t *testing.T) {
 		"DCGM_FI_PROF_SM_CYCLES_ELAPSED_TOTAL",
 		"DCGM_FI_PROF_SM_CYCLES_ACTIVE_TOTAL",
 		"DCGM_FI_PROF_INT_CYCLES_ACTIVE_TOTAL",
-		"DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION",
+		"DCGM_FI_PROF_PCIE_RX_BYTES_TOTAL",
+		"DCGM_FI_PROF_PCIE_TX_BYTES_TOTAL",
 	} {
 		if !strings.Contains(string(Fields), want+",") {
 			t.Errorf("field list is missing %s", want)
@@ -118,9 +123,70 @@ func TestFieldsCarryTheCumulativeCounters(t *testing.T) {
 	}
 }
 
+// TestFieldsMatchTheCollector keeps the sidecar and the collector in step. A
+// field served but never recorded is scraped for nothing, and a field
+// recorded but never served leaves an empty column in every artifact.
+func TestFieldsMatchTheCollector(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("..", "..", "benchmarkoor", "pkg", "remotemetrics", "exporter.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorded := map[string]bool{}
+	for _, match := range regexp.MustCompile(`"(DCGM_FI_[A-Z0-9_]+)":\s*\{`).FindAllStringSubmatch(string(source), -1) {
+		recorded[match[1]] = true
+	}
+	served := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(string(Fields)), "\n") {
+		served[strings.TrimSpace(strings.Split(line, ",")[0])] = true
+	}
+	for name := range served {
+		if !recorded[name] {
+			t.Errorf("field %s is served but never recorded", name)
+		}
+	}
+	for name := range recorded {
+		if !served[name] {
+			t.Errorf("field %s is recorded but never served", name)
+		}
+	}
+}
+
 func TestSidecarNamesDiffer(t *testing.T) {
-	if SidecarName("node0") == SidecarName("node1") {
+	if SidecarName(cluster.SidecarDCGM, "node0") == SidecarName(cluster.SidecarDCGM, "node1") {
 		t.Error("two nodes share one sidecar name")
+	}
+	if SidecarName(cluster.SidecarDCGM, "node0") == SidecarName(cluster.SidecarNode, "node0") {
+		t.Error("two kinds share one sidecar name on a node")
+	}
+}
+
+// TestNodeSpecMountsNothingAndRestrictsCollectors keeps the node sidecar to
+// the two collectors the consumer reads. Every other collector would add
+// hundreds of lines to a scrape taken ten times a second from every node.
+func TestNodeSpecMountsNothingAndRestrictsCollectors(t *testing.T) {
+	containerCfg, hostCfg := NodeSpec()
+	cmd := strings.Join(containerCfg.Cmd, " ")
+	for _, want := range []string{
+		"--web.listen-address=:" + strconv.Itoa(NodePort),
+		"--collector.disable-defaults",
+		"--collector.cpu",
+		"--collector.meminfo",
+	} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("command %q is missing %q", cmd, want)
+		}
+	}
+	if hostCfg.NetworkMode != "host" {
+		t.Errorf("network mode is %q, want host so the port lands on the node's addresses", hostCfg.NetworkMode)
+	}
+	if len(hostCfg.Mounts) != 0 || len(hostCfg.Binds) != 0 {
+		t.Errorf("got mounts %v binds %v, want none", hostCfg.Mounts, hostCfg.Binds)
+	}
+	if len(hostCfg.CapDrop) != 1 || hostCfg.CapDrop[0] != "ALL" {
+		t.Errorf("got cap drop %v, want ALL", hostCfg.CapDrop)
+	}
+	if !hostCfg.ReadonlyRootfs {
+		t.Error("root filesystem is writable, want read only since nothing is copied in")
 	}
 }
 
@@ -136,9 +202,11 @@ func TestSidecarNameSurvivesEverySSHDestinationShape(t *testing.T) {
 		"local", "rig-01", "10.0.0.1", "node_1", "RIG.example.com",
 		"fe80::1", "host with space", "a/b", "",
 	} {
-		got := SidecarName(node)
-		if !valid.MatchString(got) {
-			t.Errorf("node %q yields %q, which docker rejects", node, got)
+		for kind := range sidecarPrefix {
+			got := SidecarName(kind, node)
+			if !valid.MatchString(got) {
+				t.Errorf("node %q yields %q, which docker rejects", node, got)
+			}
 		}
 	}
 }
@@ -149,8 +217,11 @@ func TestSidecarNameKeepsOrdinaryHostsReadable(t *testing.T) {
 		"rig-01":   "provoor-dcgm-rig-01",
 		"10.0.0.1": "provoor-dcgm-10.0.0.1",
 	} {
-		if got := SidecarName(node); got != want {
+		if got := SidecarName(cluster.SidecarDCGM, node); got != want {
 			t.Errorf("node %q yields %q, want %q", node, got, want)
 		}
+	}
+	if got := SidecarName(cluster.SidecarNode, "rig-01"); got != "provoor-node-rig-01" {
+		t.Errorf("node sidecar is named %q, want provoor-node-rig-01", got)
 	}
 }
