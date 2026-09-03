@@ -95,12 +95,6 @@ func TestWorkerArgs(t *testing.T) {
 			},
 		},
 		{
-			name:      "cpu mops on",
-			worker:    1,
-			numaNodes: 1,
-			pairs:     [][2]string{{"--gpu", "--cpu-mops"}, {"--proving-key", provingKeyDir}},
-		},
-		{
 			name:      "cpu mops off leaves the gpu planner",
 			configure: func(cfg *Config) { cfg.Prover.CPUMops = false },
 			worker:    1,

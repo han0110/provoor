@@ -166,6 +166,12 @@ func Journald(name string) container.LogConfig {
 	return container.LogConfig{Type: "journald", Config: map[string]string{"tag": name}}
 }
 
+// MemlockUnlimited removes the locked-memory limit, so a container can pin
+// the memory a GPU prover holds.
+func MemlockUnlimited() []*container.Ulimit {
+	return []*container.Ulimit{{Name: "memlock", Soft: -1, Hard: -1}}
+}
+
 // DeviceRequest exposes the GPU selection to a container.
 func (g GPU) DeviceRequest() container.DeviceRequest {
 	request := container.DeviceRequest{Capabilities: [][]string{{"gpu"}}}
@@ -205,10 +211,37 @@ func Running(ctx context.Context, cli *client.Client, name string) (bool, error)
 	}
 	// Docker reports a container in its restart backoff as running, so a
 	// crash loop counts as absent.
-	if inspect.State != nil && inspect.State.Running && !inspect.State.Restarting {
+	if inspect.State.Running && !inspect.State.Restarting {
 		return true, nil
 	}
 	return false, cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true})
+}
+
+// coordinatorReadyTimeout bounds the wait for the coordinator ports, which
+// open with no GPU work ahead of them.
+const coordinatorReadyTimeout = 120 * time.Second
+
+// StartCoordinator starts the coordinator unless it is already running and
+// waits until every listening port accepts connections. portLabel names them
+// in the progress lines.
+func StartCoordinator(ctx context.Context, cli *client.Client, node string, spec Container, portLabel string, listening []int, out *Output) error {
+	running, err := Running(ctx, cli, spec.Name)
+	if err != nil {
+		return fmt.Errorf("coordinator on %s: %w", node, err)
+	}
+	if running {
+		out.Printf("[%s] %s already running, run provoor down first to apply config changes", CoordinatorName, spec.Name)
+	} else {
+		if err := spec.Start(ctx, cli); err != nil {
+			return fmt.Errorf("starting coordinator on %s: %w", node, err)
+		}
+		out.Printf("[%s] starting coordinator (%s)...", CoordinatorName, portLabel)
+	}
+	if err := waitListening(ctx, cli, spec.Name, node, listening...); err != nil {
+		return err
+	}
+	out.Printf("[%s] coordinator ready (%s)", CoordinatorName, portLabel)
+	return nil
 }
 
 // Start creates the container, writes its files, and starts it.
@@ -288,20 +321,20 @@ func copyFile(ctx context.Context, cli *client.Client, containerID, path string,
 	return cli.CopyToContainer(ctx, containerID, "/", &buf, container.CopyToContainerOptions{})
 }
 
-// WaitListening polls until every port accepts a connection inside the
+// waitListening polls until every port accepts a connection inside the
 // container, failing early when the container exits first.
-func WaitListening(ctx context.Context, cli *client.Client, name, node string, timeout time.Duration, ports ...int) error {
+func waitListening(ctx context.Context, cli *client.Client, name, node string, ports ...int) error {
 	dials := make([]string, len(ports))
 	for i, port := range ports {
 		dials[i] = fmt.Sprintf("(echo > /dev/tcp/127.0.0.1/%d)", port)
 	}
 	probe := []string{"bash", "-c", strings.Join(dials, " && ")}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeout(ctx, coordinatorReadyTimeout)
 	defer cancel()
 	// expired separates the budget running out from the caller cancelling.
 	expired := func() error {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("%s on %s not ready after %s", name, node, timeout)
+			return fmt.Errorf("%s on %s not ready after %s", name, node, coordinatorReadyTimeout)
 		}
 		return ctx.Err()
 	}
@@ -313,7 +346,7 @@ func WaitListening(ctx context.Context, cli *client.Client, name, node string, t
 			}
 			return fmt.Errorf("inspecting %s on %s: %w", name, node, err)
 		}
-		if inspect.State == nil || !inspect.State.Running {
+		if !inspect.State.Running {
 			return fmt.Errorf("%s on %s exited before it was ready, journalctl CONTAINER_NAME=%s has the log", name, node, name)
 		}
 		ready, err := execSucceeds(ctx, cli, name, probe)
@@ -342,7 +375,7 @@ func WaitLogLine(ctx context.Context, cli *client.Client, name, label, line stri
 		if err != nil {
 			return fmt.Errorf("inspecting %s: %w", label, err)
 		}
-		if inspect.State == nil || !inspect.State.Running {
+		if !inspect.State.Running {
 			return fmt.Errorf("%s exited before it was ready, journalctl CONTAINER_NAME=%s has the log", label, name)
 		}
 		logs, err := containerLogs(ctx, cli, name, inspect.State.StartedAt)

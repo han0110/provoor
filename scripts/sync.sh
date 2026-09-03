@@ -20,8 +20,7 @@ usage() {
     echo ""
     echo "Options:"
     echo "  --ssh USER@HOST           SSH destination holding the results, COORDINATOR_SSH in .env by default"
-    echo "  --remote-results-dir DIR  Results directory on the remote, relative to the SSH home,"
-    echo "                            REMOTE_RESULTS_DIR in .env by default"
+    echo "  --remote-results-dir DIR  Results directory on the remote, REMOTE_RESULTS_DIR in .env by default"
     echo "  --help, -h                Show this help"
     exit 1
 }

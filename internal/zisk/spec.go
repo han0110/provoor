@@ -66,10 +66,6 @@ func provingKeyVolume(zkvmVersion string) string {
 	return "zisk-proving-key-" + zkvmVersion
 }
 
-func cacheVolume(zkvmVersion string) string {
-	return "zisk-cache-" + zkvmVersion
-}
-
 func provingKeyMount(zkvmVersion string) mount.Mount {
 	return mount.Mount{Type: mount.TypeVolume, Source: provingKeyVolume(zkvmVersion), Target: provingKeyDir}
 }
@@ -78,11 +74,7 @@ func provingKeyMount(zkvmVersion string) mount.Mount {
 // write. Everything in it is addressed by ELF hash, so one volume serves every
 // guest and survives a down and up.
 func cacheMount(zkvmVersion string) mount.Mount {
-	return mount.Mount{Type: mount.TypeVolume, Source: cacheVolume(zkvmVersion), Target: cacheDir}
-}
-
-func memlockUnlimited() []*container.Ulimit {
-	return []*container.Ulimit{{Name: "memlock", Soft: -1, Hard: -1}}
+	return mount.Mount{Type: mount.TypeVolume, Source: "zisk-cache-" + zkvmVersion, Target: cacheDir}
 }
 
 // coordinatorTOML renders the coordinator config holding a job until every
@@ -256,7 +248,7 @@ func workerSpec(cfg *Config, worker Worker, name string, numaNodes int) cluster.
 			LogConfig:     cluster.Journald(workerContainer),
 			Mounts:        []mount.Mount{provingKeyMount(cfg.ZkvmVersion), cacheMount(cfg.ZkvmVersion)},
 			Resources: container.Resources{
-				Ulimits:        memlockUnlimited(),
+				Ulimits:        cluster.MemlockUnlimited(),
 				DeviceRequests: []container.DeviceRequest{worker.GPU.DeviceRequest()},
 			},
 		},
@@ -281,7 +273,7 @@ func setupSpec(cfg *Config, gpu cluster.GPU) cluster.Container {
 			ShmSize: 16 << 30,
 			Mounts:  []mount.Mount{provingKeyMount(cfg.ZkvmVersion)},
 			Resources: container.Resources{
-				Ulimits:        memlockUnlimited(),
+				Ulimits:        cluster.MemlockUnlimited(),
 				DeviceRequests: []container.DeviceRequest{gpu.DeviceRequest()},
 			},
 		},
@@ -309,7 +301,7 @@ func programSetupSpec(cfg *Config, gpu cluster.GPU, elf, verifyingKey []byte) cl
 			ShmSize: int64(cfg.Prover.ShmSizeGB) << 30,
 			Mounts:  []mount.Mount{provingKeyMount(cfg.ZkvmVersion), cacheMount(cfg.ZkvmVersion)},
 			Resources: container.Resources{
-				Ulimits:        memlockUnlimited(),
+				Ulimits:        cluster.MemlockUnlimited(),
 				DeviceRequests: []container.DeviceRequest{gpu.DeviceRequest()},
 			},
 		},

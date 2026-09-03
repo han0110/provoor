@@ -24,8 +24,8 @@ type Worker struct {
 	GPU          cluster.GPU `yaml:"gpu"`
 }
 
-// ProverConfig applies to every worker. Each field maps onto one mpirun or
-// zisk-worker-gpu flag, and a zero value leaves the flag to the worker image.
+// ProverConfig applies to every worker. Every field but ShmSizeGB maps onto
+// one mpirun or zisk-worker-gpu flag.
 type ProverConfig struct {
 	// ShmSizeGB sizes /dev/shm for the ASM emulator's shared-memory trace
 	// segments.
@@ -48,7 +48,7 @@ type ProverConfig struct {
 	// frees roughly 11 GB of heap for step-heavy blocks.
 	MinimalMemory bool `yaml:"minimal_memory"`
 	// CPUMops plans memory ops on the CPU. The GPU planner is roughly 6%
-	// faster per proof and holds far less host memory, but it caps a proof at
+	// faster per proof and holds far less host memory. It caps a proof at
 	// 1024 Main segments and aborts the worker above that.
 	CPUMops bool `yaml:"cpu_mops"`
 }

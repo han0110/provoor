@@ -23,8 +23,8 @@ import (
 
 // The fixtures are a real proof of the warmup block, produced by a cluster
 // running the stateless-validator-reth-openvm-v2.1.0-preview guest of
-// ere-guests v0.15.0, with the verification baseline the coordinator serves
-// for it and the public values it proves. other-baseline.bin is the baseline
+// ere-guests v0.15.0. They carry the verification baseline the coordinator
+// serves for it and the public values it proves. other-baseline.bin is the baseline
 // of the ethrex guest of the same release, a program the proof does not
 // attest to.
 const (
@@ -311,9 +311,9 @@ func TestProveVerifiedOutcome(t *testing.T) {
 	}
 }
 
-// A real manager answers /readyz on worker registration alone and so reports
-// itself ready while it refuses work, which is why the measurement discounts
-// the refused attempts rather than trusting the gate to have covered them.
+// A real manager answers /readyz on worker registration alone, so it reports
+// itself ready while it refuses work. The measurement therefore discounts the
+// refused attempts rather than trusting the gate to have covered them.
 func TestDrainStaysOutOfTheMeasurement(t *testing.T) {
 	for _, tc := range []struct {
 		name               string
@@ -510,8 +510,8 @@ func TestWaitReady(t *testing.T) {
 }
 
 // A wait cut short would leave the rest of a cluster's recovery inside the
-// next proof's measurement, so only the caller ends it, and the coordinator's
-// own reason travels with the error.
+// next proof's measurement, so only the caller ends it. The coordinator's own
+// reason travels with the error.
 func TestWaitReadyWaitsOnTheContext(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /vk/{name}", func(w http.ResponseWriter, _ *http.Request) {

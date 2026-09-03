@@ -1,6 +1,6 @@
 // Command zisk-supervisor runs the ZisK coordinator and ends it on request.
 // The coordinator never drops a guest it has set up and replays every one to
-// each registering worker, so ending it is the only way to clear that record.
+// each registering worker. Ending it is the only way to clear that record.
 package main
 
 import (

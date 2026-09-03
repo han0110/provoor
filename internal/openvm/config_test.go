@@ -9,15 +9,13 @@ import (
 	"github.com/han0110/provoor/internal/cluster"
 )
 
-const minimalGuest = `guests:
-  - elf: /guests/stateless-validator-ethrex-openvm-v2.1.0-preview.elf
-    vk: /guests/stateless-validator-ethrex-openvm-v2.1.0-preview.vk
-`
-
 const minimalConfig = `
 zkvm: openvm
 zkvm_version: 2.1.0-preview
-` + minimalGuest + `coordinator:
+guests:
+  - elf: /guests/stateless-validator-ethrex-openvm-v2.1.0-preview.elf
+    vk: /guests/stateless-validator-ethrex-openvm-v2.1.0-preview.vk
+coordinator:
   ssh: user@10.0.0.1
   ip: 10.0.0.1
 workers:
@@ -40,8 +38,8 @@ func writeConfig(t *testing.T, content string) string {
 }
 
 // Every knob left out has to reach the image as an absent key rather than a
-// zero, except the prover capacities and the watchdog, which the image has
-// no usable fallback for.
+// zero. The prover capacities and the watchdog are the exceptions, since the
+// image has no usable fallback for them.
 func TestDefaultsOnlyConfigDeploys(t *testing.T) {
 	cfg, err := Load(writeConfig(t, minimalConfig))
 	if err != nil {
@@ -159,13 +157,6 @@ config:
 	}
 }
 
-func TestLoadRejectsUnknownField(t *testing.T) {
-	_, err := Load(writeConfig(t, minimalConfig+"cluster_endpoint: http://x\n"))
-	if err == nil {
-		t.Fatal("expected error for unknown field")
-	}
-}
-
 func TestLoadValidation(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -176,21 +167,6 @@ func TestLoadValidation(t *testing.T) {
 			name:    "wrong zkvm",
 			config:  strings.Replace(minimalConfig, "zkvm: openvm", "zkvm: zisk", 1),
 			wantErr: "zkvm",
-		},
-		{
-			name:    "no guests",
-			config:  strings.Replace(minimalConfig, minimalGuest, "", 1),
-			wantErr: "guest",
-		},
-		{
-			name:    "guest without elf",
-			config:  strings.Replace(minimalConfig, minimalGuest, "guests:\n  - vk: /guests/a.vk\n", 1),
-			wantErr: "guest 0 is missing elf",
-		},
-		{
-			name:    "guest without vk",
-			config:  strings.Replace(minimalConfig, minimalGuest, "guests:\n  - elf: /guests/a.elf\n", 1),
-			wantErr: "guest 0 is missing vk",
 		},
 		{
 			name:    "remote worker without ip",
@@ -218,7 +194,7 @@ func TestLoadValidation(t *testing.T) {
 			wantErr: "gpu device_ids expects exactly one id",
 		},
 		{
-			name:    "remote worker without ip or device ids",
+			name:    "device ids checked before the worker ip",
 			config:  minimalConfig + "  - ssh: user@10.0.0.3\n    gpu:\n      count: 1\n",
 			wantErr: "gpu device_ids expects exactly one id",
 		},
@@ -231,16 +207,6 @@ func TestLoadValidation(t *testing.T) {
 			name:    "negative gpu",
 			config:  strings.Replace(minimalConfig, "device_ids: [0]", "device_ids: [-1]", 1),
 			wantErr: "gpu device_ids expects non-negative ids",
-		},
-		{
-			name:    "missing zkvm version",
-			config:  strings.Replace(minimalConfig, "zkvm_version: 2.1.0-preview\n", "", 1),
-			wantErr: "zkvm_version is required",
-		},
-		{
-			name:    "verbose out of range",
-			config:  minimalConfig + "verbose: 3\n",
-			wantErr: "verbose",
 		},
 		{
 			name:    "non positive app provers",

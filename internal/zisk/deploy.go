@@ -19,12 +19,9 @@ import (
 	"github.com/han0110/provoor/internal/cluster"
 )
 
-// The coordinator only has to open its ports, while a worker initialises its
-// GPUs before dialing in, so registration gets the longer budget.
-const (
-	coordinatorReadyTimeout = 120 * time.Second
-	registrationTimeout     = 300 * time.Second
-)
+// registrationTimeout covers a worker initialising its GPUs before it dials
+// in.
+const registrationTimeout = 300 * time.Second
 
 // deployment carries the dialed hosts of one Up invocation.
 type deployment struct {
@@ -41,8 +38,8 @@ type resolvedGuest struct {
 	verifyingKey []byte
 }
 
-// Up prepares every worker host's proving key, compiles every guest into each
-// host's artifact cache, then starts the cluster and blocks until the
+// Up prepares every worker host's proving key and compiles every guest into
+// each host's artifact cache. It then starts the cluster and blocks until the
 // coordinator accepts connections and every worker has registered. A container
 // already running is left in place.
 func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
@@ -54,6 +51,10 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 	defer hosts.Close()
 	d := &deployment{cfg: cfg, hosts: hosts, out: out}
 
+	guests, err := d.resolveGuests(ctx)
+	if err != nil {
+		return err
+	}
 	if err := hosts.Pull(ctx, cfg.ImageRef(), out); err != nil {
 		return err
 	}
@@ -70,10 +71,6 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 
 	// Hosts compile in parallel and the guests of one host in turn, since a
 	// setup allocates the whole device.
-	guests, err := d.resolveGuests(ctx)
-	if err != nil {
-		return err
-	}
 	g, gctx = errgroup.WithContext(ctx)
 	for i, worker := range cfg.Workers {
 		g.Go(func() error {
@@ -84,7 +81,8 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 		return err
 	}
 
-	if err := d.startCoordinator(ctx); err != nil {
+	if err := cluster.StartCoordinator(ctx, hosts.Client(cfg.Coordinator.SSH), cfg.CoordinatorHost(), coordinatorSpec(cfg),
+		fmt.Sprintf("api %d, cluster %d", apiPort, clusterPort), []int{apiPort, clusterPort, coordinatorRestartPort}, out); err != nil {
 		return err
 	}
 	g, gctx = errgroup.WithContext(ctx)
@@ -206,30 +204,6 @@ func (d *deployment) setupGuests(ctx context.Context, worker Worker, node string
 		}
 		d.out.Printf("[%s] guest %s cached", node, guest.name)
 	}
-	return nil
-}
-
-func (d *deployment) startCoordinator(ctx context.Context) error {
-	cli := d.hosts.Client(d.cfg.Coordinator.SSH)
-	node := d.cfg.CoordinatorHost()
-
-	running, err := cluster.Running(ctx, cli, coordinatorContainer)
-	if err != nil {
-		return fmt.Errorf("coordinator on %s: %w", node, err)
-	}
-	if running {
-		d.out.Printf("[%s] %s already running, run provoor down first to apply config changes", cluster.CoordinatorName, coordinatorContainer)
-	} else {
-		if err := coordinatorSpec(d.cfg).Start(ctx, cli); err != nil {
-			return fmt.Errorf("starting coordinator on %s: %w", node, err)
-		}
-		d.out.Printf("[%s] starting coordinator (api %d, cluster %d)...", cluster.CoordinatorName, apiPort, clusterPort)
-	}
-
-	if err := cluster.WaitListening(ctx, cli, coordinatorContainer, node, coordinatorReadyTimeout, apiPort, clusterPort, coordinatorRestartPort); err != nil {
-		return err
-	}
-	d.out.Printf("[%s] coordinator ready (api %d, cluster %d)", cluster.CoordinatorName, apiPort, clusterPort)
 	return nil
 }
 

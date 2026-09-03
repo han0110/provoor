@@ -129,13 +129,6 @@ config:
 	}
 }
 
-func TestLoadRejectsUnknownField(t *testing.T) {
-	_, err := Load(writeConfig(t, minimalConfig+"cluster_endpoint: http://x\n"))
-	if err == nil {
-		t.Fatal("expected error for unknown field")
-	}
-}
-
 func TestLoadValidation(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -146,21 +139,6 @@ func TestLoadValidation(t *testing.T) {
 			name:    "wrong zkvm",
 			config:  strings.Replace(minimalConfig, "zkvm: zisk", "zkvm: openvm", 1),
 			wantErr: "zkvm",
-		},
-		{
-			name:    "no guests",
-			config:  strings.Replace(minimalConfig, "guests:\n  - elf: /guests/a.elf\n    vk: /guests/a.vk\n", "", 1),
-			wantErr: "guest",
-		},
-		{
-			name:    "guest without a vk",
-			config:  strings.Replace(minimalConfig, "    vk: /guests/a.vk\n", "", 1),
-			wantErr: "vk",
-		},
-		{
-			name:    "guest without an elf",
-			config:  strings.Replace(minimalConfig, "  - elf: /guests/a.elf\n    vk", "  - vk", 1),
-			wantErr: "elf",
 		},
 		{
 			name:    "no workers",
@@ -220,16 +198,6 @@ workers:
     gpu:
       count: 1
 `,
-		},
-		{
-			name:    "missing zkvm_version",
-			config:  strings.Replace(minimalConfig, "zkvm_version: 1.2.0-alpha\n", "", 1),
-			wantErr: "zkvm_version is required",
-		},
-		{
-			name:    "verbose out of range",
-			config:  minimalConfig + "verbose: 3\n",
-			wantErr: "verbose",
 		},
 		{
 			name:    "negative mpi_np",

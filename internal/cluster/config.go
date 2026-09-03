@@ -182,8 +182,8 @@ func (g GPU) label() string {
 	return strings.Join(ids, "_")
 }
 
-// Validate rejects a selection naming no amount, both forms, or an id no
-// daemon exposes.
+// Validate rejects a selection naming no amount, both forms, a negative
+// count, or a negative or repeated id.
 func (g GPU) Validate() error {
 	switch {
 	case g.Count > 0 && len(g.DeviceIDs) > 0:

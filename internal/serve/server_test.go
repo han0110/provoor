@@ -33,7 +33,7 @@ func (p *fakeProver) WaitReady(context.Context) error {
 	return nil
 }
 
-func (p *fakeProver) Prove(_ context.Context, input []byte, onPhase func(string)) (*cluster.ProveOutcome, error) {
+func (p *fakeProver) Prove(_ context.Context, _ []byte, onPhase func(string)) (*cluster.ProveOutcome, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
@@ -41,12 +41,8 @@ func (p *fakeProver) Prove(_ context.Context, input []byte, onPhase func(string)
 	for _, phase := range p.phases {
 		onPhase(phase)
 	}
-	publicValues := p.publicValues
-	if bytes.Equal(input, warmupInput) {
-		publicValues = commitment(warmupOutput)
-	}
 	return &cluster.ProveOutcome{
-		PublicValues:       publicValues,
+		PublicValues:       p.publicValues,
 		ProofBytes:         316119,
 		ClusterProvingTime: 4011 * time.Millisecond,
 		SubmitWait:         p.submitWait,
@@ -112,14 +108,12 @@ func TestClientVersion(t *testing.T) {
 }
 
 func TestWarmup(t *testing.T) {
-	if err := newServer(&fakeProver{}, &bytes.Buffer{}).Warmup(t.Context()); err != nil {
+	if err := newServer(&fakeProver{publicValues: commitment(warmupOutput)}, &bytes.Buffer{}).Warmup(t.Context()); err != nil {
 		t.Errorf("Warmup = %v", err)
 	}
 	// A guest built for another input format commits to an error at once and
 	// warms no worker at all.
-	server := newServer(proverFunc(func(context.Context, []byte, func(string)) (*cluster.ProveOutcome, error) {
-		return &cluster.ProveOutcome{PublicValues: commitment([]byte{9})}, nil
-	}), &bytes.Buffer{})
+	server := newServer(&fakeProver{publicValues: commitment([]byte{9})}, &bytes.Buffer{})
 	if err := server.Warmup(t.Context()); err == nil || !strings.Contains(err.Error(), "does not compute it") {
 		t.Errorf("Warmup = %v, want the output mismatch reported", err)
 	}
@@ -127,16 +121,6 @@ func TestWarmup(t *testing.T) {
 	if err := server.Warmup(t.Context()); err == nil || !strings.Contains(err.Error(), "warming up the prover: down") {
 		t.Errorf("Warmup = %v, want the prover error wrapped", err)
 	}
-}
-
-// proverFunc adapts a function into a Prover whose readiness wait returns at
-// once.
-type proverFunc func(ctx context.Context, input []byte, onPhase func(string)) (*cluster.ProveOutcome, error)
-
-func (f proverFunc) WaitReady(context.Context) error { return nil }
-
-func (f proverFunc) Prove(ctx context.Context, input []byte, onPhase func(string)) (*cluster.ProveOutcome, error) {
-	return f(ctx, input, onPhase)
 }
 
 func TestProveValid(t *testing.T) {

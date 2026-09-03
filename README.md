@@ -100,7 +100,7 @@ scripts/provoor.sh down --config examples/<zkvm>-4x4.example.yaml
 - `up` is idempotent and streams its progress as `[label] message` lines. It leaves a running coordinator or worker alone and reports it as `already running`. Every `up` replaces a sidecar.
 - `down` keeps the cache volumes and the journald logs, so the next `up` is fast. Read a log with `journalctl CONTAINER_NAME=<container>` on the host.
 - Neither `up` nor `down` talks to the client API.
-- A configured vk that differs from the key the cluster derives from the ELF fails `up`. The error identifies both keys.
+- The vk mismatch error identifies both keys.
 - A telemetry failure does not fail `up`. The line `telemetry unavailable: ...` reports it, and an empty sidecar list prints `telemetry: no sidecars configured`.
 - The first `up` is slow. Each zkVM prepares its proving keys and guest artifacts, minutes per guest on a GPU.
 
@@ -134,12 +134,12 @@ The forwarder does these steps at startup.
 - The forwarder waits for cluster readiness before each proof, on the request context and outside the measurement.
 - The forwarder subtracts the time the cluster refused the submission from the measured proving time. `waited <duration> for the cluster to admit <hash>` reports a wait over one second.
 - Each phase change prints `proving <hash> phase <phase>`.
-- The forwarder verifies the public values with the ere verifier bound to `--vk` and compares them with `expectedStatelessOutput`. A mismatch answers `INVALID` with the committed `statelessOutput`.
+- Verified public values that differ from `expectedStatelessOutput` answer `INVALID` with the committed `statelessOutput`.
 - A cluster error answers JSON-RPC error `-32000`. With `fail-run` the process exits 1 while the client is still connected.
 - `web3_clientVersion` answers the guest ELF name.
 - The metric JSON line carries `block.number`, `block.hash`, `block.gas_used`, `timing.total_ms`, `throughput.mgas_per_sec`, `statelessInputSize`, `provingTimeMs`, `clusterReportedProvingTimeMs`, `proofSize`, and `outputMatched`.
 - The warmup block is the 60M gas PUSH28 block of EEST `tests-zkevm-benchmark@v0.8.2`. It splits into about 230 segments, so every worker pays its one-time costs before the first measured proof.
-- Run the benchmark on the coordinator host, which keeps stateless input transfer off the measured path.
+- Run the benchmark on the coordinator host, so the stateless input reaches the cluster over loopback.
 - Forwarder flags travel through the instance `extra_args`. The run configurations set `ready_timeout: 15m`, since the forwarder listens only after the warmup.
 - Results land in `provoor-runs/results` and render in the benchmarkoor UI.
 
@@ -182,7 +182,7 @@ The forwarder does these steps at startup.
 | `scripts/benchmarkoor.sh`     | Runs `benchmarkoor/bin/benchmarkoor` in the `provoor-runs` working directory. A relative `results_dir` and every relative argument other than `--config` resolve there.                                                                                                                          |
 | `scripts/build.sh`            | `provoor` builds the CLI into the repository root. `benchmarkoor` resets every submodule to the recorded revision with `--force` and runs `make build-core`.                                                                                                                                     |
 | `scripts/fetch-verifier.sh`   | Downloads `libere_verifier_c` of ere `ERE_VERSION` (v0.18.0) into `internal/ereverifier/lib` and checks the archive against its pinned sha256 digest.                                                                                                                                            |
-| `scripts/sync.sh`             | Pulls the remote results with `rsync -a` into `provoor-runs/results`, then runs `scripts/desensitize.sh`. Flags `--ssh USER@HOST` and `--remote-results-dir DIR` default to `COORDINATOR_SSH` and `REMOTE_RESULTS_DIR` in `.env`. Excludes `container.log`, `benchmarkoor.log`, and `*.request`. |
+| `scripts/sync.sh`             | Pulls the remote results with `rsync -a` into `provoor-runs/results`, then runs `scripts/desensitize.sh`. Excludes `container.log`, `benchmarkoor.log`, and `*.request`.                                                                                                                         |
 | `scripts/desensitize.sh`      | Replaces every non-empty `.env` value in `provoor-runs/results` with its variable name. Longer values apply first and ties keep `.env` order. The script skips gzip files. A final scan fails the script when a value survives.                                                                  |
 
 - Run `scripts/fetch-verifier.sh` again when `ERE_VERSION` changes. A stale library rejects the proofs of a current cluster.
@@ -204,7 +204,6 @@ docker build -f dockers/Dockerfile --build-arg VERIFIER_LIB=local -t provoor:loc
 
 - `VERIFIER_LIB=local` takes the library already in `internal/ereverifier/lib`, for an ere revision with no release. The build fails when the directory does not exist. `release`, the default, downloads the pinned asset in a stage of its own, so source edits do not repeat the download.
 - `VERSION` stamps `provoor --version`, `dev` unless set. The release workflow passes the release tag.
-- The cluster image tag is the zkVM release it carries, which is the `zkvm_version` a cluster configuration names.
 
 ### Add a zkVM
 

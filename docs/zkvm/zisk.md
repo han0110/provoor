@@ -54,17 +54,17 @@ The [README](../../README.md#configuration) lists the keys every zkVM shares.
 
 ## Budgets
 
-| Budget                      | Value                                         | Covers                                                                          |
-| --------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------- |
-| coordinator ready           | 120 s                                         | ports 7000, 50051, and 7002 open after the start                                |
-| worker registration         | 300 s                                         | the `Registration accepted` line in the worker log                              |
-| setup job                   | 600 s                                         | the guest setup RPC the forwarder runs                                          |
-| cluster ready after restart | 300 s                                         | the register wait and, separately, the setup wait after the coordinator restart |
-| register RPC                | 60 s                                          | one register attempt                                                            |
-| restart request             | 30 s                                          | the request to the supervisor                                                   |
-| aggregation                 | 600 s                                         | `phase3_timeout_seconds`, counted from the first worker to finish               |
-| submit retry                | 5 s                                           | the pause between refused submissions                                           |
-| worker health check         | every 30 s, 10 s timeout, 10 min start period | kills the ranks when the worker reports itself unrecoverable                    |
+| Budget                      | Value                                         | Covers                                                                                |
+| --------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------- |
+| coordinator ready           | 120 s                                         | ports 7000, 50051, and 7002 open after the start                                      |
+| worker registration         | 300 s                                         | the `Registration accepted` line in the worker log                                    |
+| setup job                   | 600 s                                         | the guest setup RPC the forwarder runs                                                |
+| cluster ready after restart | 300 s                                         | the register retries and, separately, the setup retries after the coordinator restart |
+| register RPC                | 60 s                                          | one register attempt                                                                  |
+| restart request             | 30 s                                          | the request to the supervisor                                                         |
+| aggregation                 | 600 s                                         | `phase3_timeout_seconds`, counted from the first worker to finish                     |
+| submit retry                | 5 s                                           | the pause between refused submissions                                                 |
+| worker health check         | every 30 s, 10 s timeout, 10 min start period | kills the ranks when the worker reports itself unrecoverable                          |
 
 ## Behavior
 

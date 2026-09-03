@@ -541,8 +541,8 @@ func (c *Client) cancelProof(ctx context.Context, proofUUID string) error {
 }
 
 // framedStdin wraps a payload as the serialized guest stdin, one buffered
-// byte string and no deferrals, the layout bincode's legacy configuration
-// gives the SDK's StdIn, fixed-width little-endian integers with u64 length
+// byte string and no deferrals. The layout is bincode's legacy configuration
+// of the SDK's StdIn, fixed-width little-endian integers with u64 length
 // prefixes.
 func framedStdin(data []byte) []byte {
 	framed := make([]byte, 24+len(data))

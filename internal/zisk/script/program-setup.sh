@@ -16,7 +16,7 @@ touch "${marker}"
 cargo-zisk-dev-gpu program-setup --elf "${ELF_PATH}" --proving-key "${PROVING_KEY_DIR}" -g
 
 derived=$(find "${CACHE_DIR}" -maxdepth 1 -name '*.verkey.bin' -newer "${marker}")
-count=$(printf '%s' "${derived}" | grep -c .)
+count=$(printf '%s' "${derived}" | grep -c . || true)
 if [ "${count}" -ne 1 ]; then
     echo "program setup produced ${count} verifying keys, expected exactly one" >&2
     exit 1

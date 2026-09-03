@@ -22,8 +22,8 @@ import (
 
 // warmupInput is the stateless input of the 60M gas PUSH28 block of the EEST
 // tests-zkevm-benchmark@v0.8.2 release. It splits into about 230 segments, so
-// every worker of a cluster up to that size receives a shard and pays its
-// one-time costs before the first measured proof.
+// every worker of a cluster up to that size receives a shard. Each one pays
+// its one-time costs before the first measured proof.
 //
 //go:embed warmup-input.bin
 var warmupInput []byte
@@ -59,8 +59,7 @@ type Server struct {
 	// Exit terminates the process, os.Exit in production.
 	Exit func(code int)
 
-	mu       sync.Mutex
-	outputMu sync.Mutex
+	mu sync.Mutex
 }
 
 type request struct {
@@ -306,8 +305,6 @@ func mustHex(text string) []byte {
 }
 
 func (s *Server) printf(format string, args ...any) {
-	s.outputMu.Lock()
-	defer s.outputMu.Unlock()
 	fmt.Fprintf(s.Output, format+"\n", args...)
 }
 

@@ -89,7 +89,7 @@ func Dial(ctx context.Context, endpoint string, elf, programVK []byte) (*Client,
 	readyCtx, cancel := context.WithTimeout(ctx, clusterReadyBudget)
 	defer cancel()
 	for {
-		err := c.setup(readyCtx)
+		err := c.setup(ctx)
 		if err == nil {
 			return c, nil
 		}
@@ -157,14 +157,9 @@ func (c *Client) Prove(ctx context.Context, input []byte, onPhase func(phase str
 // handle alive until it is done with it.
 func (c *Client) Close() error {
 	c.verifierMu.Lock()
-	closed := c.verifier == nil
 	c.verifier.Close()
 	c.verifier = nil
 	c.verifierMu.Unlock()
-
-	if closed {
-		return nil
-	}
 	return c.conn.Close()
 }
 
@@ -182,8 +177,8 @@ func restartCoordinator(ctx context.Context, endpoint string) error {
 
 // askRestart sends the verb the supervisor acts on. The supervisor writes
 // back only to refuse and holds the connection until the coordinator has
-// exited, so a clean end of stream is the restart landing and any other read
-// failure leaves the coordinator's state unknown.
+// exited. A clean end of stream is therefore the restart landing, and any
+// other read failure leaves the coordinator's state unknown.
 func askRestart(ctx context.Context, address string) error {
 	ctx, cancel := context.WithTimeout(ctx, restartTimeout)
 	defer cancel()

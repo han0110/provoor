@@ -73,15 +73,10 @@ type proverLimits struct {
 	DefaultSegmentMemory int64 `toml:"default_segment_memory,omitempty"`
 }
 
-// artifactsVolume and rvrCacheVolume key on the OpenVM release rather than
-// the image tag, because a keyset is derived under that release's VM
-// configuration and a native compile targets its runtime.
+// artifactsVolume keys on the OpenVM release rather than the image tag,
+// because a keyset is derived under that release's VM configuration.
 func artifactsVolume(zkvmVersion string) string {
 	return "openvm-artifacts-" + zkvmVersion
-}
-
-func rvrCacheVolume(zkvmVersion string) string {
-	return "openvm-rvr-cache-" + zkvmVersion
 }
 
 // artifactsMount is the keyset volume, read-only for everything but keygen.
@@ -92,10 +87,6 @@ func artifactsMount(zkvmVersion string, readOnly bool) mount.Mount {
 		Target:   artifactsDir,
 		ReadOnly: readOnly,
 	}
-}
-
-func memlockUnlimited() []*container.Ulimit {
-	return []*container.Ulimit{{Name: "memlock", Soft: -1, Hard: -1}}
 }
 
 func workerContainer(gpu int) string {
@@ -173,7 +164,7 @@ func managerTOML(cfg *Config) string {
 			LeafArity             int    `toml:"leaf_arity"`
 			InternalArity         int    `toml:"internal_arity"`
 			LeafPackThreshold     int    `toml:"leaf_pack_threshold"`
-			TimeoutSecs           int    `toml:"timeout_secs,omitempty"`
+			TimeoutSecs           int    `toml:"timeout_secs"`
 			PersistFinalProofsDir string `toml:"persist_final_proofs_dir"`
 		} `toml:"proof"`
 		Metrics struct {
@@ -321,15 +312,17 @@ func workerSpec(cfg *Config, worker Worker, proverID int, cpuset, loadout string
 			LogConfig:     cluster.Journald(workerContainer(worker.deviceID())),
 			Mounts: []mount.Mount{
 				artifactsMount(cfg.ZkvmVersion, true),
+				// The rvr cache keys on the release too, since a native
+				// compile targets its runtime.
 				{
 					Type:   mount.TypeVolume,
-					Source: rvrCacheVolume(cfg.ZkvmVersion),
+					Source: "openvm-rvr-cache-" + cfg.ZkvmVersion,
 					Target: rvrCacheDir,
 				},
 			},
 			Resources: container.Resources{
 				CpusetCpus: cpuset,
-				Ulimits:    memlockUnlimited(),
+				Ulimits:    cluster.MemlockUnlimited(),
 				DeviceRequests: []container.DeviceRequest{{
 					DeviceIDs:    []string{strconv.Itoa(worker.deviceID())},
 					Capabilities: [][]string{{"gpu"}},
@@ -359,7 +352,7 @@ func keygenSpec(cfg *Config, entry program) cluster.Container {
 			ShmSize: int64(cfg.Prover.ShmSizeGB) << 30,
 			Mounts:  []mount.Mount{artifactsMount(cfg.ZkvmVersion, false)},
 			Resources: container.Resources{
-				Ulimits: memlockUnlimited(),
+				Ulimits: cluster.MemlockUnlimited(),
 				DeviceRequests: []container.DeviceRequest{
 					{Count: -1, Capabilities: [][]string{{"gpu"}}},
 				},

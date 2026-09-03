@@ -22,13 +22,9 @@ import (
 	"github.com/han0110/provoor/internal/cluster"
 )
 
-// The coordinator only has to open its API port. A worker binds its socket
-// only after it compiled every loadout program to a native library, minutes
-// per program, so its budget scales with the loadout.
-const (
-	coordinatorReadyTimeout = 120 * time.Second
-	workerReadyTimeout      = 900 * time.Second
-)
+// workerReadyTimeout covers a worker compiling every loadout program to a
+// native library before it binds its socket, minutes per program.
+const workerReadyTimeout = 900 * time.Second
 
 // workerContainerPattern matches the deployment's worker container names, so
 // teardown covers containers of an earlier configuration with more GPUs.
@@ -91,7 +87,8 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 		return err
 	}
 
-	if err := d.startCoordinator(ctx); err != nil {
+	if err := cluster.StartCoordinator(ctx, hosts.Client(cfg.Coordinator.SSH), cfg.CoordinatorHost(), coordinatorSpec(cfg, d.loadout),
+		fmt.Sprintf("api %d", apiPort), []int{apiPort}, out); err != nil {
 		return err
 	}
 
@@ -267,9 +264,10 @@ func (d *deployment) verifyBaselines(ctx context.Context, cli *client.Client, no
 	return nil
 }
 
-// missingPrograms probes which programs lack a derived keyset, everything
-// when the artifacts volume does not exist yet and otherwise by each
-// program's verification baseline, the last file keygen moves into place.
+// missingPrograms probes which programs lack a derived keyset. Every program
+// is missing while the artifacts volume does not exist. Otherwise a program
+// is present once its verification baseline is, the last file keygen moves
+// into place.
 func (d *deployment) missingPrograms(ctx context.Context, cli *client.Client, node string) ([]program, error) {
 	volumeName := artifactsVolume(d.cfg.ZkvmVersion)
 	if _, err := cli.VolumeInspect(ctx, volumeName); errdefs.IsNotFound(err) {
@@ -329,30 +327,6 @@ func (d *deployment) runKeygen(ctx context.Context, cli *client.Client, node str
 		return fmt.Errorf("keygen for %s on %s: %w", entry.name, node, err)
 	}
 	d.out.Printf("[%s] keyset ready for %s", node, entry.name)
-	return nil
-}
-
-func (d *deployment) startCoordinator(ctx context.Context) error {
-	cli := d.hosts.Client(d.cfg.Coordinator.SSH)
-	node := d.cfg.CoordinatorHost()
-
-	running, err := cluster.Running(ctx, cli, coordinatorContainer)
-	if err != nil {
-		return fmt.Errorf("coordinator on %s: %w", node, err)
-	}
-	if running {
-		d.out.Printf("[%s] %s already running, run provoor down first to apply config changes", cluster.CoordinatorName, coordinatorContainer)
-	} else {
-		if err := coordinatorSpec(d.cfg, d.loadout).Start(ctx, cli); err != nil {
-			return fmt.Errorf("starting coordinator on %s: %w", node, err)
-		}
-		d.out.Printf("[%s] starting coordinator (api %d)...", cluster.CoordinatorName, apiPort)
-	}
-
-	if err := cluster.WaitListening(ctx, cli, coordinatorContainer, node, coordinatorReadyTimeout, apiPort); err != nil {
-		return err
-	}
-	d.out.Printf("[%s] coordinator ready (api %d)", cluster.CoordinatorName, apiPort)
 	return nil
 }
 

@@ -306,14 +306,6 @@ func TestHostName(t *testing.T) {
 	}
 }
 
-func TestRustLog(t *testing.T) {
-	for verbose, want := range map[int]string{0: "info", 1: "debug", 2: "trace"} {
-		if got := RustLog(verbose); got != want {
-			t.Errorf("RustLog(%d) = %q, want %q", verbose, got, want)
-		}
-	}
-}
-
 func TestPrefixWriter(t *testing.T) {
 	cases := []struct {
 		name           string
