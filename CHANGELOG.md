@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/han0110/provoor/compare/v0.4.1...v0.5.0) (2026-09-03)
+
+
+### Features
+
+* update zisk to v1.2.0-alpha ([#17](https://github.com/han0110/provoor/issues/17)) ([fd95a5c](https://github.com/han0110/provoor/commit/fd95a5cac987f8b9ea2afa4819efac01372350d9))
+* zisk multi guests ([#15](https://github.com/han0110/provoor/issues/15)) ([bc59861](https://github.com/han0110/provoor/commit/bc59861a349be2bf727c2867fcde24758338dab2))
+
 ## [0.4.1](https://github.com/han0110/provoor/compare/v0.4.0...v0.4.1) (2026-08-25)
 
 
