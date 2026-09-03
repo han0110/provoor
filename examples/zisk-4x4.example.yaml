@@ -2,10 +2,10 @@ zkvm: zisk
 zkvm_version: 1.2.0-alpha
 
 guests:
-  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/feature/zisk-v1.2.0-alpha/elfs/stateless-validator-reth-zisk-v1.2.0-alpha.elf
-    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/feature/zisk-v1.2.0-alpha/elfs/stateless-validator-reth-zisk-v1.2.0-alpha.vk
-  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/feature/zisk-v1.2.0-alpha/elfs/stateless-validator-ethrex-zisk-v1.2.0-alpha.elf
-    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/feature/zisk-v1.2.0-alpha/elfs/stateless-validator-ethrex-zisk-v1.2.0-alpha.vk
+  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.2.0-alpha.elf
+    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.2.0-alpha.vk
+  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-ethrex-zisk-v1.2.0-alpha.elf
+    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-ethrex-zisk-v1.2.0-alpha.vk
   # - elf: https://github.com/han0110/ere-guests/releases/download/v0.16.0/stateless-validator-zesu-zisk-v1.1.0-alpha.elf
   #   vk: https://github.com/han0110/ere-guests/releases/download/v0.16.0/stateless-validator-zesu-zisk-v1.1.0-alpha.vk
 

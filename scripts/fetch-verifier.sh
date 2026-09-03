@@ -13,7 +13,7 @@ set -euo pipefail
 # published, so the bytes are checked rather than trusted. Moving ERE_VERSION
 # means refreshing these alongside the vendored binding.
 
-ERE_VERSION=v0.16.2
+ERE_VERSION=v0.18.0
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${REPO_DIR}/pkg/ereverifier/lib"
 
@@ -29,9 +29,9 @@ case "$(uname -m)" in
 esac
 
 case "${os}-${arch}" in
-    linux-amd64)  DIGEST=242d99943cd1b6071664c523861c6d6759a7a4944378fddd08a986726b3a0c11 ;;
-    linux-arm64)  DIGEST=11b12a874d9d0d3a48ab9fb6d38ff6ce26decac615834504c5dd42cf8574c5d5 ;;
-    darwin-arm64) DIGEST=f6997c96c62225ae099d9464887647f432482c7cb71d5edb40ad4fc58a254e00 ;;
+    linux-amd64)  DIGEST=9e619994126aa9f7632bea6fce02659aa3ff8bc202e5e017dd21abf967210026 ;;
+    linux-arm64)  DIGEST=1b6acdfdaf02ffb84fabb1ea081fc88443f194cf60f767827ff1c60393ececf2 ;;
+    darwin-arm64) DIGEST=764dedba66690f105b797be6ba8a485f1c53ed8d3a0fcdef15d350ab2fc3ef7d ;;
     *)            echo "ere ${ERE_VERSION} publishes no ${os}-${arch} verifier" >&2; exit 1 ;;
 esac
 
