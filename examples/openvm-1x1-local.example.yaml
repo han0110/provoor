@@ -1,0 +1,14 @@
+# The coordinator and one worker on GPU 0 of the local Docker daemon, which an omitted ssh selects.
+zkvm: openvm
+zkvm_version: 2.1.0-preview
+
+guests:
+  - elf: https://github.com/paradigmxyz/stateless/releases/download/reth-guest-v0.1.0-rc.2/stateless-validator-reth-openvm-v2.1.0-preview.elf
+    vk: https://github.com/paradigmxyz/stateless/releases/download/reth-guest-v0.1.0-rc.2/stateless-validator-reth-openvm-v2.1.0-preview.vk
+
+workers:
+  - { gpu: { device_ids: [0] } }
+
+config:
+  # Use 14.5 GiB for safety margin to avoid prover VRAM OOM.
+  segment_memory: 15569256448

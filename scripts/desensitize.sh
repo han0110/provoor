@@ -2,12 +2,9 @@
 
 set -euo pipefail
 
-# Replaces the value of every variable defined in .env with the variable
-# name across the runs checkout's results/, so published files never carry
-# real addresses. Longer values apply first, so a value containing another,
-# like a fully qualified host containing the short hostname, replaces before
-# its substring. Ties keep .env order and empty values are skipped. Running
-# it again finds nothing to replace.
+# Replaces the value of every variable defined in .env with its name across
+# the runs checkout's results/. Longer values apply first, ties keep .env
+# order, and empty values are skipped.
 
 # shellcheck source=scripts/config.sh
 . "$(dirname "${BASH_SOURCE[0]}")/config.sh"
@@ -45,11 +42,8 @@ done < <(printf '%s\n' "${entries[@]}" | sort -s -t$'\t' -k1,1nr)
 matches="$(mktemp)"
 trap 'rm -f "${matches}"' EXIT
 
-# grep exits 1 when nothing matches, which is the already-clean case, and
-# above 1 on a real failure that must not be mistaken for it. The file list
-# stays null separated, so it is passed through a file rather than a
-# variable. Gzip files are skipped, because a match inside compressed bytes
-# is accidental and a rewrite would corrupt the archive.
+# grep exits 1 when nothing matches and above 1 on a failure. Gzip files are
+# skipped, because a rewrite corrupts the archive.
 scan() {
     local status=0
     grep -rlZF --exclude='*.gz' "${patterns[@]}" "${RESULTS_DIR}" > "${matches}" || status=$?
@@ -62,8 +56,7 @@ scan() {
 scan
 
 # python3 rather than sed, because sed reads a value as a regular expression
-# that over-matches unrelated bytes and chains its rules into names an earlier
-# rule inserted. One left to right pass over exact bytes does neither.
+# and chains its rules into names an earlier rule inserted.
 python3 - "${matches}" "${substitutions[@]}" <<'PYTHON'
 import os
 import sys
@@ -109,7 +102,7 @@ for path in paths:
             handle.write(replaced)
 PYTHON
 
-# A rewrite that did not take must stop the publish rather than pass as done.
+# A rewrite that did not take stops the publish.
 scan
 if [[ -s "${matches}" ]]; then
     echo "error: ${RESULTS_DIR} still holds values from ${ENV_FILE}" >&2

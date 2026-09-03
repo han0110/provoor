@@ -3,19 +3,13 @@
 set -euo pipefail
 
 # Downloads the ere verifier static library and header into the directory the
-# cgo directives of pkg/ereverifier resolve against. The archive is a release
-# asset of the same ere version the binding is vendored from, so the library
-# and the binding always move together. Its contents stay out of version
-# control, which is why a fresh checkout runs this before building.
-#
-# The digest of every published archive is pinned here. This library decides
-# whether a proof is accepted, and a release asset can be replaced after it is
-# published, so the bytes are checked rather than trusted. Moving ERE_VERSION
-# means refreshing these alongside the vendored binding.
+# cgo directives of internal/ereverifier resolve against. The digest of every
+# published archive is pinned here, because a release asset can be replaced
+# after it is published.
 
 ERE_VERSION=v0.18.0
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-LIB_DIR="${REPO_DIR}/pkg/ereverifier/lib"
+LIB_DIR="${REPO_DIR}/internal/ereverifier/lib"
 
 case "$(uname -s)" in
     Linux)  os=linux ;;
@@ -41,8 +35,8 @@ URL="https://github.com/eth-act/ere/releases/download/${ERE_VERSION}/${ARCHIVE}"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 
-# The two platforms name their digest tool differently, and neither ships the
-# other, so the one that is present decides how the archive is hashed.
+# The two platforms name their digest tool differently, so the one present
+# decides how the archive is hashed.
 if command -v sha256sum >/dev/null 2>&1; then
     digest_of() { sha256sum "$1" | cut -d' ' -f1; }
 elif command -v shasum >/dev/null 2>&1; then
@@ -60,9 +54,8 @@ if [[ "${FOUND}" != "${DIGEST}" ]]; then
     exit 1
 fi
 
-# The archive lands in the destination only once its bytes are vouched for, so
-# an interrupted or rejected download never leaves a half-written library that
-# a later build would link.
+# The archive lands in the destination only once its digest matches, so a
+# rejected download never leaves a half-written library.
 mkdir -p "${LIB_DIR}"
 tar -xzf "${WORK_DIR}/${ARCHIVE}" -C "${LIB_DIR}"
 

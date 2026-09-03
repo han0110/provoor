@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
 
-# Shared .env reading and --config handling for the provoor and benchmarkoor
-# proxies, sourced rather than executed. A --config naming a *.example.yaml
-# template is materialized next to the template with every placeholder filled
-# from .env, and the generated file takes its place in the argument list.
-# Every other --config resolves to an absolute path, so a proxy is free to
-# change directory before running its CLI.
+# Shared .env reading and --config handling for the proxies, sourced rather
+# than executed. A --config naming a *.example.yaml template is materialized
+# next to it from .env, and every other --config resolves to an absolute path.
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${REPO_DIR}/.env"
 
 # resolved carries the path resolve_config produced. A global rather than
-# stdout, so a failure exits the script instead of a substitution subshell.
+# stdout, so a failure exits the script instead of a subshell.
 resolved=""
 
-# env_names and env_values carry .env in file order, env_value the entry
-# env_lookup found. Globals for the same reason resolved is one.
+# env_names and env_values carry .env in file order, and env_value carries the
+# entry env_lookup found.
 env_names=()
 env_values=()
 env_value=""
@@ -25,10 +22,8 @@ trim() {
     printf '%s' "${text%"${text##*[![:space:]]}"}"
 }
 
-# read_env_file parses .env as text, so no value is ever expanded, executed,
-# or spread over more than the line it sits on. A comment at any indentation,
-# a blank line, and a line without an assignment are skipped, and the last
-# line counts whether or not a newline terminates it.
+# read_env_file parses .env as text, so no value is expanded or executed.
+# Comments, blank lines, and lines without an assignment are skipped.
 read_env_file() {
     if [[ ! -f "${ENV_FILE}" ]]; then
         echo "error: missing ${ENV_FILE}, copy .env.example and fill it in" >&2
@@ -56,8 +51,7 @@ read_env_file() {
 }
 
 # env_lookup leaves the value .env gives a name in env_value, empty when the
-# name is absent, so only .env can satisfy a placeholder. A name repeated in
-# .env keeps its last value.
+# name is absent. A name repeated in .env keeps its last value.
 env_lookup() {
     local index
     env_value=""
@@ -68,9 +62,8 @@ env_lookup() {
     done
 }
 
-# absolute leaves an absolute path in resolved. The path travels after --, so
-# a leading dash names a file rather than an option, and a path that cannot be
-# resolved stops the run instead of reaching the CLI as a directory.
+# absolute leaves an absolute path in resolved. A path that cannot be resolved
+# stops the run instead of reaching the CLI.
 absolute() {
     local directory name
     if ! directory="$(dirname -- "$1")" \
@@ -83,8 +76,7 @@ absolute() {
 }
 
 # materialize substitutes by variable name, so text outside a placeholder is
-# left alone, and an unset or empty variable stops the run rather than
-# silently producing an empty field.
+# left alone. An unset or empty variable stops the run.
 materialize() {
     local template="$1"
     local generated="${template%.example.yaml}.yaml"
@@ -93,8 +85,8 @@ materialize() {
         exit 1
     fi
 
-    # provoor's loader expands nothing, so an unbraced reference would reach
-    # the cluster verbatim instead of carrying an address.
+    # provoor expands nothing, so an unbraced reference reaches the cluster
+    # verbatim.
     local unbraced=()
     mapfile -t unbraced < <(grep -oE '\$[A-Za-z_][A-Za-z0-9_]*' "${template}" | sort -u)
     if (( ${#unbraced[@]} > 0 )); then
@@ -121,9 +113,8 @@ materialize() {
         exit 1
     fi
 
-    # env carries the names the template uses and nothing else, so neither an
-    # ambient variable nor an unrelated .env entry reaches envsubst, and no
-    # name from .env lands in this shell.
+    # env carries only the names the template uses, so no ambient variable
+    # reaches envsubst and no .env name lands in this shell.
     env "${assignments[@]+"${assignments[@]}"}" \
         envsubst "${names[*]}" < "${template}" > "${generated}"
     absolute "${generated}"
@@ -145,7 +136,7 @@ resolve_config() {
 }
 
 # rewrite_config_args fills the global args array, resolving every --config
-# value and passing everything else through untouched.
+# value and passing everything else through.
 rewrite_config_args() {
     args=()
     while [[ $# -gt 0 ]]; do

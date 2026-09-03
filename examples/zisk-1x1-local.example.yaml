@@ -1,0 +1,10 @@
+# The coordinator and one worker on GPU 0 of the local Docker daemon, which an omitted ssh selects.
+zkvm: zisk
+zkvm_version: 1.2.0-alpha
+
+guests:
+  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.2.0-alpha.elf
+    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.2.0-alpha.vk
+
+workers:
+  - { gpu: { device_ids: [0] } }

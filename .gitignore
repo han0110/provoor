@@ -6,14 +6,10 @@
 benchmarkoor.db
 /provoor
 
-# Configs and results carry real hosts and addresses, so anything a template
-# is materialized into stays out while the templates themselves stay tracked.
-/cluster.yaml
-/*-benchmark.yaml
-/results/
+# A materialized configuration carries real hosts, so only the templates stay
+# tracked.
 examples/*.yaml
 !examples/*.example.yaml
 
-# The verifier library is a release asset scripts/fetch-verifier.sh downloads,
-# too large to track and reproducible from its pinned version.
-pkg/ereverifier/lib/
+# The verifier library is a release asset scripts/fetch-verifier.sh downloads.
+internal/ereverifier/lib/
