@@ -112,6 +112,11 @@ scripts/provoor.sh down --config examples/openvm-4x4.example.yaml
   when the key derived from the ELF differs, printing both.
 - `up` is idempotent and streams its progress, and `down` keeps the cached
   volumes and journald logs so the next `up` is fast.
+- `telemetry.sidecars` lists the metric exporters to run, one entry per host
+  and kind. `dcgm-exporter` publishes GPU counters on port 9401 and reads the
+  node's own `nvidia-dcgm.service` on loopback port 5555. `node-exporter`
+  publishes processor and memory counters on port 9402 and needs nothing from
+  the host. An empty list runs no sidecar, and `up` says so.
 
 The first `up` is slow, since ZisK downloads and prepares the proving key and
 OpenVM derives a keyset for each guest ELF, minutes per program on a GPU.
@@ -156,7 +161,7 @@ Run configurations live with the harness that reads them, under
 it on the coordinator host, which keeps witness transfer off the measured path.
 
 ```sh
-scripts/benchmarkoor.sh run --config benchmarkoor/examples/provoor/openvm-eest-v0.6.2-10M.example.yaml
+scripts/benchmarkoor.sh run --config benchmarkoor/examples/provoor/openvm-eest-v0.8.2-10M.example.yaml
 ```
 
 Forwarder flags travel through the instance `extra_args`. `--elf` and `--vk`
@@ -164,8 +169,9 @@ name the same release assets as the cluster's `guests` entry, and for OpenVM
 the ELF must be byte-identical to it.
 
 Before opening its port the forwarder checks the cluster's key against `--vk`
-and proves a small warmup block, so a mismatched deployment never serves a
-request and a cold cluster's one-time costs never land in a measured test. A
+and proves a 60M gas warmup block that reaches every worker, so a mismatched
+deployment never serves a request and a cold cluster's one-time costs never
+land in a measured test. A
 ZisK forwarder restarts the coordinator first and waits out the workers
 reconnecting, so its guest is the only one the cluster has set up.
 

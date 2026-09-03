@@ -2,12 +2,12 @@ zkvm: openvm
 zkvm_version: 2.1.0-preview
 
 guests:
-  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-reth-openvm-v2.1.0-preview.elf
-    vk: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-reth-openvm-v2.1.0-preview.vk
-  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-ethrex-openvm-v2.1.0-preview.elf
-    vk: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-ethrex-openvm-v2.1.0-preview.vk
-  - elf: https://github.com/han0110/zesu-zkvm/releases/download/glamsterdam-devnet-7/stateless-validator-zesu-openvm-v2.1.0-preview.elf
-    vk: https://github.com/han0110/zesu-zkvm/releases/download/glamsterdam-devnet-7/stateless-validator-zesu-openvm-v2.1.0-preview.vk
+  - elf: https://github.com/paradigmxyz/stateless/releases/download/reth-guest-v0.1.0-rc.2/stateless-validator-reth-openvm-v2.1.0-preview.elf
+    vk: https://github.com/paradigmxyz/stateless/releases/download/reth-guest-v0.1.0-rc.2/stateless-validator-reth-openvm-v2.1.0-preview.vk
+  - elf: https://github.com/lambdaclass/ethrex/releases/download/v26.0.0-rc.2/stateless-validator-ethrex-openvm-v2.1.0-preview.elf
+    vk: https://github.com/lambdaclass/ethrex/releases/download/v26.0.0-rc.2/stateless-validator-ethrex-openvm-v2.1.0-preview.vk
+  # - elf: https://github.com/han0110/zesu-zkvm/releases/download/glamsterdam-devnet-7/stateless-validator-zesu-openvm-v2.1.0-preview.elf
+  #   vk: https://github.com/han0110/zesu-zkvm/releases/download/glamsterdam-devnet-7/stateless-validator-zesu-openvm-v2.1.0-preview.vk
 
 coordinator:
   ssh: ${NODE1_SSH}
@@ -66,3 +66,22 @@ workers:
 config:
   # Use 14.5 GiB for safety margin to avoid prover VRAM OOM.
   segment_memory: 15569256448
+
+telemetry:
+  sidecars:
+    - ssh: ${NODE1_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE1_SSH}
+      kind: node-exporter
+    - ssh: ${NODE2_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE2_SSH}
+      kind: node-exporter
+    - ssh: ${NODE3_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE3_SSH}
+      kind: node-exporter
+    - ssh: ${NODE4_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE4_SSH}
+      kind: node-exporter

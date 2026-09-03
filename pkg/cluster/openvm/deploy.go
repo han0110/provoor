@@ -20,6 +20,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/han0110/provoor/pkg/cluster"
+	"github.com/han0110/provoor/pkg/telemetry"
 )
 
 // Readiness budgets. The coordinator only has to open its API port, while a
@@ -97,6 +98,12 @@ func (cfg *Config) Up(ctx context.Context, w io.Writer) error {
 		return err
 	}
 
+	// A cluster without GPU metrics still proves, so telemetry reports its
+	// own failure and leaves the deployment up.
+	if err := telemetry.StartAll(ctx, cfg.Telemetry, hosts, out); err != nil {
+		out.Printf("telemetry unavailable: %v", err)
+	}
+
 	out.Printf("cluster ready, coordinator api on %s port %d, %d worker containers accepting work",
 		cfg.coordinatorHost(), apiPort, numProvers(cfg))
 	return nil
@@ -113,6 +120,8 @@ func (cfg *Config) Down(ctx context.Context, w io.Writer) error {
 		return err
 	}
 	defer hosts.Close()
+
+	telemetry.StopAll(ctx, hosts)
 
 	var (
 		mu   sync.Mutex

@@ -1,13 +1,13 @@
 zkvm: zisk
-zkvm_version: 1.1.0-alpha
+zkvm_version: 1.2.0-alpha
 
 guests:
-  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-reth-zisk-v1.1.0-alpha.elf
-    vk: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-reth-zisk-v1.1.0-alpha.vk
-  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-ethrex-zisk-v1.1.0-alpha.elf
-    vk: https://github.com/eth-act/ere-guests/releases/download/v0.16.0/stateless-validator-ethrex-zisk-v1.1.0-alpha.vk
-  - elf: https://github.com/han0110/ere-guests/releases/download/v0.16.0/stateless-validator-zesu-zisk-v1.1.0-alpha.elf
-    vk: https://github.com/han0110/ere-guests/releases/download/v0.16.0/stateless-validator-zesu-zisk-v1.1.0-alpha.vk
+  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.2.0-alpha.elf
+    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.2.0-alpha.vk
+  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-ethrex-zisk-v1.2.0-alpha.elf
+    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-ethrex-zisk-v1.2.0-alpha.vk
+  # - elf: https://github.com/han0110/ere-guests/releases/download/v0.16.0/stateless-validator-zesu-zisk-v1.1.0-alpha.elf
+  #   vk: https://github.com/han0110/ere-guests/releases/download/v0.16.0/stateless-validator-zesu-zisk-v1.1.0-alpha.vk
 
 coordinator:
   ssh: ${NODE1_SSH}
@@ -26,3 +26,22 @@ workers:
   - ssh: ${NODE4_SSH}
     gpu:
       count: 4
+
+telemetry:
+  sidecars:
+    - ssh: ${NODE1_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE1_SSH}
+      kind: node-exporter
+    - ssh: ${NODE2_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE2_SSH}
+      kind: node-exporter
+    - ssh: ${NODE3_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE3_SSH}
+      kind: node-exporter
+    - ssh: ${NODE4_SSH}
+      kind: dcgm-exporter
+    - ssh: ${NODE4_SSH}
+      kind: node-exporter

@@ -35,9 +35,11 @@ type Prover interface {
 	// ready while it refuses work, so this is not a gate on admission, which
 	// ProveOutcome.SubmitWait accounts for instead.
 	WaitReady(ctx context.Context) error
-	// Warmup proves a small fixed input, so a cold prover's one-time costs
-	// land before the first measured proof.
-	Warmup(ctx context.Context) error
+	// Warmup proves a fixed input large enough to reach every worker, so a
+	// cold prover's one-time costs land before the first measured proof. It
+	// reports the output the proof committed to, which the caller checks
+	// against the block's expected output.
+	Warmup(ctx context.Context) ([]byte, error)
 	// Prove proves the payload carried in input, bounded by the context
 	// deadline, reporting job phase transitions through onPhase.
 	Prove(ctx context.Context, input []byte, onPhase func(phase string)) (*ProveOutcome, error)
@@ -253,8 +255,14 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 		return nil, &rpcError{Code: -32000, Message: err.Error()}
 	}
 	provingTime := time.Since(started) - outcome.SubmitWait
+	// A refused submission is the other wait the measurement leaves out, and
+	// the only trace of it would otherwise be a block that took far longer
+	// than its proof.
+	if outcome.SubmitWait > time.Second {
+		s.printf("waited %s for the cluster to admit %s", outcome.SubmitWait.Round(time.Second), payload.BlockHash)
+	}
 
-	matched := outputMatched(outcome.PublicValues, expected)
+	matched := OutputMatched(outcome.PublicValues, expected)
 	gasUsed := parseQuantity(payload.GasUsed)
 	var mgasPerSec float64
 	if provingTime > 0 {
@@ -280,10 +288,10 @@ func (s *Server) prove(ctx context.Context, params []json.RawMessage) (any, *rpc
 	return status, nil
 }
 
-// outputMatched reports whether the committed public values carry the
+// OutputMatched reports whether the committed public values carry the
 // expected output. The commitment is fixed size and the output shorter, so a
 // match requires prefix equality and all-zero trailing bytes.
-func outputMatched(publicValues, expected []byte) bool {
+func OutputMatched(publicValues, expected []byte) bool {
 	if len(expected) > len(publicValues) {
 		return false
 	}

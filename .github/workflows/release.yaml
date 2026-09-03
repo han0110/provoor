@@ -21,6 +21,7 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - id: release
         uses: googleapis/release-please-action@v5
@@ -50,5 +51,5 @@ jobs:
           push: true
           build-args: VERSION=${{ needs.release-please.outputs.tag_name }}
           tags: |
-            ghcr.io/${{ github.repository }}/provoor:${{ needs.release-please.outputs.tag_name }}
+            ghcr.io/${{ github.repository }}/provoor:${{ needs.release-please.outputs.version }}
             ghcr.io/${{ github.repository }}/provoor:latest

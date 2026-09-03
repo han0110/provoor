@@ -116,3 +116,25 @@ func TestValidateColocation(t *testing.T) {
 		t.Errorf("a remote worker with a coordinator ip is fine, got %v", err)
 	}
 }
+
+// TestTelemetryValidate covers the three ways a sidecar list can name
+// something the deployment cannot run.
+func TestTelemetryValidate(t *testing.T) {
+	hosts := []string{"", "user@rig-02"}
+	for name, telemetry := range map[string]Telemetry{
+		"unknown kind": {Sidecars: []Sidecar{{Kind: "cadvisor"}}},
+		"unknown host": {Sidecars: []Sidecar{{SSH: "user@rig-03", Kind: SidecarDCGM}}},
+		"repeat":       {Sidecars: []Sidecar{{Kind: SidecarNode}, {Kind: SidecarNode}}},
+	} {
+		if err := telemetry.Validate(hosts); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	both := Telemetry{Sidecars: []Sidecar{{Kind: SidecarDCGM}, {Kind: SidecarNode}, {SSH: "user@rig-02", Kind: SidecarDCGM}}}
+	if err := both.Validate(hosts); err != nil {
+		t.Errorf("both kinds on one host and one on another: %v", err)
+	}
+	if err := (Telemetry{}).Validate(hosts); err != nil {
+		t.Errorf("an empty list: %v", err)
+	}
+}

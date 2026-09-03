@@ -36,7 +36,9 @@ type Config struct {
 	Guests      []cluster.Guest `yaml:"guests"`
 	Coordinator cluster.Node    `yaml:"coordinator"`
 	Workers     []Worker        `yaml:"workers"`
-	Config      WorkerConfig    `yaml:"config"`
+	// Telemetry lists the metric sidecars, one per host and exporter kind.
+	Telemetry cluster.Telemetry `yaml:"telemetry"`
+	Config    WorkerConfig      `yaml:"config"`
 }
 
 // Worker is one GPU host, whose single worker container spans the GPUs it
@@ -138,6 +140,9 @@ func validate(cfg *Config) error {
 	}
 	if len(cfg.Workers) == 0 {
 		return fmt.Errorf("at least one worker is required")
+	}
+	if err := cfg.Telemetry.Validate(cfg.destinations()); err != nil {
+		return err
 	}
 	seenSSH := map[string]bool{}
 	for i, worker := range cfg.Workers {

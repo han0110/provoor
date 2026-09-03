@@ -48,10 +48,11 @@ trap 'rm -f "${matches}"' EXIT
 # grep exits 1 when nothing matches, which is the already-clean case, and
 # above 1 on a real failure that must not be mistaken for it. The file list
 # stays null separated, so it is passed through a file rather than a
-# variable.
+# variable. Gzip files are skipped, because a match inside compressed bytes
+# is accidental and a rewrite would corrupt the archive.
 scan() {
     local status=0
-    grep -rlZF "${patterns[@]}" "${RESULTS_DIR}" > "${matches}" || status=$?
+    grep -rlZF --exclude='*.gz' "${patterns[@]}" "${RESULTS_DIR}" > "${matches}" || status=$?
     if (( status > 1 )); then
         echo "error: scanning ${RESULTS_DIR} failed" >&2
         exit 1

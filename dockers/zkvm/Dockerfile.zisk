@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc-riscv64-unknown-elf \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-ARG ZISK_VERSION=1.1.0-alpha
+ARG ZISK_VERSION=1.2.0-alpha
 
 # The release archive carries the same layout ziskup installs, so extracting it
 # into /root/.zisk yields bin/{zisk-worker-gpu,zisk-coordinator,cargo-zisk-dev-gpu},
@@ -48,10 +48,10 @@ RUN curl -fSL "https://github.com/0xPolygonHermez/zisk/releases/download/v${ZISK
     && rm /tmp/zisk.tar.gz \
     && chmod +x /root/.zisk/bin/*
 
-# Overlay of a worker from han0110/zisk 30ece0c0, which caches the Main instruction table upstream
+# Overlay of a worker from han0110/zisk 12b45f0e, which caches the Main instruction table upstream
 # rebuilds every proof and serves the health endpoint the container healthcheck probes.
 # Remove it once a release carries both.
-RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-30ece0c002e8316247c679645c6e1c35e2c65d79/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
+RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-12b45f0e9841c0f0bcbfbaf618a9079f8850e9ef/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
     && tar --no-same-owner -xzf /tmp/zisk-patched.tar.gz -C /root/.zisk ./bin/zisk-worker-gpu \
     && rm /tmp/zisk-patched.tar.gz \
     && chmod +x /root/.zisk/bin/zisk-worker-gpu
