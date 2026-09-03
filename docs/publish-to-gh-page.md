@@ -13,10 +13,8 @@ workflow runs it on every push to `main`, uploads `site/` with
 Passing `--serve` hosts the result on port 3002 under the same base path the
 deployment uses, so a preview matches production.
 
-Results reach that checkout through provoor's own `scripts/sync.sh`, which
-drops the runner and container logs and the `*.request` bodies carrying the
-full stateless input hex. `scripts/desensitize.sh` then replaces every value
-defined in `.env` with its variable name and fails if any survives.
+Results reach that checkout through `scripts/sync.sh` and
+`scripts/desensitize.sh`, which the [README](../README.md#scripts) describes.
 
 ## Constraints worth knowing
 

@@ -3,11 +3,8 @@
 set -euo pipefail
 
 # Pulls a pruned copy of a remote benchmarkoor results tree into the runs
-# checkout's results/. Raw runner logs and JSON-RPC request payloads are
-# excluded at transfer time, so the repository only ever holds the
-# publishable subset. The synced files then pass through
-# scripts/desensitize.sh, which replaces real addresses with their .env
-# variable names.
+# checkout's results/, then runs scripts/desensitize.sh over it. Runner logs
+# and JSON-RPC request payloads are excluded at transfer time.
 
 # shellcheck source=scripts/config.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/config.sh"
@@ -23,8 +20,7 @@ usage() {
     echo ""
     echo "Options:"
     echo "  --ssh USER@HOST           SSH destination holding the results, COORDINATOR_SSH in .env by default"
-    echo "  --remote-results-dir DIR  Results directory on the remote, relative to the SSH home,"
-    echo "                            REMOTE_RESULTS_DIR in .env by default"
+    echo "  --remote-results-dir DIR  Results directory on the remote, REMOTE_RESULTS_DIR in .env by default"
     echo "  --help, -h                Show this help"
     exit 1
 }
@@ -71,9 +67,8 @@ if [[ -z "${REMOTE_RESULTS_DIR}" ]]; then
     REMOTE_RESULTS_DIR="${env_value}"
 fi
 
-# rsync copies a directory's contents rather than the directory itself only
-# when the source ends in exactly one slash, so any the value already carries
-# come off before one goes back on.
+# rsync copies a directory's contents only when the source ends in exactly one
+# slash, so trailing slashes come off before one goes back on.
 while [[ "${REMOTE_RESULTS_DIR}" == */ ]]; do
     REMOTE_RESULTS_DIR="${REMOTE_RESULTS_DIR%/}"
 done

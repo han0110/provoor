@@ -1,6 +1,5 @@
-# The image carries the edge-manager and edge-worker binaries, which the
-# entrypoint selects between. It takes no build context, cloning the source it
-# builds, so the same command produces it on CI and on a workstation.
+# The image carries edge-manager and edge-worker, which the entrypoint
+# selects between. It takes no build context and clones the source it builds.
 ARG BUILDER_IMAGE=nvidia/cuda:13.1.0-devel-ubuntu24.04
 ARG RUNTIME_IMAGE=nvidia/cuda:13.1.0-runtime-ubuntu24.04
 
@@ -30,11 +29,10 @@ RUN wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh \
     && rm -f /tmp/llvm.sh
 ENV RVR_CC=clang-${CLANG_VERSION}
 
-# Install Rust
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Ensure github.com is a known host to avoid interactive prompts
+# github.com becomes a known host, so ssh does not prompt.
 RUN mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
@@ -52,10 +50,9 @@ ENV CUDA_ARCH=${CUDA_ARCH}
 ENV RUSTFLAGS="${RUSTFLAGS}"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF=${JEMALLOC_SYS_WITH_MALLOC_CONF}
 
-# Fetching one commit into an empty repository rather than cloning it, since
-# git clone learned --revision after the version Ubuntu 24.04 packages. The
-# checkout carries rust-toolchain.toml, so cargo builds on the compiler the
-# source pins without this file naming one.
+# One commit is fetched into an empty repository, because the packaged git
+# has no clone --revision. The checkout carries rust-toolchain.toml, so cargo
+# builds on the compiler the source pins.
 RUN git init -q . \
     && git remote add origin https://github.com/${AXIOM_EDGE_REPO} \
     && git fetch -q --depth 1 origin ${AXIOM_EDGE_COMMIT} \
@@ -99,12 +96,10 @@ WORKDIR /app
 ARG PROFILE=release
 ARG JEMALLOC_SYS_WITH_MALLOC_CONF=retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true
 
-# Copy the built binaries from the builder stage.
 COPY --from=builder /app/target/$PROFILE/edge-manager .
 COPY --from=builder /app/target/$PROFILE/edge-worker .
 COPY --from=builder /app/target/$PROFILE/convert_fixtures .
 
-# Copy the entrypoint script
 COPY --from=builder /app/docker/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 

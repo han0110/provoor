@@ -1,11 +1,9 @@
-# The supervisor the coordinator runs under, built from this repository. Only
-# its own package and stdlib are copied in, so the stage neither downloads a
-# module nor waits on the verifier the rest of the tree links through cgo.
+# The supervisor stage copies only its own package, so it downloads no module
+# and links no verifier.
 FROM golang:1.24.5 AS supervisor
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY cmd/zisk-supervisor ./cmd/zisk-supervisor
-COPY pkg/cluster/zisk/supervisor ./pkg/cluster/zisk/supervisor
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/zisk-supervisor ./cmd/zisk-supervisor
 
 FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
@@ -38,19 +36,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ARG ZISK_VERSION=1.2.0-alpha
 
-# The release archive carries the same layout ziskup installs, so extracting it
-# into /root/.zisk yields bin/{zisk-worker-gpu,zisk-coordinator,cargo-zisk-dev-gpu},
-# the ziskc/ziskclib archives, and the emulator-asm and lib-c sources the worker
-# compiles a per-ELF assembly emulator from at run time.
+# The release archive has the layout ziskup installs. Extracted into
+# /root/.zisk it supplies the binaries, the ziskc and ziskclib archives, and
+# the emulator-asm and lib-c sources.
 RUN curl -fSL "https://github.com/0xPolygonHermez/zisk/releases/download/v${ZISK_VERSION}/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk.tar.gz \
     && mkdir -p /root/.zisk \
     && tar --no-same-owner -xzf /tmp/zisk.tar.gz -C /root/.zisk \
     && rm /tmp/zisk.tar.gz \
     && chmod +x /root/.zisk/bin/*
 
-# Overlay of a worker from han0110/zisk 12b45f0e, which caches the Main instruction table upstream
-# rebuilds every proof and serves the health endpoint the container healthcheck probes.
-# Remove it once a release carries both.
+# Overlay of the worker from han0110/zisk 12b45f0e, which caches the Main
+# instruction table and serves the health endpoint. Remove it once a release
+# carries both.
 RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-12b45f0e9841c0f0bcbfbaf618a9079f8850e9ef/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
     && tar --no-same-owner -xzf /tmp/zisk-patched.tar.gz -C /root/.zisk ./bin/zisk-worker-gpu \
     && rm /tmp/zisk-patched.tar.gz \

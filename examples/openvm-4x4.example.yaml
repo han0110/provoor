@@ -14,54 +14,22 @@ coordinator:
   ip: ${NODE1_IP}
 
 workers:
-  - ssh: ${NODE1_SSH}
-    ip: ${NODE1_IP}
-    gpu: 0
-  - ssh: ${NODE1_SSH}
-    ip: ${NODE1_IP}
-    gpu: 1
-  - ssh: ${NODE1_SSH}
-    ip: ${NODE1_IP}
-    gpu: 2
-  - ssh: ${NODE1_SSH}
-    ip: ${NODE1_IP}
-    gpu: 3
-  - ssh: ${NODE2_SSH}
-    ip: ${NODE2_IP}
-    gpu: 0
-  - ssh: ${NODE2_SSH}
-    ip: ${NODE2_IP}
-    gpu: 1
-  - ssh: ${NODE2_SSH}
-    ip: ${NODE2_IP}
-    gpu: 2
-  - ssh: ${NODE2_SSH}
-    ip: ${NODE2_IP}
-    gpu: 3
-  - ssh: ${NODE3_SSH}
-    ip: ${NODE3_IP}
-    gpu: 0
-  - ssh: ${NODE3_SSH}
-    ip: ${NODE3_IP}
-    gpu: 1
-  - ssh: ${NODE3_SSH}
-    ip: ${NODE3_IP}
-    gpu: 2
-  - ssh: ${NODE3_SSH}
-    ip: ${NODE3_IP}
-    gpu: 3
-  - ssh: ${NODE4_SSH}
-    ip: ${NODE4_IP}
-    gpu: 0
-  - ssh: ${NODE4_SSH}
-    ip: ${NODE4_IP}
-    gpu: 1
-  - ssh: ${NODE4_SSH}
-    ip: ${NODE4_IP}
-    gpu: 2
-  - ssh: ${NODE4_SSH}
-    ip: ${NODE4_IP}
-    gpu: 3
+  - { ssh: "${NODE1_SSH}", ip: "${NODE1_IP}", gpu: { device_ids: [0] } }
+  - { ssh: "${NODE1_SSH}", ip: "${NODE1_IP}", gpu: { device_ids: [1] } }
+  - { ssh: "${NODE1_SSH}", ip: "${NODE1_IP}", gpu: { device_ids: [2] } }
+  - { ssh: "${NODE1_SSH}", ip: "${NODE1_IP}", gpu: { device_ids: [3] } }
+  - { ssh: "${NODE2_SSH}", ip: "${NODE2_IP}", gpu: { device_ids: [0] } }
+  - { ssh: "${NODE2_SSH}", ip: "${NODE2_IP}", gpu: { device_ids: [1] } }
+  - { ssh: "${NODE2_SSH}", ip: "${NODE2_IP}", gpu: { device_ids: [2] } }
+  - { ssh: "${NODE2_SSH}", ip: "${NODE2_IP}", gpu: { device_ids: [3] } }
+  - { ssh: "${NODE3_SSH}", ip: "${NODE3_IP}", gpu: { device_ids: [0] } }
+  - { ssh: "${NODE3_SSH}", ip: "${NODE3_IP}", gpu: { device_ids: [1] } }
+  - { ssh: "${NODE3_SSH}", ip: "${NODE3_IP}", gpu: { device_ids: [2] } }
+  - { ssh: "${NODE3_SSH}", ip: "${NODE3_IP}", gpu: { device_ids: [3] } }
+  - { ssh: "${NODE4_SSH}", ip: "${NODE4_IP}", gpu: { device_ids: [0] } }
+  - { ssh: "${NODE4_SSH}", ip: "${NODE4_IP}", gpu: { device_ids: [1] } }
+  - { ssh: "${NODE4_SSH}", ip: "${NODE4_IP}", gpu: { device_ids: [2] } }
+  - { ssh: "${NODE4_SSH}", ip: "${NODE4_IP}", gpu: { device_ids: [3] } }
 
 config:
   # Use 14.5 GiB for safety margin to avoid prover VRAM OOM.

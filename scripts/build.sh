@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-# Builds a binary this repository runs, so a caller needs to know neither where
-# a target's sources live nor which build tool it uses.
+# Builds a binary this repository runs, so a caller needs neither the source
+# location nor the build tool of a target.
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 BENCHMARKOOR_DIR="${REPO_DIR}/benchmarkoor"
@@ -17,17 +17,16 @@ usage() {
     exit 1
 }
 
-# cgo links the ere verifier, which scripts/fetch-verifier.sh leaves in
-# pkg/ereverifier/lib.
+# cgo links the ere verifier that scripts/fetch-verifier.sh leaves in
+# internal/ereverifier/lib.
 build_provoor() {
     echo "building provoor" >&2
     cd "${REPO_DIR}"
     go build -o provoor ./cmd/provoor
 }
 
-# Every submodule is reset to the revision the repository records, so neither a
-# stale build nor a stale runs checkout survives a pull that forgot
-# --recurse-submodules.
+# Every submodule is reset to the recorded revision, so a pull without
+# --recurse-submodules leaves no stale build or runs checkout.
 build_benchmarkoor() {
     git -C "${REPO_DIR}" submodule update --init --recursive --force
     echo "building benchmarkoor" >&2
