@@ -137,7 +137,7 @@ The forwarder does these steps at startup.
 - Verified public values that differ from `expectedStatelessOutput` answer `INVALID` with the committed `statelessOutput`.
 - A cluster error answers JSON-RPC error `-32000`. With `fail-run` the process exits 1 while the client is still connected.
 - `web3_clientVersion` answers the guest ELF name.
-- The metric JSON line carries `block.number`, `block.hash`, `block.gas_used`, `timing.total_ms`, `throughput.mgas_per_sec`, `statelessInputSize`, `provingTimeMs`, `clusterReportedProvingTimeMs`, `proofSize`, and `outputMatched`.
+- The metric JSON line carries `block.number`, `block.hash`, `block.gas_used`, `timing.total_ms`, `throughput.mgas_per_sec`, `statelessInputSize`, `provingTimeMs`, `clusterReportedProvingTimeMs`, `proofSize`, `outputMatched`, and `pipeline` on a zkVM that reports a task timeline.
 - The warmup block is the 60M gas PUSH28 block of EEST `tests-zkevm-benchmark@v0.8.2`. It splits into about 230 segments, so every worker pays its one-time costs before the first measured proof.
 - Run the benchmark on the coordinator host, so the stateless input reaches the cluster over loopback.
 - Forwarder flags travel through the instance `extra_args`. The run configurations set `ready_timeout: 15m`, since the forwarder listens only after the warmup.

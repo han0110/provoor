@@ -5,7 +5,7 @@
 ## Image
 
 - `dockers/zkvm/Dockerfile.zisk` installs the `cargo_zisk_linux_amd64` release archive of ZisK under `/root/.zisk`.
-- It overlays `zisk-worker-gpu` from han0110/zisk `12b45f0e`, which caches the Main instruction table and serves the health endpoint.
+- It overlays `zisk-worker-gpu` and `zisk-coordinator` from han0110/zisk `12b45f0e`, which caches the Main instruction table, serves the health endpoint, and reports the per task timings.
 - It builds `zisk-supervisor` from `cmd/zisk-supervisor`.
 
 ## Ports
@@ -38,19 +38,19 @@
 
 The [README](../../README.md#configuration) lists the keys every zkVM shares.
 
-| Key                                                 | Default                                            | Meaning                                                                                      |
-| --------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `workers[].ssh`                                     | local daemon                                       | one worker entry per host, the CLI rejects a duplicate host                                  |
-| `workers[].gpu.count` or `workers[].gpu.device_ids` | required, one form                                 | the GPU device request and `--compute-capacity` of 10 per GPU, the CLI rejects a repeated id |
-| `config.shm_size_gb`                                | `64`                                               | `/dev/shm` size of the worker and program setup containers                                   |
-| `config.mpi_np`                                     | `1`                                                | `mpirun -np`                                                                                 |
-| `config.mpi_numa_ppr`                               | `mpi_np` divided by the NUMA node count, minimum 1 | `-map-by ppr:<n>:numa`                                                                       |
-| `config.mpi_threads`                                | unset                                              | `RAYON_NUM_THREADS` per rank                                                                 |
-| `config.max_streams`                                | unset                                              | `--max-streams`                                                                              |
-| `config.number_threads_witness`                     | unset                                              | `--number-threads-witness`                                                                   |
-| `config.max_witness_stored`                         | unset                                              | `--max-witness-stored`                                                                       |
-| `config.minimal_memory`                             | `false`                                            | `--minimal-memory`                                                                           |
-| `config.cpu_mops`                                   | `false`                                            | `--cpu-mops`                                                                                 |
+| Key                             | Default                                            | Meaning                                                                                      |
+| ------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `workers[].ssh`                 | local daemon                                       | one worker entry per host, the CLI rejects a duplicate host                                  |
+| `workers[].gpu.device_ids`      | required                                           | the GPU device request and `--compute-capacity` of 10 per GPU, the CLI rejects a repeated id |
+| `config.shm_size_gb`            | `64`                                               | `/dev/shm` size of the worker and program setup containers                                   |
+| `config.mpi_np`                 | `1`                                                | `mpirun -np`                                                                                 |
+| `config.mpi_numa_ppr`           | `mpi_np` divided by the NUMA node count, minimum 1 | `-map-by ppr:<n>:numa`                                                                       |
+| `config.mpi_threads`            | unset                                              | `RAYON_NUM_THREADS` per rank                                                                 |
+| `config.max_streams`            | unset                                              | `--max-streams`                                                                              |
+| `config.number_threads_witness` | unset                                              | `--number-threads-witness`                                                                   |
+| `config.max_witness_stored`     | unset                                              | `--max-witness-stored`                                                                       |
+| `config.minimal_memory`         | `false`                                            | `--minimal-memory`                                                                           |
+| `config.cpu_mops`               | `false`                                            | `--cpu-mops`                                                                                 |
 
 ## Budgets
 
@@ -74,6 +74,7 @@ The [README](../../README.md#configuration) lists the keys every zkVM shares.
 - The restart count of `zisk-coordinator` climbs by one per forwarder start as well as per failure.
 - The supervisor sends SIGTERM at once and SIGKILL 5 s later. A requested end with a clean exit reports 1, so the restart policy starts the replacement. A coordinator that fails on its own carries its own exit code, and a signaled one reports 128 plus the signal.
 - `serve` restarts the coordinator, registers the ELF, and runs the guest setup before it prints `stateless validator <name> registered, hash <id>`. The setup reads the cache, so the ROM and assembly generation stays outside a benchmark run.
+- `serve` reads `proof_start` and `tasks` off the `ExecutionStats` of every prove job, and `proof_timings` and `records_origin_age_ms` off each task. The fields make the `pipeline` of the metric line, one bar per witness build, per stage 1 contribution, per proof, and per root step of the contributions phase. A coordinator that reports no proof start, no task, or no record leaves it out.
 - The readiness wait returns at once, and the submit retry loop waits out a cluster that refuses the job.
 
 ## Security

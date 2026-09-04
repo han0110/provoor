@@ -345,6 +345,10 @@ func (c *Client) waitProof(ctx context.Context, proofUUID string, onPhase func(p
 	if err != nil {
 		return nil, err
 	}
+	pipeline, err := c.proofPipeline(ctx, proofUUID)
+	if err != nil {
+		return nil, err
+	}
 	proof, err := c.downloadProof(ctx, proofUUID)
 	if err != nil {
 		return nil, err
@@ -357,6 +361,7 @@ func (c *Client) waitProof(ctx context.Context, proofUUID string, onPhase func(p
 		PublicValues:       publicValues,
 		ProofBytes:         len(proof),
 		ClusterProvingTime: latency,
+		Pipeline:           pipeline,
 	}, nil
 }
 
@@ -469,22 +474,10 @@ func settled(status string) bool {
 // manager evicts settled proofs from memory after a few minutes, which this
 // read directly after settling stays well inside.
 func (c *Client) proofLatency(ctx context.Context, proofUUID string) (time.Duration, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint+"/proof_state/"+proofUUID, nil)
-	if err != nil {
-		return 0, err
-	}
-	resp, err := c.requests.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("reading proof %s state: %w", proofUUID, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("reading proof %s state: status %d: %s", proofUUID, resp.StatusCode, readBody(resp.Body))
-	}
 	var state struct {
 		E2ELatencyMs *float64 `json:"e2e_latency_ms"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&state); err != nil {
+	if err := c.fetchJSON(ctx, "/proof_state/"+proofUUID, &state); err != nil {
 		return 0, fmt.Errorf("reading proof %s state: %w", proofUUID, err)
 	}
 	if state.E2ELatencyMs == nil {
@@ -578,6 +571,24 @@ func verifyProof(verifier *ereverifier.Verifier, proof []byte) ([]byte, error) {
 		return nil, fmt.Errorf("running the verifier: %w", err)
 	}
 	return publicValues, nil
+}
+
+// fetchJSON decodes the JSON body of a GET. The caller names the read in the
+// error it wraps.
+func (c *Client) fetchJSON(ctx context.Context, path string, value any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint+path, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.requests.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("status %d: %s", resp.StatusCode, readBody(resp.Body))
+	}
+	return json.NewDecoder(resp.Body).Decode(value)
 }
 
 func readBody(body io.Reader) string {
