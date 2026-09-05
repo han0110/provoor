@@ -45,14 +45,14 @@ var pipelineKinds = []cluster.TaskKind{
 	{Name: "recompute", Label: "Witness Recompute", Legend: "Witness Generation", Row: "Proof", Phase: cluster.PhaseWitness},
 	{Name: "recursionwitness", Label: "Recursion Witness Generation", Legend: "Witness Generation", Row: "Proof", Phase: cluster.PhaseWitness},
 	{Name: "aggregationwitness", Label: "Aggregation Witness Generation", Legend: "Witness Generation", Row: "Fold", Phase: cluster.PhaseWitness},
-	{Name: "challenge", Label: "Calculate Internal Contribution", Legend: "Contribution", Row: "Calculate Internal Contribution", Phase: cluster.PhaseBase},
+	{Name: "challenge", Label: "Calculate Internal Contributions", Legend: "Contribution", Row: "Calculate Internal Contributions", Phase: cluster.PhaseBase},
 	{Name: "commit", Label: "Contribution", Legend: "Contribution", Row: "Contribution", Phase: cluster.PhaseBase},
 	{Name: "basic", Label: "Basic Proof", Legend: "Basic Proof", Row: "Proof", Phase: cluster.PhaseBase},
 	{Name: "compressor", Label: "Compressor Proof", Legend: "Compressor Proof", Row: "Proof", Phase: cluster.PhaseRecursion},
 	{Name: "recursive1", Label: "Recursive1 Proof", Legend: "Recursive1 Proof", Row: "Proof", Phase: cluster.PhaseRecursion},
 	{Name: "recursive2", Label: "Recursive2 Proof", Legend: "Recursive2 Proof", Row: "Fold", Phase: cluster.PhaseRecursion},
-	{Name: "vadcopfinal", Label: "Vadcop Final", Legend: "Wrap", Row: "Vadcop Final", Phase: cluster.PhaseWrap},
-	{Name: "compressed", Label: "Compressed Final", Legend: "Wrap", Row: "Compressed Final", Phase: cluster.PhaseWrap},
+	{Name: "vadcopfinal", Label: "Vadcop Final Proof", Legend: "Wrap", Row: "Vadcop Final Proof", Phase: cluster.PhaseWrap},
+	{Name: "compressed", Label: "Vadcop Final Compressed Proof", Legend: "Wrap", Row: "Vadcop Final Compressed Proof", Phase: cluster.PhaseWrap},
 }
 
 // proofTypeKinds is the kind of each proofman record kind, in record kind
@@ -70,9 +70,9 @@ var pipelineBreakdown = []struct {
 	label    string
 	duration func(*api.ExecutorTime) uint64
 }{
-	{"COMPUTE_MINIMAL_TRACE", (*api.ExecutorTime).GetExecutionDuration},
-	{"PLAN_SECONDARY", (*api.ExecutorTime).GetCountAndPlanDuration},
-	{"WAIT_PLAN_MEM_CPP", (*api.ExecutorTime).GetCountAndPlanMoDuration},
+	{"Compute Minimal Trace", (*api.ExecutorTime).GetExecutionDuration},
+	{"Plan Secondary", (*api.ExecutorTime).GetCountAndPlanDuration},
+	{"Wait Plan Mem Cpp", (*api.ExecutorTime).GetCountAndPlanMoDuration},
 }
 
 // proofBreakdownLabels are the sections of one record, in the order the worker
@@ -82,28 +82,28 @@ var pipelineBreakdown = []struct {
 // opens at its buffer take, so no section names the queue before it. A section
 // a kind never measures stays zero and is left out.
 var proofBreakdownLabels = []string{
-	"Stage 1 Trace",
-	"Stage 1 Commit",
-	"Std Witness",
-	"Intermediate Polynomials",
-	"Stage 2 Commit",
+	"Prepare Trace",
+	"Commit Stage 1",
+	"Calculate Accumulation Polynomials",
+	"Calculate Intermediate Polynomials",
+	"Commit Stage 2",
 	"Quotient",
 	"Evaluations",
 	"FRI",
-	"Custom Commits Read",
+	"Load Custom Commits",
 	"Trace Upload",
-	"Const Tree Load",
+	"Load Const Tree",
 	"Proof Readback",
 	"Trace Unpack",
-	"Commit LDE and Merkle",
+	"Compute LDE and Merkle",
 	"Proof Write",
 	"Witness Expansion",
 	"Stream Wait",
 	"Root Readback",
 	"Circom Witness",
-	"Preparing WC",
-	"Computing WC",
-	"RELOAD_FIXED_POLS",
+	"Prepare Witness Generation",
+	"Witness Generation",
+	"Reload Fixed Pols",
 	"Harvest Wait",
 	"Launch Prologue",
 	"FFI Prologue",

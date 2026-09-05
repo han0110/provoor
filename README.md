@@ -133,6 +133,7 @@ The forwarder does these steps at startup.
 - One proof runs at a time.
 - The forwarder waits for cluster readiness before each proof, on the request context and outside the measurement.
 - The forwarder subtracts the time the cluster refused the submission from the measured proving time. `waited <duration> for the cluster to admit <hash>` reports a wait over one second.
+- After a failed proof the forwarder proves the warmup block again before it answers. The recovery of a crashed worker then lands in the failed call, and the next proof starts on a whole cluster. A client that went away and `fail-run` skip it.
 - Each phase change prints `proving <hash> phase <phase>`.
 - Verified public values that differ from `expectedStatelessOutput` answer `INVALID` with the committed `statelessOutput`.
 - A cluster error answers JSON-RPC error `-32000`. With `fail-run` the process exits 1 while the client is still connected.

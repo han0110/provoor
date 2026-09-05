@@ -190,15 +190,15 @@ func TestPipelinePlacesEveryRecord(t *testing.T) {
 	wantRows := map[string][]string{
 		"Execute ":                          {"Execute"},
 		"Pre Calculate Witness Generation ": {"Pre Calculate Witness Generation"},
-		"Calculate Internal Contribution ":  {"Calculate Internal Contribution"},
+		"Calculate Internal Contributions ": {"Calculate Internal Contributions"},
 		"Contribution Main #137":            {"Witness Generation", "Contribution"},
 		"Proof Main #137": {
 			"Witness Recompute", "Basic Proof", "Recursion Witness Generation", "Compressor Proof",
 			"Recursion Witness Generation", "Recursive1 Proof",
 		},
-		"Fold #4":           {"Aggregation Witness Generation", "Recursive2 Proof"},
-		"Vadcop Final ":     {"Vadcop Final"},
-		"Compressed Final ": {"Compressed Final"},
+		"Fold #4":                        {"Aggregation Witness Generation", "Recursive2 Proof"},
+		"Vadcop Final Proof ":            {"Vadcop Final Proof"},
+		"Vadcop Final Compressed Proof ": {"Vadcop Final Compressed Proof"},
 	}
 	if !maps.EqualFunc(rows, wantRows, slices.Equal) {
 		t.Errorf("rows = %v, want %v", rows, wantRows)

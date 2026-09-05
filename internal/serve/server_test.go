@@ -17,12 +17,15 @@ import (
 // fakeProver answers with fixed public values or a fixed error. Each
 // readiness wait costs readyDelay and each proof spends submitWait before
 // reporting it, the shapes a cluster takes when it is still draining an
-// earlier proof or refusing submissions.
+// earlier proof or refusing submissions. inputs logs every proof in order and
+// recovers applies err to the first proof only.
 type fakeProver struct {
 	publicValues []byte
 	err          error
+	recovers     bool
 	phases       []string
 	pipeline     *cluster.Pipeline
+	inputs       [][]byte
 	readyWaits   int
 	readyDelay   time.Duration
 	submitWait   time.Duration
@@ -34,8 +37,9 @@ func (p *fakeProver) WaitReady(context.Context) error {
 	return nil
 }
 
-func (p *fakeProver) Prove(_ context.Context, _ []byte, onPhase func(string)) (*cluster.ProveOutcome, error) {
-	if p.err != nil {
+func (p *fakeProver) Prove(_ context.Context, input []byte, onPhase func(string)) (*cluster.ProveOutcome, error) {
+	p.inputs = append(p.inputs, input)
+	if p.err != nil && (!p.recovers || len(p.inputs) == 1) {
 		return nil, p.err
 	}
 	time.Sleep(p.submitWait)
@@ -196,7 +200,8 @@ func TestProveMismatch(t *testing.T) {
 }
 
 func TestProveClusterError(t *testing.T) {
-	server := newServer(&fakeProver{err: errors.New("cluster unavailable: down")}, &bytes.Buffer{})
+	output := &bytes.Buffer{}
+	server := newServer(&fakeProver{err: errors.New("cluster unavailable: down")}, output)
 	resp := post(t, server, proveRequest([]byte{1}))
 	if resp["result"] != nil {
 		t.Errorf("result = %v", resp["result"])
@@ -205,11 +210,38 @@ func TestProveClusterError(t *testing.T) {
 	if rpcErr["code"] != float64(-32000) || !strings.Contains(rpcErr["message"].(string), "cluster unavailable") {
 		t.Errorf("error = %v", rpcErr)
 	}
+	if !strings.Contains(output.String(), "warming the cluster again after 0xabc123 failed: cluster unavailable: down") {
+		t.Errorf("output %q lacks the warmup failure line", output.String())
+	}
+}
+
+// TestProveClusterErrorWarmsAgain pins the warmup proof after a failure, so
+// the recovery of a crashed worker lands in the failed call and the answer
+// still carries the proof error alone.
+func TestProveClusterErrorWarmsAgain(t *testing.T) {
+	prover := &fakeProver{err: errors.New("connection dropped"), recovers: true}
+	output := &bytes.Buffer{}
+	resp := post(t, newServer(prover, output), proveRequest([]byte{1}))
+
+	rpcErr := resp["error"].(map[string]any)
+	if rpcErr["code"] != float64(-32000) || rpcErr["message"] != "connection dropped" {
+		t.Errorf("error = %v, want the failed proof answered", rpcErr)
+	}
+	if len(prover.inputs) != 2 || !bytes.Equal(prover.inputs[1], warmupInput) {
+		t.Errorf("proved %d inputs, want the warmup block after the failure", len(prover.inputs))
+	}
+	if !strings.Contains(output.String(), "warmed the cluster again in") {
+		t.Errorf("output %q lacks the warmup line", output.String())
+	}
+	if strings.Contains(output.String(), "provingTimeMs") {
+		t.Errorf("output %q carries a metric line for the warmup", output.String())
+	}
 }
 
 func TestProveClusterErrorFailsRun(t *testing.T) {
 	exited := 0
-	server := newServer(&fakeProver{err: errors.New("down")}, &bytes.Buffer{})
+	prover := &fakeProver{err: errors.New("down")}
+	server := newServer(prover, &bytes.Buffer{})
 	server.FailRunOnClusterError = true
 	server.Exit = func(code int) { exited = code; panic("exit") }
 
@@ -217,14 +249,19 @@ func TestProveClusterErrorFailsRun(t *testing.T) {
 		if recover() == nil || exited != 1 {
 			t.Errorf("expected exit 1, got %d", exited)
 		}
+		if len(prover.inputs) != 1 {
+			t.Errorf("proved %d inputs, want the exit before the warmup", len(prover.inputs))
+		}
 	}()
 	post(t, server, proveRequest([]byte{1}))
 }
 
 // TestProveClientDisconnectDoesNotFailRun pins that a client going away is
-// never attributed to the cluster, whatever error the backend returns.
+// never attributed to the cluster, whatever error the backend returns, and
+// costs no warmup proof.
 func TestProveClientDisconnectDoesNotFailRun(t *testing.T) {
-	server := newServer(&fakeProver{err: errors.New("prove job 7 timed out")}, &bytes.Buffer{})
+	prover := &fakeProver{err: errors.New("prove job 7 timed out")}
+	server := newServer(prover, &bytes.Buffer{})
 	server.FailRunOnClusterError = true
 	server.Exit = func(int) { t.Error("a disconnected client must not fail the run") }
 
@@ -232,6 +269,9 @@ func TestProveClientDisconnectDoesNotFailRun(t *testing.T) {
 	cancel()
 	request := httptest.NewRequest("POST", "/", strings.NewReader(proveRequest([]byte{1}))).WithContext(ctx)
 	server.Handler().ServeHTTP(httptest.NewRecorder(), request)
+	if len(prover.inputs) != 1 {
+		t.Errorf("proved %d inputs, want no warmup for a client that went away", len(prover.inputs))
+	}
 }
 
 func TestMethodNotFound(t *testing.T) {
