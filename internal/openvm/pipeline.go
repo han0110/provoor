@@ -38,11 +38,11 @@ var pipelineBreakdown = []struct{ label, subMetric string }{
 	{"Execute Preflight", "execute_preflight_time_ms"},
 	{"Postflight", "postflight_time_ms"},
 	{"Trace Gen", "trace_gen_time_ms"},
-	{"Commit", "prover.main_trace_commit_time_ms"},
+	{"Main Trace Commit", "prover.main_trace_commit_time_ms"},
 	{"LogUp GKR", "prover.rap_constraints.logup_gkr_time_ms"},
-	{"Sumcheck Univariate Skip", "prover.rap_constraints.round0_time_ms"},
-	{"Sumcheck Multilinear Rounds", "prover.rap_constraints.mle_rounds_time_ms"},
-	{"Open", "prover.openings_time_ms"},
+	{"Sumcheck Round 0", "prover.rap_constraints.round0_time_ms"},
+	{"Sumcheck MLE Rounds", "prover.rap_constraints.mle_rounds_time_ms"},
+	{"Openings", "prover.openings_time_ms"},
 }
 
 // breakdownLabels are the labels of pipelineBreakdown, in the same order.
