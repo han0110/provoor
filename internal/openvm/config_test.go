@@ -117,7 +117,6 @@ workers:
       device_ids: [0]
   - ssh: ssh://user@203.0.113.1:2222
     gpu:
-      count: 1
       device_ids: [1]
   - ssh: ssh://user@203.0.113.2:2222
     ip: 10.0.0.2
@@ -189,19 +188,9 @@ func TestLoadValidation(t *testing.T) {
 			wantErr: "gpu device_ids expects exactly one id",
 		},
 		{
-			name:    "count without device ids",
-			config:  strings.Replace(minimalConfig, "device_ids: [0]", "count: 1", 1),
-			wantErr: "gpu device_ids expects exactly one id",
-		},
-		{
 			name:    "device ids checked before the worker ip",
-			config:  minimalConfig + "  - ssh: user@10.0.0.3\n    gpu:\n      count: 1\n",
-			wantErr: "gpu device_ids expects exactly one id",
-		},
-		{
-			name:    "count above one",
-			config:  strings.Replace(minimalConfig, "device_ids: [0]", "count: 2\n      device_ids: [0]", 1),
-			wantErr: "gpu count expects 1 or omitted",
+			config:  minimalConfig + "  - ssh: user@10.0.0.3\n    gpu:\n      device_ids: []\n",
+			wantErr: "worker 2: gpu device_ids is required",
 		},
 		{
 			name:    "negative gpu",

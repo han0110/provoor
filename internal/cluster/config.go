@@ -49,9 +49,9 @@ type Node struct {
 	IP  string `yaml:"ip"`
 }
 
-// GPU selects the GPUs one container is given, a count or the device ids.
+// GPU selects the GPUs one container is given by their device ids. The
+// selection stays an object, so a later key can join it.
 type GPU struct {
-	Count     int   `yaml:"count"`
 	DeviceIDs []int `yaml:"device_ids"`
 }
 
@@ -164,17 +164,11 @@ func ValidateColocation(coordinator, worker Node) error {
 
 // Len is the number of GPUs the selection exposes.
 func (g GPU) Len() int {
-	if g.Count > 0 {
-		return g.Count
-	}
 	return len(g.DeviceIDs)
 }
 
-// label names the selection, a count as x4 and device ids as 0_1.
+// label names the selection by its device ids, as 0_1.
 func (g GPU) label() string {
-	if g.Count > 0 {
-		return "x" + strconv.Itoa(g.Count)
-	}
 	ids := make([]string, len(g.DeviceIDs))
 	for i, id := range g.DeviceIDs {
 		ids[i] = strconv.Itoa(id)
@@ -182,16 +176,11 @@ func (g GPU) label() string {
 	return strings.Join(ids, "_")
 }
 
-// Validate rejects a selection naming no amount, both forms, a negative
-// count, or a negative or repeated id.
+// Validate rejects a selection naming no device, a negative id, or a repeated
+// one.
 func (g GPU) Validate() error {
-	switch {
-	case g.Count > 0 && len(g.DeviceIDs) > 0:
-		return fmt.Errorf("gpu takes count or device_ids, not both")
-	case g.Count < 0:
-		return fmt.Errorf("gpu count expects a positive integer, got %d", g.Count)
-	case g.Count == 0 && len(g.DeviceIDs) == 0:
-		return fmt.Errorf("gpu expects a count or device_ids")
+	if len(g.DeviceIDs) == 0 {
+		return fmt.Errorf("gpu device_ids is required")
 	}
 	seen := map[int]bool{}
 	for _, id := range g.DeviceIDs {
@@ -237,8 +226,11 @@ func (t Telemetry) Validate(destinations []string) error {
 	return nil
 }
 
+// WorkerNameFormat shapes a worker name from its index and its GPU label.
+const WorkerNameFormat = "worker_%d-gpu_%s"
+
 // WorkerName identifies a worker by its position in the configuration and
 // the GPUs it owns. Workers register under it and progress lines carry it.
 func WorkerName(index int, gpu GPU) string {
-	return fmt.Sprintf("worker_%d-gpu_%s", index, gpu.label())
+	return fmt.Sprintf(WorkerNameFormat, index, gpu.label())
 }

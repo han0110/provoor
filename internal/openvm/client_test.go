@@ -141,6 +141,15 @@ func (f *fakeCoordinator) server() *httptest.Server {
 	mux.HandleFunc("GET /proof_state/{uuid}", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"proof_uuid":"x","e2e_latency_ms":17805}`))
 	})
+	mux.HandleFunc("GET /proof_pipeline/{uuid}", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"proof_start_time":"2026-09-03T10:00:00.000Z",` +
+			`"app_proofs":[{"worker_id":0,"completed_at_ms":1788429601700,"segment_start":24,"segment_end":24,"queue_wait_ms":200,"metered_time_ms":300,"prove_time_ms":1140,"fastfwd_time_ms":40,"stark_prove_time_ms":1100,"compression_time_ms":0,"sub_metrics":{"trace_gen_time_ms":40}}],` +
+			`"leaf_proofs":[],"internal_proofs":[]}`))
+	})
+	mux.HandleFunc("GET /workers", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"num_workers":1,"expected_num_workers":1,` +
+			`"workers":[[0,{"worker_url":"http://10.0.0.1:8001","last_seen":"2026-09-03T10:00:00Z","worker_role":"full"}]]}`))
+	})
 	mux.HandleFunc("GET /proof/{uuid}", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(f.proof)
 	})
@@ -308,6 +317,11 @@ func TestProveVerifiedOutcome(t *testing.T) {
 	}
 	if want := 17805 * time.Millisecond; outcome.ClusterProvingTime != want {
 		t.Errorf("cluster proving time = %s, want %s", outcome.ClusterProvingTime, want)
+	}
+	// The one app proof gives an execution task, a fast forward task, and a
+	// segment task.
+	if got := len(outcome.Pipeline.Tasks); got != 3 {
+		t.Errorf("pipeline tasks = %d, want 3", got)
 	}
 }
 

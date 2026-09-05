@@ -1,4 +1,16 @@
 // Copied from https://github.com/0xPolygonHermez/zisk/blob/v1.2.0-alpha/distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto.
+// TaskTiming and the proof_start and tasks fields of ExecutionStats come from
+// the branch patch/distributed/v1.2.0-alpha of han0110/zisk.
+//
+// Regenerate both *.pb.go from the repository root with protoc 3.21.12,
+// protoc-gen-go v1.36.11, and protoc-gen-go-grpc 1.5.1.
+//
+//   protoc --proto_path=internal/zisk/api \
+//     --go_out=internal/zisk/api --go_opt=paths=source_relative \
+//     --go_opt=Mzisk_coordinator_api.proto=github.com/han0110/provoor/internal/zisk/api \
+//     --go-grpc_out=internal/zisk/api --go-grpc_opt=paths=source_relative \
+//     --go-grpc_opt=Mzisk_coordinator_api.proto=github.com/han0110/provoor/internal/zisk/api \
+//     zisk_coordinator_api.proto
 
 syntax = "proto3";
 
@@ -77,6 +89,31 @@ message ExecutionStats {
   CostPerType  cost_per_type  = 3;
   ExecutorTime executor_time  = 4;
   repeated AirInstanceCount plan = 5;
+  google.protobuf.Timestamp proof_start = 6; // start of the contributions phase
+  repeated TaskTiming       tasks       = 7;
+}
+
+// One worker task, stamped on the coordinator clock at receipt.
+message TaskTiming {
+  string                    worker_id             = 1;
+  JobPhase                  phase                 = 2;
+  google.protobuf.Timestamp completed_at          = 3;
+  uint64                    compute_duration_ms   = 4; // wall time of the proofman phase call, excluding the input load
+  ExecutorTime              executor_time         = 5; // contributions phase only
+  uint32                    step                  = 6; // ordinal within the phase, from one for Recurse and zero elsewhere
+  repeated ProofTiming      proof_timings         = 7;
+  uint64                    records_origin_age_ms = 8; // age of the recorder origin when the worker took the records
+}
+
+// One proof proofman produced, offset from the recorder origin of the response.
+message ProofTiming {
+  uint32 id              = 1; // instance id, the fold index of a fold record, or zero for a root step
+  uint32 proof_type      = 2; // proofman ProofType as_usize
+  uint32 airgroup_id     = 3;
+  string air_name        = 4; // empty for a root step of the contributions phase, a fold and the two final proofs
+  uint32 start_offset_ms = 5;
+  uint32 end_offset_ms   = 6;
+  repeated uint32 breakdown_ms = 7; // the proof sections, empty when none
 }
 
 // Per-AIR planned instance count (the AIR name is derived from the ids by the consumer).

@@ -17,4 +17,7 @@ type ProveOutcome struct {
 	// it admitted one. A coordinator reports itself ready while it declines
 	// work, so the measured time excludes this.
 	SubmitWait time.Duration
+	// Pipeline is the task timeline of the proof, nil on a zkVM that reports
+	// none.
+	Pipeline *Pipeline
 }

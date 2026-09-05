@@ -4,7 +4,7 @@
 
 ## Image
 
-- `dockers/zkvm/Dockerfile.openvm` builds `edge-manager` and `edge-worker` from han0110/axiom-edge `b9ebcf5f` and copies `convert_fixtures` from that build. The worker carries the features `cuda,jemalloc,parallel,rvr` for CUDA architecture 120.
+- `dockers/zkvm/Dockerfile.openvm` builds `edge-manager` and `edge-worker` from han0110/axiom-edge `9e44f129` and copies `convert_fixtures` from that build. The worker carries the features `cuda,jemalloc,parallel,rvr` for CUDA architecture 120.
 - The entrypoint runs `edge-manager`, `edge-worker`, or any other container command under `tini`.
 - The default `RUSTFLAGS` is `-Ctarget-cpu=native`. The `publish-zkvm-image` workflow passes `RUSTFLAGS=`, which overrides it.
 
@@ -42,7 +42,6 @@ The [README](../../README.md#configuration) lists the keys every zkVM shares.
 | `workers[].ssh`            | local daemon                                    | host of one worker container                                                           |
 | `workers[].ip`             | loopback, required for a worker on another host | `worker_url` the coordinator dials back                                                |
 | `workers[].gpu.device_ids` | required                                        | one GPU id, names the container and its port, the CLI rejects an id repeated on a host |
-| `workers[].gpu.count`      | omitted                                         | `1` restates the single id, the CLI rejects any other value                            |
 | `config.app_provers`       | `2`                                             | `max_app_provers` in the coordinator and worker TOML                                   |
 | `config.leaf_provers`      | `2`                                             | `max_leaf_provers` in the coordinator and worker TOML                                  |
 | `config.internal_provers`  | `1`                                             | `max_internal_provers` in the coordinator and worker TOML                              |
@@ -69,6 +68,7 @@ The [README](../../README.md#configuration) lists the keys every zkVM shares.
 - Every `up` compares the sha256 of each `baseline.bin` with the sha256 of the configured vk, programs from an earlier `up` included.
 - The program name is `program-<first 8 bytes of sha256(elf) in hex>`. The `--elf` of `serve` must therefore be byte identical to the `guests[].elf` of the deployment.
 - `serve` checks the vk the cluster holds for the program against `--vk` and polls `/readyz` until every worker registers. It then prints `stateless validator <name> provisioned, program <name>`.
+- `serve` reads `GET /proof_pipeline/{uuid}` and `GET /workers` after every proof. The two answers make the `pipeline` of the metric line.
 - The worker ready line, not its registration, gates `up`. A worker binds its socket only after it compiles every loadout program.
 - `up` fixes the loadout in `EDGE_PROGRAMS`, and the coordinator refuses proofs for any other program.
 - The coordinator accepts one proof at a time.

@@ -73,10 +73,9 @@ func TestWorkerName(t *testing.T) {
 		gpu   GPU
 		want  string
 	}{
-		{0, GPU{Count: 4}, "worker_0-gpu_x4"},
 		{0, GPU{DeviceIDs: []int{0, 1}}, "worker_0-gpu_0_1"},
 		{0, GPU{DeviceIDs: []int{3}}, "worker_0-gpu_3"},
-		{2, GPU{Count: 1}, "worker_2-gpu_x1"},
+		{2, GPU{DeviceIDs: []int{0, 1, 2, 3}}, "worker_2-gpu_0_1_2_3"},
 	}
 	for _, tc := range cases {
 		if got := WorkerName(tc.index, tc.gpu); got != tc.want {
@@ -86,24 +85,16 @@ func TestWorkerName(t *testing.T) {
 }
 
 func TestGPULenAndDeviceRequest(t *testing.T) {
-	count := GPU{Count: 4}
-	if count.Len() != 4 {
-		t.Errorf("Len() = %d", count.Len())
-	}
-	if request := count.DeviceRequest(); request.Count != 4 || len(request.DeviceIDs) != 0 {
-		t.Errorf("DeviceRequest() = %+v", request)
-	}
 	devices := GPU{DeviceIDs: []int{0, 2}}
 	if devices.Len() != 2 {
 		t.Errorf("Len() = %d", devices.Len())
 	}
-	if request := devices.DeviceRequest(); request.Count != 0 || !reflect.DeepEqual(request.DeviceIDs, []string{"0", "2"}) {
+	request := devices.DeviceRequest()
+	if request.Count != 0 || !reflect.DeepEqual(request.DeviceIDs, []string{"0", "2"}) {
 		t.Errorf("DeviceRequest() = %+v", request)
 	}
-	for _, gpu := range []GPU{count, devices} {
-		if got := gpu.DeviceRequest().Capabilities; !reflect.DeepEqual(got, [][]string{{"gpu"}}) {
-			t.Errorf("Capabilities = %+v", got)
-		}
+	if !reflect.DeepEqual(request.Capabilities, [][]string{{"gpu"}}) {
+		t.Errorf("Capabilities = %+v", request.Capabilities)
 	}
 }
 
@@ -113,11 +104,8 @@ func TestGPUValidate(t *testing.T) {
 		gpu     GPU
 		wantErr string
 	}{
-		{"count", GPU{Count: 4}, ""},
 		{"device ids", GPU{DeviceIDs: []int{0, 1}}, ""},
-		{"neither", GPU{}, "expects a count or device_ids"},
-		{"both", GPU{Count: 1, DeviceIDs: []int{0}}, "not both"},
-		{"negative count", GPU{Count: -1}, "positive integer"},
+		{"no device ids", GPU{}, "device_ids is required"},
 		{"negative id", GPU{DeviceIDs: []int{-1}}, "non-negative"},
 		{"repeated id", GPU{DeviceIDs: []int{1, 1}}, "repeats"},
 	}

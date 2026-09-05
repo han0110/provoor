@@ -103,14 +103,15 @@ type payloadStatus struct {
 // block hash nests under block.hash, and block, timing, and throughput reuse
 // the block-log field names the UI dashboards read.
 type metricLine struct {
-	Block                        metricBlock      `json:"block"`
-	Timing                       metricTiming     `json:"timing"`
-	Throughput                   metricThroughput `json:"throughput"`
-	StatelessInputSize           int              `json:"statelessInputSize"`
-	ProvingTimeMs                int64            `json:"provingTimeMs"`
-	ClusterReportedProvingTimeMs int64            `json:"clusterReportedProvingTimeMs"`
-	ProofSize                    int              `json:"proofSize"`
-	OutputMatched                bool             `json:"outputMatched"`
+	Block                        metricBlock       `json:"block"`
+	Timing                       metricTiming      `json:"timing"`
+	Throughput                   metricThroughput  `json:"throughput"`
+	StatelessInputSize           int               `json:"statelessInputSize"`
+	ProvingTimeMs                int64             `json:"provingTimeMs"`
+	ClusterReportedProvingTimeMs int64             `json:"clusterReportedProvingTimeMs"`
+	ProofSize                    int               `json:"proofSize"`
+	OutputMatched                bool              `json:"outputMatched"`
+	Pipeline                     *cluster.Pipeline `json:"pipeline,omitempty"`
 }
 
 type metricBlock struct {
@@ -252,6 +253,7 @@ func (s *Server) prove(requestCtx context.Context, params []json.RawMessage) (an
 		ClusterReportedProvingTimeMs: outcome.ClusterProvingTime.Milliseconds(),
 		ProofSize:                    outcome.ProofBytes,
 		OutputMatched:                matched,
+		Pipeline:                     outcome.Pipeline,
 	})
 
 	status := payloadStatus{Status: "VALID"}

@@ -14,10 +14,10 @@ coordinator:
   ip: ${NODE1_IP}
 
 workers:
-  - { ssh: "${NODE1_SSH}", gpu: { count: 4 } }
-  - { ssh: "${NODE2_SSH}", gpu: { count: 4 } }
-  - { ssh: "${NODE3_SSH}", gpu: { count: 4 } }
-  - { ssh: "${NODE4_SSH}", gpu: { count: 4 } }
+  - { ssh: "${NODE1_SSH}", gpu: { device_ids: [0, 1, 2, 3] } }
+  - { ssh: "${NODE2_SSH}", gpu: { device_ids: [0, 1, 2, 3] } }
+  - { ssh: "${NODE3_SSH}", gpu: { device_ids: [0, 1, 2, 3] } }
+  - { ssh: "${NODE4_SSH}", gpu: { device_ids: [0, 1, 2, 3] } }
 
 telemetry:
   sidecars:

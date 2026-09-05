@@ -99,16 +99,13 @@ func (cfg *Config) validate() error {
 	seenGPU := map[string]bool{}
 	seenWorkerURL := map[string]bool{}
 	for i, worker := range cfg.Workers {
+		if err := worker.GPU.Validate(); err != nil {
+			return fmt.Errorf("worker %d: %w", i, err)
+		}
 		// The device id names the container and its port, so the selection
-		// is one explicit id, and a count of 1 only restates it.
+		// is one explicit id.
 		if len(worker.GPU.DeviceIDs) != 1 {
 			return fmt.Errorf("worker %d gpu device_ids expects exactly one id, got %v", i, worker.GPU.DeviceIDs)
-		}
-		if worker.GPU.Count != 0 && worker.GPU.Count != 1 {
-			return fmt.Errorf("worker %d gpu count expects 1 or omitted, got %d", i, worker.GPU.Count)
-		}
-		if worker.deviceID() < 0 {
-			return fmt.Errorf("worker %d gpu device_ids expects non-negative ids, got %d", i, worker.deviceID())
 		}
 		if err := cluster.ValidateColocation(cfg.Coordinator, worker.Node); err != nil {
 			return err

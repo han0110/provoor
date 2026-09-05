@@ -29,7 +29,7 @@ func testConfig() *Config {
 			Coordinator: cluster.Node{SSH: "user@203.0.113.1", IP: "10.0.0.1"},
 		},
 		Workers: []Worker{
-			{Node: cluster.Node{SSH: "user@203.0.113.1"}, GPU: cluster.GPU{Count: 4}},
+			{Node: cluster.Node{SSH: "user@203.0.113.1"}, GPU: cluster.GPU{DeviceIDs: []int{0, 1, 2, 3}}},
 			{Node: cluster.Node{SSH: "user@203.0.113.2"}, GPU: cluster.GPU{DeviceIDs: []int{0, 1}}},
 		},
 		Prover: ProverConfig{ShmSizeGB: 64, MPINp: 1, CPUMops: true},
@@ -323,7 +323,7 @@ phase3_timeout_seconds = 600
 }
 
 func TestSetupSpec(t *testing.T) {
-	spec := setupSpec(testConfig(), cluster.GPU{Count: 4})
+	spec := setupSpec(testConfig(), cluster.GPU{DeviceIDs: []int{0, 1, 2, 3}})
 	if spec.Name != "zisk-proving-key-setup" {
 		t.Errorf("Name = %q", spec.Name)
 	}
@@ -351,13 +351,14 @@ func TestSetupSpec(t *testing.T) {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
 	}
 	// The job claims the host's own GPU selection rather than every device.
-	if len(hostCfg.DeviceRequests) != 1 || hostCfg.DeviceRequests[0].Count != 4 {
+	if len(hostCfg.DeviceRequests) != 1 ||
+		!reflect.DeepEqual(hostCfg.DeviceRequests[0].DeviceIDs, []string{"0", "1", "2", "3"}) {
 		t.Errorf("DeviceRequests = %+v", hostCfg.DeviceRequests)
 	}
 }
 
 func TestProgramSetupSpec(t *testing.T) {
-	spec := programSetupSpec(testConfig(), cluster.GPU{Count: 4}, []byte("elf"), []byte("vk"))
+	spec := programSetupSpec(testConfig(), cluster.GPU{DeviceIDs: []int{0, 1, 2, 3}}, []byte("elf"), []byte("vk"))
 	if spec.Name != "zisk-program-setup" {
 		t.Errorf("Name = %q", spec.Name)
 	}
@@ -390,7 +391,8 @@ func TestProgramSetupSpec(t *testing.T) {
 		hostCfg.Mounts[1].Source != "zisk-cache-1.2.0-alpha" || hostCfg.Mounts[1].Target != "/root/.zisk/cache" {
 		t.Errorf("Mounts = %+v", hostCfg.Mounts)
 	}
-	if len(hostCfg.DeviceRequests) != 1 || hostCfg.DeviceRequests[0].Count != 4 {
+	if len(hostCfg.DeviceRequests) != 1 ||
+		!reflect.DeepEqual(hostCfg.DeviceRequests[0].DeviceIDs, []string{"0", "1", "2", "3"}) {
 		t.Errorf("DeviceRequests = %+v", hostCfg.DeviceRequests)
 	}
 }

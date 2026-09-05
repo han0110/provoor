@@ -22,6 +22,7 @@ type fakeProver struct {
 	publicValues []byte
 	err          error
 	phases       []string
+	pipeline     *cluster.Pipeline
 	readyWaits   int
 	readyDelay   time.Duration
 	submitWait   time.Duration
@@ -46,6 +47,7 @@ func (p *fakeProver) Prove(_ context.Context, _ []byte, onPhase func(string)) (*
 		ProofBytes:         316119,
 		ClusterProvingTime: 4011 * time.Millisecond,
 		SubmitWait:         p.submitWait,
+		Pipeline:           p.pipeline,
 	}, nil
 }
 
@@ -89,10 +91,17 @@ func proveRequest(output []byte) string {
 	return `{"jsonrpc":"2.0","method":"engine_proveStatelessValidator","params":[` + string(encoded) + `],"id":7}`
 }
 
-func lastMetric(t *testing.T, output *bytes.Buffer) metricLine {
+// emittedMetric is one metric line, its pipeline left raw since the task rows
+// are arrays on the wire.
+type emittedMetric struct {
+	metricLine
+	Pipeline json.RawMessage `json:"pipeline"`
+}
+
+func lastMetric(t *testing.T, output *bytes.Buffer) emittedMetric {
 	t.Helper()
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
-	var metric metricLine
+	var metric emittedMetric
 	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &metric); err != nil {
 		t.Fatalf("metric line %q: %v", lines[len(lines)-1], err)
 	}
@@ -126,7 +135,18 @@ func TestWarmup(t *testing.T) {
 func TestProveValid(t *testing.T) {
 	expected := []byte{1, 2, 3, 4}
 	output := &bytes.Buffer{}
-	server := newServer(&fakeProver{publicValues: commitment(expected), phases: []string{"queued", "prove", "prove", "recurse"}}, output)
+	pipeline := &cluster.Pipeline{
+		SchemaVersion: 1,
+		Kinds:         []cluster.TaskKind{{Name: "segment", Label: "Segment", Phase: cluster.PhaseBase}},
+		Breakdown:     []string{"Trace Gen"},
+		Workers:       []cluster.Worker{{Name: "worker_0", Node: "node1"}},
+		Tasks:         []cluster.Task{{ID: "24", StartMs: 1015, DurationMs: 1100, Breakdown: [][2]int64{{0, 40}}}},
+	}
+	server := newServer(&fakeProver{
+		publicValues: commitment(expected),
+		phases:       []string{"queued", "prove", "prove", "recurse"},
+		pipeline:     pipeline,
+	}, output)
 
 	resp := post(t, server, proveRequest(expected))
 	result := resp["result"].(map[string]any)
@@ -145,6 +165,9 @@ func TestProveValid(t *testing.T) {
 	}
 	if metric.Throughput.MGasPerSec <= 0 || metric.Timing.TotalMs != metric.ProvingTimeMs {
 		t.Errorf("throughput metric = %+v timing = %+v", metric.Throughput, metric.Timing)
+	}
+	if want, _ := json.Marshal(pipeline); !bytes.Equal(metric.Pipeline, want) {
+		t.Errorf("pipeline = %s, want %s", metric.Pipeline, want)
 	}
 	// A phase repeated by a poll prints once.
 	if got := strings.Count(output.String(), "phase prove"); got != 1 {

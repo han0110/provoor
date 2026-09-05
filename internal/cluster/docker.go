@@ -175,10 +175,6 @@ func MemlockUnlimited() []*container.Ulimit {
 // DeviceRequest exposes the GPU selection to a container.
 func (g GPU) DeviceRequest() container.DeviceRequest {
 	request := container.DeviceRequest{Capabilities: [][]string{{"gpu"}}}
-	if g.Count > 0 {
-		request.Count = g.Count
-		return request
-	}
 	request.DeviceIDs = make([]string, len(g.DeviceIDs))
 	for i, id := range g.DeviceIDs {
 		request.DeviceIDs[i] = strconv.Itoa(id)

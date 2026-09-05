@@ -354,10 +354,15 @@ func (c *Client) waitProveJob(ctx context.Context, jobID string, onPhase func(ph
 	if err != nil {
 		return nil, fmt.Errorf("prove job %s: %w", jobID, err)
 	}
+	pipeline, err := mapPipeline(prove.Prove.Stats)
+	if err != nil {
+		return nil, fmt.Errorf("prove job %s: %w", jobID, err)
+	}
 	return &cluster.ProveOutcome{
 		PublicValues:       publicValues,
 		ProofBytes:         len(prove.Prove.Proof.Data),
 		ClusterProvingTime: time.Duration(prove.Prove.Stats.DurationNanos),
+		Pipeline:           pipeline,
 	}, nil
 }
 

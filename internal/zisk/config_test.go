@@ -20,10 +20,10 @@ coordinator:
 workers:
   - ssh: user@10.0.0.1
     gpu:
-      count: 1
+      device_ids: [0]
   - ssh: user@10.0.0.2
     gpu:
-      count: 2
+      device_ids: [0, 1]
 `
 
 func writeConfig(t *testing.T, content string) string {
@@ -86,7 +86,7 @@ coordinator:
 workers:
   - ssh: ssh://user@203.0.113.1:2222
     gpu:
-      count: 4
+      device_ids: [0, 1, 2, 3]
   - ssh: ssh://user@203.0.113.2:2222
     gpu:
       device_ids: [0, 1]
@@ -110,7 +110,7 @@ config:
 	if len(cfg.Guests) != 2 || cfg.Guests[1].VK != "https://example.com/b.vk" {
 		t.Errorf("Guests = %v", cfg.Guests)
 	}
-	if cfg.Workers[0].GPU.Count != 4 || !slices.Equal(cfg.Workers[1].GPU.DeviceIDs, []int{0, 1}) {
+	if !slices.Equal(cfg.Workers[0].GPU.DeviceIDs, []int{0, 1, 2, 3}) || !slices.Equal(cfg.Workers[1].GPU.DeviceIDs, []int{0, 1}) {
 		t.Errorf("worker gpus = %+v, %+v", cfg.Workers[0].GPU, cfg.Workers[1].GPU)
 	}
 	want := ProverConfig{
@@ -159,10 +159,10 @@ coordinator:
 workers:
   - ssh: user@10.0.0.2
     gpu:
-      count: 1
+      device_ids: [0]
   - ssh: user@10.0.0.2
     gpu:
-      count: 1
+      device_ids: [0]
 `,
 			wantErr: "duplicate",
 		},
@@ -179,7 +179,7 @@ coordinator:
 workers:
   - ssh: user@10.0.0.2
     gpu:
-      count: 1
+      device_ids: [0]
 `,
 			wantErr: "coordinator ip",
 		},
@@ -196,7 +196,7 @@ coordinator:
 workers:
   - ssh: user@10.0.0.1
     gpu:
-      count: 1
+      device_ids: [0]
 `,
 		},
 		{
@@ -206,13 +206,13 @@ workers:
 		},
 		{
 			name:    "worker without a gpu selection",
-			config:  strings.Replace(minimalConfig, "    gpu:\n      count: 1\n", "", 1),
-			wantErr: "gpu expects",
+			config:  strings.Replace(minimalConfig, "    gpu:\n      device_ids: [0]\n", "", 1),
+			wantErr: "worker 0: gpu device_ids is required",
 		},
 		{
-			name:    "worker naming both gpu forms",
-			config:  strings.Replace(minimalConfig, "      count: 1\n", "      count: 1\n      device_ids: [0]\n", 1),
-			wantErr: "not both",
+			name:    "worker naming a gpu count",
+			config:  strings.Replace(minimalConfig, "      device_ids: [0]\n", "      count: 1\n", 1),
+			wantErr: "field count not found in type cluster.GPU",
 		},
 	}
 	for _, tc := range cases {
