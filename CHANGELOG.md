@@ -1,13 +1,5 @@
 # Changelog
 
-## [0.6.0](https://github.com/han0110/provoor/compare/v0.5.0...v0.6.0) (2026-09-05)
-
-
-### Features
-
-* collect per proof pipeline info from cluster ([#20](https://github.com/han0110/provoor/issues/20)) ([ea0f266](https://github.com/han0110/provoor/commit/ea0f266a12736b74f39ed62ddaa0fdb64bac7e58))
-* rework ([#18](https://github.com/han0110/provoor/issues/18)) ([79a342e](https://github.com/han0110/provoor/commit/79a342e2c5a7c745ffb982deab0d039db85e9c27))
-
 ## [0.5.0](https://github.com/han0110/provoor/compare/v0.4.1...v0.5.0) (2026-09-03)
 
 
