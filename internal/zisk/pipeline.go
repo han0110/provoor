@@ -35,7 +35,7 @@ const kindUnmapped = -1
 // pipelineKinds names every bar of one worker. The legend groups every witness
 // build, the contribution with its challenge, and the two finals under one
 // entry each, so each group shares one phase. Every witness build takes the
-// witness phase, the contribution and the basic proof take the segment phase,
+// witness phase, the contribution and the basic proof take the base phase,
 // and the recursive proofs take the recursion phase. An instance draws its
 // contributions phase on one row and its proofs on a second row.
 var pipelineKinds = []cluster.TaskKind{
@@ -45,9 +45,9 @@ var pipelineKinds = []cluster.TaskKind{
 	{Name: "recompute", Label: "Witness Recompute", Legend: "Witness Generation", Row: "Proof", Phase: cluster.PhaseWitness},
 	{Name: "recursionwitness", Label: "Recursion Witness Generation", Legend: "Witness Generation", Row: "Proof", Phase: cluster.PhaseWitness},
 	{Name: "aggregationwitness", Label: "Aggregation Witness Generation", Legend: "Witness Generation", Row: "Fold", Phase: cluster.PhaseWitness},
-	{Name: "challenge", Label: "Calculate Internal Contribution", Legend: "Contribution", Row: "Calculate Internal Contribution", Phase: cluster.PhaseSegment},
-	{Name: "commit", Label: "Contribution", Legend: "Contribution", Row: "Contribution", Phase: cluster.PhaseSegment},
-	{Name: "basic", Label: "Basic Proof", Legend: "Basic Proof", Row: "Proof", Phase: cluster.PhaseSegment},
+	{Name: "challenge", Label: "Calculate Internal Contribution", Legend: "Contribution", Row: "Calculate Internal Contribution", Phase: cluster.PhaseBase},
+	{Name: "commit", Label: "Contribution", Legend: "Contribution", Row: "Contribution", Phase: cluster.PhaseBase},
+	{Name: "basic", Label: "Basic Proof", Legend: "Basic Proof", Row: "Proof", Phase: cluster.PhaseBase},
 	{Name: "compressor", Label: "Compressor Proof", Legend: "Compressor Proof", Row: "Proof", Phase: cluster.PhaseRecursion},
 	{Name: "recursive1", Label: "Recursive1 Proof", Legend: "Recursive1 Proof", Row: "Proof", Phase: cluster.PhaseRecursion},
 	{Name: "recursive2", Label: "Recursive2 Proof", Legend: "Recursive2 Proof", Row: "Fold", Phase: cluster.PhaseRecursion},
@@ -163,13 +163,16 @@ func placeProofs(builder *cluster.PipelineBuilder[string], task *api.TaskTiming,
 		if err != nil {
 			return err
 		}
-		startMs, endMs := int64(proof.GetStartOffsetMs()), int64(proof.GetEndOffsetMs())
-		breakdown := mapProofBreakdown(proof.GetBreakdownMs())
+		startOffsetMs, endOffsetMs := int64(proof.GetStartOffsetMs()), int64(proof.GetEndOffsetMs())
+		breakdown, err := mapProofBreakdown(proof.GetBreakdownMs())
+		if err != nil {
+			return err
+		}
 		if kind == kindExecute {
 			breakdown = append(mapBreakdown(task.GetExecutorTime()), breakdown...)
 		}
 		id := proofID(kind, proof, withAirgroup)
-		builder.Place(kind, task.GetWorkerId(), id, originMs+endMs, endMs-startMs, breakdown)
+		builder.Place(kind, task.GetWorkerId(), id, originMs+endOffsetMs, endOffsetMs-startOffsetMs, breakdown)
 	}
 	return nil
 }
@@ -261,13 +264,18 @@ func mapBreakdown(executorTime *api.ExecutorTime) [][2]int64 {
 }
 
 // mapProofBreakdown indexes the sections of one record, which follow the
-// executor labels. A section the worker reports as zero is left out.
-func mapProofBreakdown(sections []uint32) [][2]int64 {
+// executor labels. A section the worker reports as zero is left out. A record
+// of more sections than the labels name fails, because no label names the
+// sections past the list.
+func mapProofBreakdown(sections []uint32) ([][2]int64, error) {
+	if len(sections) > len(proofBreakdownLabels) {
+		return nil, fmt.Errorf("record of %d sections, which the timeline does not map", len(sections))
+	}
 	var breakdown [][2]int64
 	for index, duration := range sections {
 		if duration > 0 {
 			breakdown = append(breakdown, [2]int64{int64(len(pipelineBreakdown) + index), int64(duration)})
 		}
 	}
-	return breakdown
+	return breakdown, nil
 }

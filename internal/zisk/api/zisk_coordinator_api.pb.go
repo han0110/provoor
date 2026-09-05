@@ -324,7 +324,7 @@ type TaskTiming struct {
 	WorkerId           string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
 	Phase              JobPhase               `protobuf:"varint,2,opt,name=phase,proto3,enum=zisk.coordinator.v1.JobPhase" json:"phase,omitempty"`
 	CompletedAt        *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
-	ComputeDurationMs  uint64                 `protobuf:"varint,4,opt,name=compute_duration_ms,json=computeDurationMs,proto3" json:"compute_duration_ms,omitempty"` // worker-measured wall time
+	ComputeDurationMs  uint64                 `protobuf:"varint,4,opt,name=compute_duration_ms,json=computeDurationMs,proto3" json:"compute_duration_ms,omitempty"` // wall time of the proofman phase call, excluding the input load
 	ExecutorTime       *ExecutorTime          `protobuf:"bytes,5,opt,name=executor_time,json=executorTime,proto3" json:"executor_time,omitempty"`                   // contributions phase only
 	Step               uint32                 `protobuf:"varint,6,opt,name=step,proto3" json:"step,omitempty"`                                                      // ordinal within the phase, from one for Recurse and zero elsewhere
 	ProofTimings       []*ProofTiming         `protobuf:"bytes,7,rep,name=proof_timings,json=proofTimings,proto3" json:"proof_timings,omitempty"`
@@ -422,10 +422,10 @@ func (x *TaskTiming) GetRecordsOriginAgeMs() uint64 {
 // One proof proofman produced, offset from the recorder origin of the response.
 type ProofTiming struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                // instance id, or the recursive2 ongoing index
+	Id            uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                // instance id, the fold index of a fold record, or zero for a root step
 	ProofType     uint32                 `protobuf:"varint,2,opt,name=proof_type,json=proofType,proto3" json:"proof_type,omitempty"` // proofman ProofType as_usize
 	AirgroupId    uint32                 `protobuf:"varint,3,opt,name=airgroup_id,json=airgroupId,proto3" json:"airgroup_id,omitempty"`
-	AirName       string                 `protobuf:"bytes,4,opt,name=air_name,json=airName,proto3" json:"air_name,omitempty"` // empty for recursive2 and the two final proofs
+	AirName       string                 `protobuf:"bytes,4,opt,name=air_name,json=airName,proto3" json:"air_name,omitempty"` // empty for a root step of the contributions phase, a fold and the two final proofs
 	StartOffsetMs uint32                 `protobuf:"varint,5,opt,name=start_offset_ms,json=startOffsetMs,proto3" json:"start_offset_ms,omitempty"`
 	EndOffsetMs   uint32                 `protobuf:"varint,6,opt,name=end_offset_ms,json=endOffsetMs,proto3" json:"end_offset_ms,omitempty"`
 	BreakdownMs   []uint32               `protobuf:"varint,7,rep,packed,name=breakdown_ms,json=breakdownMs,proto3" json:"breakdown_ms,omitempty"` // the proof sections, empty when none

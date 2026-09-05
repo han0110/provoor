@@ -15,7 +15,7 @@ const PipelineSchemaVersion = 1
 const (
 	PhaseExecution = "execution"
 	PhaseWitness   = "witness"
-	PhaseSegment   = "segment"
+	PhaseBase      = "base"
 	PhaseRecursion = "recursion"
 	PhaseWrap      = "wrap"
 )

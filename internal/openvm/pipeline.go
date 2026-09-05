@@ -26,7 +26,7 @@ const (
 var pipelineKinds = []cluster.TaskKind{
 	{Name: "execution", Label: "Metered Execution", Legend: "Metered Execution", Row: "Segment", Phase: cluster.PhaseExecution},
 	{Name: "fastfwd", Label: "Fast Forward", Legend: "Fast Forward", Row: "Segment", Phase: cluster.PhaseExecution},
-	{Name: "segment", Label: "Segment", Legend: "Segment", Row: "Segment", Phase: cluster.PhaseSegment},
+	{Name: "segment", Label: "Segment", Legend: "Segment", Row: "Segment", Phase: cluster.PhaseBase},
 	{Name: "leaf", Label: "Leaf Aggregation", Legend: "Leaf Aggregation", Row: "Leaf Aggregation", Phase: cluster.PhaseRecursion},
 	{Name: "internal", Label: "Internal Aggregation", Legend: "Internal Aggregation", Row: "Internal Aggregation", Phase: cluster.PhaseRecursion},
 	{Name: "wrap", Label: "Wrap", Legend: "Wrap", Row: "Internal Aggregation", Phase: cluster.PhaseWrap},

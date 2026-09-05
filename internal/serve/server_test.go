@@ -137,7 +137,7 @@ func TestProveValid(t *testing.T) {
 	output := &bytes.Buffer{}
 	pipeline := &cluster.Pipeline{
 		SchemaVersion: 1,
-		Kinds:         []cluster.TaskKind{{Name: "segment", Label: "Segment", Phase: cluster.PhaseSegment}},
+		Kinds:         []cluster.TaskKind{{Name: "segment", Label: "Segment", Phase: cluster.PhaseBase}},
 		Breakdown:     []string{"Trace Gen"},
 		Workers:       []cluster.Worker{{Name: "worker_0", Node: "node1"}},
 		Tasks:         []cluster.Task{{ID: "24", StartMs: 1015, DurationMs: 1100, Breakdown: [][2]int64{{0, 40}}}},

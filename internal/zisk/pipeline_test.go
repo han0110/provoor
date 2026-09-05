@@ -216,6 +216,14 @@ func TestPipelineKindsOfOneLegendEntryShareAPhase(t *testing.T) {
 	}
 }
 
+// The worker reports one section per PROOF_TIMING_SECTIONS of the proofman
+// fork, and every section carries a label.
+func TestPipelineLabelsEverySection(t *testing.T) {
+	if len(proofBreakdownLabels) != 27 {
+		t.Errorf("labels = %d, want 27", len(proofBreakdownLabels))
+	}
+}
+
 // A fold left in flight by an earlier task holds the recorder origin, so the
 // origin of this task falls 3 s before the proof start and the subtraction that
 // reconstructs it is signed.
@@ -294,6 +302,27 @@ func TestPipelineOfAnUnmappedProofTypeFails(t *testing.T) {
 		if pipeline != nil || err == nil {
 			t.Errorf("pipeline of type %d = %+v, %v, want an error", proofType, pipeline, err)
 		}
+	}
+}
+
+// A record of one section more than the labels name fails the proof, because
+// the last section falls past the label list.
+func TestPipelineOfASectionPastTheLabelsFails(t *testing.T) {
+	stats := &api.ExecutionStats{
+		ProofStart: timestamppb.New(time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)),
+		Tasks: []*api.TaskTiming{{
+			WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_PROVE,
+			CompletedAt: timestamppb.New(time.Date(2026, 9, 4, 10, 0, 1, 0, time.UTC)), ComputeDurationMs: 100,
+			ProofTimings: []*api.ProofTiming{{
+				ProofType: 0, Id: 137, AirName: "Main", EndOffsetMs: 400,
+				BreakdownMs: make([]uint32, len(proofBreakdownLabels)+1),
+			}},
+		}},
+	}
+
+	pipeline, err := mapPipeline(stats)
+	if pipeline != nil || err == nil {
+		t.Errorf("pipeline = %+v, %v, want an error", pipeline, err)
 	}
 }
 

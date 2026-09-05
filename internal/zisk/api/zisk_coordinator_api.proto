@@ -95,22 +95,22 @@ message ExecutionStats {
 
 // One worker task, stamped on the coordinator clock at receipt.
 message TaskTiming {
-  string                    worker_id           = 1;
-  JobPhase                  phase               = 2;
-  google.protobuf.Timestamp completed_at        = 3;
-  uint64                    compute_duration_ms = 4; // worker-measured wall time
-  ExecutorTime              executor_time       = 5; // contributions phase only
-  uint32                    step                = 6; // ordinal within the phase, from one for Recurse and zero elsewhere
+  string                    worker_id             = 1;
+  JobPhase                  phase                 = 2;
+  google.protobuf.Timestamp completed_at          = 3;
+  uint64                    compute_duration_ms   = 4; // wall time of the proofman phase call, excluding the input load
+  ExecutorTime              executor_time         = 5; // contributions phase only
+  uint32                    step                  = 6; // ordinal within the phase, from one for Recurse and zero elsewhere
   repeated ProofTiming      proof_timings         = 7;
   uint64                    records_origin_age_ms = 8; // age of the recorder origin when the worker took the records
 }
 
 // One proof proofman produced, offset from the recorder origin of the response.
 message ProofTiming {
-  uint32 id              = 1; // instance id, or the recursive2 ongoing index
+  uint32 id              = 1; // instance id, the fold index of a fold record, or zero for a root step
   uint32 proof_type      = 2; // proofman ProofType as_usize
   uint32 airgroup_id     = 3;
-  string air_name        = 4; // empty for recursive2 and the two final proofs
+  string air_name        = 4; // empty for a root step of the contributions phase, a fold and the two final proofs
   uint32 start_offset_ms = 5;
   uint32 end_offset_ms   = 6;
   repeated uint32 breakdown_ms = 7; // the proof sections, empty when none
