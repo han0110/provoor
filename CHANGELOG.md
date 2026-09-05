@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/han0110/provoor/compare/v0.6.0...v0.6.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* benchmarkoor collector ([#23](https://github.com/han0110/provoor/issues/23)) ([b097e26](https://github.com/han0110/provoor/commit/b097e262920349cee343eea11267f7c2b301d31a))
+* bump benchmarkoor to the block log collector fix ([#21](https://github.com/han0110/provoor/issues/21)) ([22c52fb](https://github.com/han0110/provoor/commit/22c52fb4eb3f2f7fb911e72c406bf77e278a2384))
+
 ## [0.6.0](https://github.com/han0110/provoor/compare/v0.5.0...v0.6.0) (2026-09-05)
 
 
