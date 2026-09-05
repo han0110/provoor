@@ -228,8 +228,22 @@ func (s *Server) prove(requestCtx context.Context, params []json.RawMessage) (an
 	if err != nil {
 		s.printf("proving %s failed: %v", payload.BlockHash, err)
 		// A client that went away says nothing about the cluster's health.
-		if s.FailRunOnClusterError && requestCtx.Err() == nil {
-			s.Exit(1)
+		if requestCtx.Err() == nil {
+			if s.FailRunOnClusterError {
+				s.Exit(1)
+			}
+			// A proof submission is gated on capacity. Proving the warmup block
+			// again holds the recovery of a crashed worker inside the failed
+			// call, so the next proof starts on a whole cluster.
+			ctx, cancel := context.WithTimeout(requestCtx, s.proveTimeout())
+			warmupStarted := time.Now()
+			_, warmupErr := s.Prover.Prove(ctx, warmupInput, func(string) {})
+			cancel()
+			if warmupErr != nil {
+				s.printf("warming the cluster again after %s failed: %v", payload.BlockHash, warmupErr)
+			} else {
+				s.printf("warmed the cluster again in %s after the failure of %s", time.Since(warmupStarted).Round(time.Second), payload.BlockHash)
+			}
 		}
 		return nil, &rpcError{Code: -32000, Message: err.Error()}
 	}
