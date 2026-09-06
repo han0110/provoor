@@ -3,8 +3,9 @@
 set -euo pipefail
 
 # Pulls a pruned copy of a remote benchmarkoor results tree into the runs
-# checkout's results/, then runs scripts/desensitize.sh over it. Runner logs
-# and JSON-RPC request payloads are excluded at transfer time.
+# checkout's results/, then runs scripts/desensitize.sh over it. JSON-RPC
+# request payloads are excluded at transfer time. The runner logs come along
+# unchanged, which provoor-runs keeps out of git.
 
 # shellcheck source=scripts/config.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/config.sh"
@@ -84,8 +85,6 @@ fi
 
 mkdir -p "${RESULTS_DIR}"
 rsync -a \
-    --exclude container.log \
-    --exclude benchmarkoor.log \
     --exclude '*.request' \
     "${SSH_DESTINATION}:${REMOTE_RESULTS_DIR}/" "${RESULTS_DIR}/"
 

@@ -43,10 +43,11 @@ matches="$(mktemp)"
 trap 'rm -f "${matches}"' EXIT
 
 # grep exits 1 when nothing matches and above 1 on a failure. Gzip files are
-# skipped, because a rewrite corrupts the archive.
+# skipped, because a rewrite corrupts the archive. The runner logs are skipped
+# because they stay identical for debugging, and git ignores them.
 scan() {
     local status=0
-    grep -rlZF --exclude='*.gz' "${patterns[@]}" "${RESULTS_DIR}" > "${matches}" || status=$?
+    grep -rlZF --exclude='*.gz' --exclude='*.log' "${patterns[@]}" "${RESULTS_DIR}" > "${matches}" || status=$?
     if (( status > 1 )); then
         echo "error: scanning ${RESULTS_DIR} failed" >&2
         exit 1
