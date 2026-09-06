@@ -4,8 +4,8 @@ set -euo pipefail
 
 # Pulls a pruned copy of a remote benchmarkoor results tree into the runs
 # checkout's results/, then runs scripts/desensitize.sh over it. JSON-RPC
-# request payloads are excluded at transfer time. The runner logs come along
-# unchanged, which provoor-runs keeps out of git.
+# request payloads are excluded at transfer time, and so are the runner logs
+# unless --log asks for them. provoor-runs keeps the logs out of git.
 
 # shellcheck source=scripts/config.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/config.sh"
@@ -15,13 +15,15 @@ RESULTS_DIR="${RUNS_DIR}/results"
 
 SSH_DESTINATION=""
 REMOTE_RESULTS_DIR=""
+SYNC_LOGS=false
 
 usage() {
-    echo "Usage: $0 [--ssh USER@HOST] [--remote-results-dir DIR]"
+    echo "Usage: $0 [--ssh USER@HOST] [--remote-results-dir DIR] [--log]"
     echo ""
     echo "Options:"
     echo "  --ssh USER@HOST           SSH destination holding the results, COORDINATOR_SSH in .env by default"
     echo "  --remote-results-dir DIR  Results directory on the remote, REMOTE_RESULTS_DIR in .env by default"
+    echo "  --log                     Also pull container.log and benchmarkoor.log of each run"
     echo "  --help, -h                Show this help"
     exit 1
 }
@@ -46,6 +48,10 @@ while [[ $# -gt 0 ]]; do
             require_value $# "$1"
             REMOTE_RESULTS_DIR="$2"
             shift 2
+            ;;
+        --log)
+            SYNC_LOGS=true
+            shift
             ;;
         --help|-h)
             usage
@@ -83,8 +89,14 @@ if [[ -z "${REMOTE_RESULTS_DIR}" ]]; then
     exit 1
 fi
 
+log_excludes=()
+if [[ "${SYNC_LOGS}" == false ]]; then
+    log_excludes=(--exclude container.log --exclude benchmarkoor.log)
+fi
+
 mkdir -p "${RESULTS_DIR}"
 rsync -a \
+    "${log_excludes[@]}" \
     --exclude '*.request' \
     "${SSH_DESTINATION}:${REMOTE_RESULTS_DIR}/" "${RESULTS_DIR}/"
 
