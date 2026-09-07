@@ -10,6 +10,7 @@ DCGM_FI_DEV_THERMAL_VIOLATION, counter, Nanoseconds throttled by temperature
 DCGM_FI_DEV_PCIE_REPLAY_COUNTER, counter, PCIe replays
 DCGM_FI_PROF_DRAM_ACTIVE, gauge, Device memory bandwidth utilization from 0 to 1
 DCGM_FI_PROF_SM_OCCUPANCY, gauge, Resident warps against the maximum from 0 to 1
+DCGM_FI_DEV_GPU_TEMP, gauge, Degrees Celsius at the GPU die
 DCGM_FI_DEV_GPU_TEMP_MARGIN_CELSIUS, gauge, Degrees Celsius below the throttle limit
 DCGM_FI_DEV_FB_USED, gauge, Frame buffer in use in MiB
 DCGM_FI_DEV_FB_TOTAL, gauge, Frame buffer capacity in MiB
