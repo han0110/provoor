@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/han0110/provoor/internal/cluster"
 )
 
 const minimalConfig = `
@@ -236,5 +238,26 @@ func TestLoadExamples(t *testing.T) {
 		if _, err := Load(path); err != nil {
 			t.Errorf("%s must load, got %v", path, err)
 		}
+	}
+}
+
+func TestContainers(t *testing.T) {
+	cfg, err := Load(writeConfig(t, minimalConfig+`
+telemetry:
+  sidecars:
+    - ssh: user@10.0.0.2
+      kind: dcgm-exporter
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []cluster.Deployed{
+		{SSH: "user@10.0.0.1", Name: "zisk-coordinator", Label: "coordinator"},
+		{SSH: "user@10.0.0.1", Name: "zisk-worker", Label: "worker_0-gpu_0"},
+		{SSH: "user@10.0.0.2", Name: "zisk-worker", Label: "worker_1-gpu_0_1"},
+		{SSH: "user@10.0.0.2", Name: "provoor-dcgm-10.0.0.2", Label: "dcgm-exporter", Sidecar: true},
+	}
+	if got := cfg.Containers(); !slices.Equal(got, want) {
+		t.Errorf("Containers = %+v, want %+v", got, want)
 	}
 }

@@ -11,12 +11,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/han0110/provoor/internal/cluster"
+	"github.com/han0110/provoor/internal/estimate"
 	"github.com/han0110/provoor/internal/openvm"
 	"github.com/han0110/provoor/internal/serve"
 	"github.com/han0110/provoor/internal/zisk"
@@ -29,6 +31,7 @@ var version = "dev"
 type backend interface {
 	Up(ctx context.Context, w io.Writer) error
 	Down(ctx context.Context, w io.Writer) error
+	Containers() []cluster.Deployed
 }
 
 func main() {
@@ -41,7 +44,10 @@ func main() {
 	root.AddCommand(
 		clusterCommand("up", "Deploys the proving cluster and blocks until it is ready", backend.Up),
 		clusterCommand("down", "Stops and removes the proving cluster containers", backend.Down),
+		psCommand(),
+		logsCommand(),
 		serveCommand(),
+		estimateCommand(),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -90,6 +96,129 @@ func loadBackend(path string) (backend, error) {
 	default:
 		return nil, fmt.Errorf("zkvm %q is not supported, only zisk and openvm", zkvm)
 	}
+}
+
+// selectContainers is the container selection a configuration deploys, nil
+// when none is given, which selects every container the label marks instead.
+func selectContainers(configPath string) ([]cluster.Deployed, error) {
+	if configPath == "" {
+		return nil, nil
+	}
+	b, err := loadBackend(configPath)
+	if err != nil {
+		return nil, err
+	}
+	return b.Containers(), nil
+}
+
+// dialSelection dials the hosts a selection names in configuration order, or
+// the local daemon when no configuration selects them.
+func dialSelection(ctx context.Context, selection []cluster.Deployed) (*cluster.Hosts, error) {
+	destinations := []string{""}
+	if len(selection) > 0 {
+		destinations = make([]string, len(selection))
+		for i, deployed := range selection {
+			destinations[i] = deployed.SSH
+		}
+	}
+	return cluster.DialHosts(ctx, destinations)
+}
+
+func psCommand() *cobra.Command {
+	var (
+		configPath string
+		all        bool
+	)
+	cmd := &cobra.Command{
+		Use:   "ps",
+		Short: "Lists the containers provoor deployed",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			selection, err := selectContainers(configPath)
+			if err != nil {
+				return err
+			}
+			hosts, err := dialSelection(cmd.Context(), selection)
+			if err != nil {
+				return err
+			}
+			defer hosts.Close()
+			listed, err := cluster.List(cmd.Context(), hosts, selection, all)
+			if err != nil {
+				return err
+			}
+			return cluster.WriteTable(cmd.OutOrStdout(), listed)
+		},
+	}
+	cmd.Flags().StringVar(&configPath, "config", "", "cluster configuration file, by default the local daemon")
+	cmd.Flags().BoolVarP(&all, "all", "a", false, "list the stopped containers too")
+	return cmd
+}
+
+func logsCommand() *cobra.Command {
+	var (
+		configPath string
+		follow     bool
+		timestamps bool
+	)
+	cmd := &cobra.Command{
+		Use:   "logs",
+		Short: "Prints the logs of the deployed cluster containers",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			selection, err := selectContainers(configPath)
+			if err != nil {
+				return err
+			}
+			hosts, err := dialSelection(cmd.Context(), selection)
+			if err != nil {
+				return err
+			}
+			defer hosts.Close()
+			// A stopped container still holds the log of its last run.
+			listed, err := cluster.List(cmd.Context(), hosts, selection, true)
+			if err != nil {
+				return err
+			}
+			return cluster.StreamLogs(cmd.Context(), hosts, listed, follow, timestamps, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&configPath, "config", "", "cluster configuration file, by default the local daemon")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "keep streaming until interrupted")
+	cmd.Flags().BoolVarP(&timestamps, "timestamps", "t", false, "print the timestamp of every line")
+	cmd.AddCommand(logsDumpCommand())
+	return cmd
+}
+
+func logsDumpCommand() *cobra.Command {
+	var (
+		runDir     string
+		configPath string
+		sudo       bool
+	)
+	cmd := &cobra.Command{
+		Use:   "dump",
+		Short: "Writes the journal of the coordinator and every worker for a run's time window into the run directory",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			b, err := loadBackend(configPath)
+			if err != nil {
+				return err
+			}
+			since, until, err := cluster.RunWindow(runDir)
+			if err != nil {
+				return err
+			}
+			return cluster.DumpJournals(cmd.Context(), b.Containers(), runDir, since, until, sudo, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&runDir, "run", "", "benchmark run directory, which names the time window")
+	cmd.Flags().StringVar(&configPath, "config", "", "cluster configuration file")
+	cmd.Flags().BoolVar(&sudo, "sudo", false, "run journalctl under sudo -n on the remote hosts")
+	for _, flag := range []string{"run", "config"} {
+		_ = cmd.MarkFlagRequired(flag)
+	}
+	return cmd
 }
 
 func serveCommand() *cobra.Command {
@@ -194,5 +323,26 @@ func serveCommand() *cobra.Command {
 	for _, flag := range []string{"zkvm", "stateless-validator", "elf", "vk", "coordinator-endpoint"} {
 		_ = cmd.MarkFlagRequired(flag)
 	}
+	return cmd
+}
+
+func estimateCommand() *cobra.Command {
+	var (
+		image       string
+		concurrency int
+	)
+	cmd := &cobra.Command{
+		Use:   "estimate <run-dir>",
+		Short: "Estimates the proving cost of every test of a benchmark run",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if concurrency < 1 {
+				return fmt.Errorf("concurrency %d is not a positive count", concurrency)
+			}
+			return estimate.Run(cmd.Context(), args[0], image, concurrency, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&image, "image", "", "ere-server image, by default the one of the run's zkVM")
+	cmd.Flags().IntVarP(&concurrency, "concurrency", "c", min(16, runtime.NumCPU()), "concurrent estimations")
 	return cmd
 }

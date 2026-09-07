@@ -1,0 +1,102 @@
+// Copied from https://github.com/eth-act/ere/blob/v0.18.0/crates/server/api/proto/api.proto.
+//
+// Regenerate api.pb.go from the repository root with protoc 3.21.12 and
+// protoc-gen-go v1.36.11.
+//
+//   protoc --proto_path=internal/ereserver/api \
+//     --go_out=internal/ereserver/api --go_opt=paths=source_relative \
+//     --go_opt=Mapi.proto=github.com/han0110/provoor/internal/ereserver/api \
+//     api.proto
+
+syntax = "proto3";
+
+package api;
+
+service ZkvmService {
+    rpc Execute(ExecuteRequest) returns (ExecuteResponse) {}
+    rpc ExecuteEstimatedCost(ExecuteEstimatedCostRequest) returns (ExecuteEstimatedCostResponse) {}
+    rpc Prove(ProveRequest) returns (ProveResponse) {}
+    rpc Verify(VerifyRequest) returns (VerifyResponse) {}
+    rpc ProgramVk(ProgramVkRequest) returns (ProgramVkResponse) {}
+}
+
+message ExecuteRequest {
+    bytes input_stdin = 1;
+    optional bytes input_proofs = 2;
+}
+
+message ExecuteResponse {
+    oneof result {
+        ExecuteOk ok = 1;
+        string err = 2;
+    }
+}
+
+message ExecuteOk {
+    bytes public_values = 1;
+    uint64 duration_nanos = 2;
+}
+
+message ExecuteEstimatedCostRequest {
+    bytes input_stdin = 1;
+    optional bytes input_proofs = 2;
+}
+
+message ExecuteEstimatedCostResponse {
+    oneof result {
+        ExecuteEstimatedCostOk ok = 1;
+        string err = 2;
+    }
+}
+
+message ExecuteEstimatedCostOk {
+    bytes public_values = 1;
+    map<string, uint64> cost = 2;
+    optional uint64 peak_heap_bytes = 3;
+}
+
+message ProveRequest {
+    bytes input_stdin = 1;
+    optional bytes input_proofs = 2;
+}
+
+message ProveResponse {
+    oneof result {
+        ProveOk ok = 1;
+        string err = 2;
+    }
+}
+
+message ProveOk {
+    bytes public_values = 1;
+    bytes proof = 2;
+    uint64 duration_nanos = 3;
+}
+
+message VerifyRequest {
+    bytes proof = 1;
+}
+
+message VerifyResponse {
+    oneof result {
+        VerifyOk ok = 1;
+        string err = 2;
+    }
+}
+
+message VerifyOk {
+    bytes public_values = 1;
+}
+
+message ProgramVkRequest {}
+
+message ProgramVkResponse {
+    oneof result {
+        ProgramVkOk ok = 1;
+        string err = 2;
+    }
+}
+
+message ProgramVkOk {
+    bytes program_vk = 1;
+}

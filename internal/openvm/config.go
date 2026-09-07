@@ -147,6 +147,16 @@ func (cfg *Config) validate() error {
 	return nil
 }
 
+// Containers lists every container the deployment runs, the coordinator
+// first, then one worker per GPU, then the telemetry sidecars.
+func (cfg *Config) Containers() []cluster.Deployed {
+	deployed := []cluster.Deployed{{SSH: cfg.Coordinator.SSH, Name: coordinatorContainer, Label: cluster.CoordinatorName}}
+	for i, worker := range cfg.Workers {
+		deployed = append(deployed, cluster.Deployed{SSH: worker.SSH, Name: workerContainer(worker.deviceID()), Label: workerName(i, worker)})
+	}
+	return append(deployed, cluster.Sidecars(cfg.Telemetry)...)
+}
+
 func (cfg *Config) destinations() []string {
 	destinations := []string{cfg.Coordinator.SSH}
 	for _, worker := range cfg.Workers {

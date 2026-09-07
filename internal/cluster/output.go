@@ -14,10 +14,11 @@ type Output struct {
 	w  io.Writer
 }
 
-// PrefixWriter buffers a byte stream and prints it as prefixed lines.
+// PrefixWriter buffers a byte stream and prints it as lines behind a fixed
+// leading text.
 type PrefixWriter struct {
 	out     *Output
-	prefix  string
+	lead    string
 	pending []byte
 }
 
@@ -33,10 +34,16 @@ func (o *Output) Printf(format string, args ...any) {
 	fmt.Fprintf(o.w, format+"\n", args...)
 }
 
+// leading returns a writer that relays a streamed output line by line behind
+// a fixed text.
+func (o *Output) leading(lead string) *PrefixWriter {
+	return &PrefixWriter{out: o, lead: lead}
+}
+
 // Prefixed returns a writer that relays streamed container output line by
 // line under a prefix.
 func (o *Output) Prefixed(prefix string) *PrefixWriter {
-	return &PrefixWriter{out: o, prefix: prefix}
+	return o.leading("[" + prefix + "] ")
 }
 
 func (p *PrefixWriter) Write(data []byte) (int, error) {
@@ -48,14 +55,14 @@ func (p *PrefixWriter) Write(data []byte) (int, error) {
 		}
 		line := strings.TrimRight(string(p.pending[:newline]), "\r")
 		p.pending = p.pending[newline+1:]
-		p.out.Printf("[%s] %s", p.prefix, line)
+		p.out.Printf("%s%s", p.lead, line)
 	}
 }
 
 // Flush prints a buffered partial line.
 func (p *PrefixWriter) Flush() {
 	if len(p.pending) > 0 {
-		p.out.Printf("[%s] %s", p.prefix, string(p.pending))
+		p.out.Printf("%s%s", p.lead, string(p.pending))
 		p.pending = nil
 	}
 }

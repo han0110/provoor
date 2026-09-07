@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -147,5 +148,19 @@ func TestSidecarName(t *testing.T) {
 	}
 	if got := sidecarName(sidecarNode, "rig-01"); got != "provoor-node-rig-01" {
 		t.Errorf("node sidecar is named %q, want provoor-node-rig-01", got)
+	}
+}
+
+func TestSidecars(t *testing.T) {
+	deployed := Sidecars(Telemetry{Sidecars: []Sidecar{
+		{SSH: "user@10.0.0.1", Kind: sidecarDCGM},
+		{Kind: sidecarNode},
+	}})
+	want := []Deployed{
+		{SSH: "user@10.0.0.1", Name: "provoor-dcgm-10.0.0.1", Label: sidecarDCGM, Sidecar: true},
+		{Name: "provoor-node-local", Label: sidecarNode, Sidecar: true},
+	}
+	if !slices.Equal(deployed, want) {
+		t.Errorf("Sidecars = %+v, want %+v", deployed, want)
 	}
 }
