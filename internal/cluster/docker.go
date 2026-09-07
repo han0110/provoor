@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +33,8 @@ const (
 // Hosts holds the dialed daemons of one deployment, one per SSH destination.
 type Hosts struct {
 	clients map[string]*client.Client
+	// order keeps the dial order, which orders every listing.
+	order []string
 }
 
 // Container is one container to create on a daemon.
@@ -57,6 +61,7 @@ func DialHosts(ctx context.Context, destinations []string) (*Hosts, error) {
 			return nil, err
 		}
 		h.clients[destination] = cli
+		h.order = append(h.order, destination)
 		if _, err := cli.Ping(ctx); err != nil {
 			h.Close()
 			return nil, fmt.Errorf("docker daemon on %s is unreachable: %w", HostName(destination), err)
@@ -70,13 +75,9 @@ func (h *Hosts) Client(destination string) *client.Client {
 	return h.clients[destination]
 }
 
-// Destinations lists the unique dialed destinations.
+// Destinations lists the unique dialed destinations, in dial order.
 func (h *Hosts) Destinations() []string {
-	destinations := make([]string, 0, len(h.clients))
-	for destination := range h.clients {
-		destinations = append(destinations, destination)
-	}
-	return destinations
+	return slices.Clone(h.order)
 }
 
 // Close closes every dialed daemon.
@@ -240,9 +241,10 @@ func StartCoordinator(ctx context.Context, cli *client.Client, node string, spec
 	return nil
 }
 
-// Start creates the container, writes its files, and starts it.
+// Start creates the container under the provoor marker label, writes its
+// files, and starts it.
 func (c Container) Start(ctx context.Context, cli *client.Client) error {
-	created, err := cli.ContainerCreate(ctx, c.Config, c.HostConfig, nil, nil, c.Name)
+	created, err := cli.ContainerCreate(ctx, marked(c.Config), c.HostConfig, nil, nil, c.Name)
 	if err != nil {
 		return err
 	}
@@ -252,6 +254,16 @@ func (c Container) Start(ctx context.Context, cli *client.Client) error {
 		}
 	}
 	return cli.ContainerStart(ctx, created.ID, container.StartOptions{})
+}
+
+// marked copies a container configuration with the marker label added, so a
+// listing finds the container and the caller's spec stays untouched.
+func marked(config *container.Config) *container.Config {
+	copied := *config
+	copied.Labels = make(map[string]string, len(config.Labels)+1)
+	maps.Copy(copied.Labels, config.Labels)
+	copied.Labels[Label] = ""
+	return &copied
 }
 
 // Run runs the container to completion, streams its output, and removes it

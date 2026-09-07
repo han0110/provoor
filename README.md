@@ -98,11 +98,38 @@ scripts/provoor.sh down --config examples/<zkvm>-4x4.example.yaml
 - An unbraced `$NAME` placeholder or an unset `.env` variable stops the run.
 - The CLI rejects unknown configuration keys.
 - `up` is idempotent and streams its progress as `[label] message` lines. It leaves a running coordinator or worker alone and reports it as `already running`. Every `up` replaces a sidecar.
-- `down` keeps the cache volumes and the journald logs, so the next `up` is fast. Read a log with `journalctl CONTAINER_NAME=<container>` on the host.
+- `down` keeps the cache volumes and the journald logs, so the next `up` is fast. Read a log with `journalctl CONTAINER_NAME=<container>` on the host, or write the journal of a whole run with `provoor logs dump`.
 - Neither `up` nor `down` talks to the client API.
 - The vk mismatch error identifies both keys.
 - A telemetry failure does not fail `up`. The line `telemetry unavailable: ...` reports it, and an empty sidecar list prints `telemetry: no sidecars configured`.
 - The first `up` is slow. Each zkVM prepares its proving keys and guest artifacts, minutes per guest on a GPU.
+
+## Inspect a cluster
+
+```sh
+scripts/provoor.sh ps --config examples/<zkvm>-4x4.example.yaml
+scripts/provoor.sh logs --config examples/<zkvm>-4x4.example.yaml --follow
+./provoor logs dump --config examples/<zkvm>-4x4.example.yaml --run provoor-runs/results/runs/<run_id>
+```
+
+| Command     | Flag                 | Default          | Meaning                                          |
+| ----------- | -------------------- | ---------------- | ------------------------------------------------ |
+| `ps`        | `--config`           | the local daemon | cluster configuration file                       |
+| `ps`        | `-a`, `--all`        | `false`          | list the stopped containers too                  |
+| `logs`      | `--config`           | the local daemon | cluster configuration file                       |
+| `logs`      | `-f`, `--follow`     | `false`          | keep streaming until interrupted                 |
+| `logs`      | `-t`, `--timestamps` | `false`          | print the timestamp of every line                |
+| `logs dump` | `--run`              | required         | benchmark run directory, which names the window  |
+| `logs dump` | `--config`           | required         | cluster configuration file                       |
+| `logs dump` | `--sudo`             | `false`          | run journalctl under sudo -n on the remote hosts |
+
+- Every container `provoor up` deploys carries the label `provoor`. Without `--config`, `ps` and `logs` cover the labeled containers of the local daemon.
+- `--config` selects the hosts and the container names of that configuration, so it also finds a cluster deployed before the label existed.
+- `ps` prints `NODE` and `NAME` ahead of the `IMAGE`, `COMMAND`, `CREATED`, `STATUS`, and `PORTS` columns of `docker ps`, and `logs` prints every line behind `<node>/<container>`. On a terminal each prefix carries its own color.
+- `logs` covers the coordinator, the workers, and the sidecars, the stopped ones included.
+- `logs dump` reads `timestamp` and `timestamp_end` of the run's `config.json`. A run that carries no `timestamp_end` is unfinished, so its window reaches the present.
+- `logs dump` writes `coordinator.log` and one `worker_<n>-gpu_<ids>.log` per worker into the run directory, and overwrites an existing file. Every line carries the timestamp of its journal entry in the shape of `logs --timestamps`, and a failed read leaves no file.
+- `logs dump` runs `journalctl` as the SSH user on every remote host, so without `--sudo` that user must be able to read the system journal there. Membership of the `adm` or `systemd-journal` group gives that right, and `--sudo` runs `journalctl` under `sudo -n` for a user with passwordless sudo instead. The journal of the local daemon is read as the user.
 
 ## Run a benchmark
 
@@ -172,6 +199,7 @@ The forwarder does these steps at startup.
 | curl, tar, sha256sum or shasum            | `scripts/fetch-verifier.sh`            |
 | ssh                                       | cluster hosts, `~/.ssh/config` applies |
 | Docker with the NVIDIA container runtime  | every cluster host                     |
+| journalctl on every cluster host          | `provoor logs dump`                    |
 | `nvidia-dcgm.service` on `127.0.0.1:5555` | hosts with a `dcgm-exporter` sidecar   |
 
 ### Scripts

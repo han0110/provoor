@@ -337,3 +337,32 @@ func TestPrefixWriter(t *testing.T) {
 		})
 	}
 }
+
+// TestStartLabelsContainer covers the marker every listing selects on, and
+// the spec it must not mutate.
+func TestStartLabelsContainer(t *testing.T) {
+	var created container.Config
+	cli := newFakeDaemon(t, map[string]http.HandlerFunc{
+		"POST /containers/create": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+				t.Error(err)
+			}
+			respondContainerCreated(w, r)
+		},
+		"POST /containers/{id}/start": respondNoContent,
+	})
+	config := &container.Config{Image: "image", Labels: map[string]string{"kind": "worker"}}
+
+	if err := (Container{Name: "prover", Config: config, HostConfig: &container.HostConfig{}}).Start(t.Context(), cli); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := created.Labels[Label]; !ok {
+		t.Errorf("labels = %v, want the %s marker", created.Labels, Label)
+	}
+	if created.Labels["kind"] != "worker" {
+		t.Errorf("labels = %v, want the spec's own labels kept", created.Labels)
+	}
+	if len(config.Labels) != 1 {
+		t.Errorf("the spec's labels = %v, want them untouched", config.Labels)
+	}
+}

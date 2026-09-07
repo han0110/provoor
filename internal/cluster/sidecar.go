@@ -72,6 +72,20 @@ func StopSidecars(ctx context.Context, hosts *Hosts) {
 	}
 }
 
+// Sidecars lists the telemetry containers a configuration deploys.
+func Sidecars(cfg Telemetry) []Deployed {
+	deployed := make([]Deployed, len(cfg.Sidecars))
+	for i, sidecar := range cfg.Sidecars {
+		deployed[i] = Deployed{
+			SSH:     sidecar.SSH,
+			Name:    sidecarName(sidecar.Kind, HostName(sidecar.SSH)),
+			Label:   sidecar.Kind,
+			Sidecar: true,
+		}
+	}
+	return deployed
+}
+
 // sidecarName labels one node's sidecar of one kind. Characters Docker
 // rejects in a container name become a dash.
 func sidecarName(kind, node string) string {
