@@ -24,10 +24,14 @@ ARG VERSION=dev
 WORKDIR /src
 
 COPY go.mod go.sum ./
+# The estimate command builds against the benchmarkoor submodule, which the
+# replace directive of go.mod resolves to ./benchmarkoor.
+COPY benchmarkoor/go.mod benchmarkoor/
 RUN go mod download
 
 COPY cmd/ cmd/
 COPY internal/ internal/
+COPY benchmarkoor/pkg/ benchmarkoor/pkg/
 # COPY merges into an existing directory, so a library the context carries is
 # removed before the selected one lands.
 RUN rm -rf internal/ereverifier/lib

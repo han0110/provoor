@@ -6,6 +6,7 @@ zkVM proving clusters as [Benchmarkoor](https://github.com/ethpandaops/benchmark
 
 - `provoor up` deploys a proving cluster over SSH-reached Docker daemons, one coordinator plus GPU worker containers. The `zkvm` key selects one of the [zkVMs](#zkvms).
 - `provoor serve` is a JSON-RPC forwarder that `benchmarkoor`[^forked-benchmarkoor] starts as a client container. To answer `engine_proveStatelessValidator`, it submits the stateless input to the cluster.
+- `provoor estimate` executes the guest program of a finished run on the input of each test, in an [ere-server](https://github.com/eth-act/ere) container. It records what one execution costs.
 - The forwarder verifies every proof with the ere verifier against the `.vk` published beside the guest ELF. A test passes only when the verified public values match the expected output.
 - Both `up` and `serve` check the key derived from the ELF against the configured one at startup. A mismatch stops both before the first measured proof.
 
@@ -170,6 +171,31 @@ The forwarder does these steps at startup.
 - Run the benchmark on the coordinator host, so the stateless input reaches the cluster over loopback.
 - Forwarder flags travel through the instance `extra_args`. The run configurations set `ready_timeout: 15m`, since the forwarder listens only after the warmup.
 - Results land in `provoor-runs/results` and render in the benchmarkoor UI.
+
+## Estimate cost
+
+```sh
+./provoor estimate provoor-runs/results/runs/<run_id>
+```
+
+| Flag            | Default                       | Meaning                                       |
+| --------------- | ----------------------------- | --------------------------------------------- |
+| `--image`       | the ere-server of the zkVM    | ere-server image                              |
+| `--concurrency` | `min(16, cores)`              | concurrent estimations against the one server |
+
+The command does these steps.
+
+1. Read `config.json` of the run for the `zkvm` label, the `--elf` argument of the instance, and the suite hash.
+2. Read `result.json` for the test names, and `result.estimate.json` for the tests an earlier command estimated.
+3. Prepare the EEST fixtures the suite `summary.json` names, in the benchmarkoor cache `~/.cache/benchmarkoor`. A release the cache does not hold downloads first.
+4. Pull the ere-server image and start it on the guest ELF, then estimate every remaining test.
+
+- The default image is `ghcr.io/eth-act/ere/ere-server-<zkvm>:0.18.0`, the ere release the proof verifier also comes from.
+- The estimation runs on the CPU of the local Docker daemon, so it needs neither a cluster nor a GPU.
+- The input of a test is the stateless input of the benchmark block of its fixture, the bytes the benchmark proves.
+- `result.estimate.json` carries `zkvm`, `image`, `elf_url` and `elf_sha256`, and a `tests` map of the cost per component and the peak heap use. It also carries a `failures` map of the guest error messages. Each zkVM names its own cost components.
+- The command saves the artifact every 50 estimations, so a stopped command continues where it stopped. It estimates a test under `failures` again. It stops when the artifact holds estimations of another image or another ELF.
+- A guest failure is recorded and the command continues. Every other failure stops it.
 
 ## Publish results
 

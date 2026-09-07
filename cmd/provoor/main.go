@@ -11,12 +11,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/han0110/provoor/internal/cluster"
+	"github.com/han0110/provoor/internal/estimate"
 	"github.com/han0110/provoor/internal/openvm"
 	"github.com/han0110/provoor/internal/serve"
 	"github.com/han0110/provoor/internal/zisk"
@@ -45,6 +47,7 @@ func main() {
 		psCommand(),
 		logsCommand(),
 		serveCommand(),
+		estimateCommand(),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -320,5 +323,26 @@ func serveCommand() *cobra.Command {
 	for _, flag := range []string{"zkvm", "stateless-validator", "elf", "vk", "coordinator-endpoint"} {
 		_ = cmd.MarkFlagRequired(flag)
 	}
+	return cmd
+}
+
+func estimateCommand() *cobra.Command {
+	var (
+		image       string
+		concurrency int
+	)
+	cmd := &cobra.Command{
+		Use:   "estimate <run-dir>",
+		Short: "Estimates the proving cost of every test of a benchmark run",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if concurrency < 1 {
+				return fmt.Errorf("concurrency %d is not a positive count", concurrency)
+			}
+			return estimate.Run(cmd.Context(), args[0], image, concurrency, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&image, "image", "", "ere-server image, by default the one of the run's zkVM")
+	cmd.Flags().IntVarP(&concurrency, "concurrency", "c", min(16, runtime.NumCPU()), "concurrent estimations")
 	return cmd
 }
