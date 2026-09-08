@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/han0110/provoor/compare/v0.7.0...v0.8.0) (2026-09-08)
+
+
+### Features
+
+* collect the SM clock and the clock event reasons ([#28](https://github.com/han0110/provoor/issues/28)) ([a1b327e](https://github.com/han0110/provoor/commit/a1b327ec16cddb54f7b78e639b725a1221a7bdcd))
+
 ## [0.7.0](https://github.com/han0110/provoor/compare/v0.6.1...v0.7.0) (2026-09-07)
 
 
