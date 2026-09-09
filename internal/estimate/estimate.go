@@ -87,13 +87,23 @@ func Run(ctx context.Context, runDir string, image string, concurrency int, outp
 	if err := checkResumable(result, image, elfSHA256); err != nil {
 		return err
 	}
+	result.Zkvm, result.Image = config.Zkvm, image
+	result.ELFURL, result.ELFSHA256 = config.ELFSource, elfSHA256
+	reused, err := reuseSiblings(runDir, names, result, image, elfSHA256)
+	if err != nil {
+		return err
+	}
+	if reused > 0 {
+		if err := writeArtifact(path, result); err != nil {
+			return err
+		}
+		fmt.Fprintf(output, "estimate: reused %d estimations of earlier runs\n", reused)
+	}
 	pending := pendingTests(names, result)
 	if len(pending) == 0 {
 		fmt.Fprintln(output, "estimate: nothing to do")
 		return nil
 	}
-	result.Zkvm, result.Image = config.Zkvm, image
-	result.ELFURL, result.ELFSHA256 = config.ELFSource, elfSHA256
 
 	fixtures, err := prepareFixtures(ctx, runDir, config.SuiteHash)
 	if err != nil {
@@ -190,27 +200,64 @@ func estimateAll(ctx context.Context, client *ereserver.Client, fixtures string,
 	return nil
 }
 
-// record files one outcome, dropping the failure an earlier attempt recorded.
+// record files one outcome.
 func record(result *artifact, done outcome) {
 	if done.guest != nil {
 		result.Failures[done.name] = done.guest.Message
 		return
 	}
 	result.Tests[done.name] = done.cost
-	delete(result.Failures, done.name)
 }
 
-// pendingTests are the tests the artifact holds no cost for. A recorded
-// failure is estimated again, since a new server can succeed where an earlier
-// one failed.
+// pendingTests are the tests the artifact holds neither a cost nor a failure
+// for. A recorded failure is a guest exit on the test's input, so it stays.
 func pendingTests(names []string, result *artifact) map[string]struct{} {
 	pending := make(map[string]struct{}, len(names))
 	for _, name := range names {
-		if _, ok := result.Tests[name]; !ok {
+		_, estimated := result.Tests[name]
+		_, failed := result.Failures[name]
+		if !estimated && !failed {
 			pending[name] = struct{}{}
 		}
 	}
 	return pending
+}
+
+// reuseSiblings copies into the artifact every estimation the run lacks from
+// the artifacts of the other runs in the same results directory, when those
+// hold estimations of the same image and ELF. A rerun of a guest then starts
+// from the estimations of the earlier run.
+func reuseSiblings(runDir string, names []string, result *artifact, image, elfSHA256 string) (int, error) {
+	runDir = filepath.Clean(runDir)
+	parent := filepath.Dir(runDir)
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return 0, err
+	}
+	reused := 0
+	for _, entry := range entries {
+		sibling := filepath.Join(parent, entry.Name())
+		if !entry.IsDir() || sibling == runDir {
+			continue
+		}
+		other, err := readArtifact(filepath.Join(sibling, artifactName))
+		if err != nil {
+			return 0, err
+		}
+		if other.Image != image || other.ELFSHA256 != elfSHA256 {
+			continue
+		}
+		for name := range pendingTests(names, result) {
+			if cost, ok := other.Tests[name]; ok {
+				result.Tests[name] = cost
+				reused++
+			} else if message, ok := other.Failures[name]; ok {
+				result.Failures[name] = message
+				reused++
+			}
+		}
+	}
+	return reused, nil
 }
 
 // checkResumable rejects an artifact an earlier command filled under another

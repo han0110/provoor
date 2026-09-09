@@ -186,7 +186,7 @@ The forwarder does these steps at startup.
 The command does these steps.
 
 1. Read `config.json` of the run for the `zkvm` label, the `--elf` argument of the instance, and the suite hash.
-2. Read `result.json` for the test names, and `result.estimate.json` for the tests an earlier command estimated.
+2. Read `result.json` for the test names, and `result.estimate.json` for the tests an earlier command estimated. Copy the estimations of the other runs in the results directory that used the same image and ELF. A rerun of a guest then starts where the earlier run ended.
 3. Prepare the EEST fixtures the suite `summary.json` names, in the benchmarkoor cache `~/.cache/benchmarkoor`. A release the cache does not hold downloads first.
 4. Pull the ere-server image and start it on the guest ELF, then estimate every remaining test.
 
@@ -194,7 +194,7 @@ The command does these steps.
 - The estimation runs on the CPU of the local Docker daemon, so it needs neither a cluster nor a GPU.
 - The input of a test is the stateless input of the benchmark block of its fixture, the bytes the benchmark proves.
 - `result.estimate.json` carries `zkvm`, `image`, `elf_url` and `elf_sha256`, and a `tests` map of the cost per component and the peak heap use. It also carries a `failures` map of the guest error messages. Each zkVM names its own cost components.
-- The command saves the artifact every 50 estimations, so a stopped command continues where it stopped. It estimates a test under `failures` again. It stops when the artifact holds estimations of another image or another ELF.
+- The command saves the artifact every 50 estimations, so a stopped command continues where it stopped. A test under `failures` is final, so remove it from the artifact to estimate it again. The command stops when the artifact holds estimations of another image or another ELF.
 - A guest failure is recorded and the command continues. Every other failure stops it.
 
 ## Publish results
