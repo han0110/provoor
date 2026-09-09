@@ -121,17 +121,26 @@ func prepareFixtures(ctx context.Context, runDir, suiteHash string) (string, err
 	// does not print.
 	log := logrus.New()
 	log.SetOutput(io.Discard)
-	source := executor.NewEESTSource(log, &config.EESTFixturesSource{
-		GitHubRepo:     summary.Source.EEST.GitHubRepo,
-		GitHubRelease:  summary.Source.EEST.GitHubRelease,
-		FixturesURL:    summary.Source.EEST.FixturesURL,
-		FixturesSubdir: summary.Source.EEST.FixturesSubdir,
-	}, cacheDir, nil, "")
+	source := executor.NewEESTSource(log, eestSourceConfig(summary.Source.EEST), cacheDir, nil, "")
 	prepared, err := source.Prepare(ctx)
 	if err != nil {
 		return "", err
 	}
 	return prepared.BasePath, nil
+}
+
+// eestSourceConfig rebuilds the fixtures source a suite summary records, for
+// the remote modes the runner can prepare again on this host.
+func eestSourceConfig(info *executor.EESTSourceInfo) *config.EESTFixturesSource {
+	return &config.EESTFixturesSource{
+		GitHubRepo:            info.GitHubRepo,
+		GitHubRelease:         info.GitHubRelease,
+		FixturesURL:           info.FixturesURL,
+		FixturesSubdir:        info.FixturesSubdir,
+		R2BucketURL:           info.R2BucketURL,
+		R2BucketStartingBlock: info.R2BucketStartingBlock,
+		R2BucketBlocks:        info.R2BucketBlocks,
+	}
 }
 
 // walkFixtures parses every fixture file under dir once and sends the input of

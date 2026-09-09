@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ethpandaops/benchmarkoor/pkg/eest"
+	"github.com/ethpandaops/benchmarkoor/pkg/executor"
 )
 
 func TestParseRunConfig(t *testing.T) {
@@ -115,4 +116,20 @@ const fixtureName = "tests/benchmark/example/test_input.py::test_input[fork_Amst
 // fixtureFile is one fixture file holding one blockchain-test fixture.
 func fixtureFile(blocks string) string {
 	return `{"` + fixtureName + `": {"_info": {"fixture-format": "blockchain_test"}, "blocks": ` + blocks + `}}`
+}
+
+func TestEESTSourceConfig(t *testing.T) {
+	info := &executor.EESTSourceInfo{
+		FixturesSubdir:        "blockchain_tests",
+		R2BucketURL:           "https://example.r2.dev/devnets/devnet-8",
+		R2BucketStartingBlock: 100000,
+		R2BucketBlocks:        1000,
+	}
+	got := eestSourceConfig(info)
+	if !got.UseR2Bucket() || got.R2BucketStartingBlock != 100000 || got.R2BucketBlocks != 1000 {
+		t.Fatalf("r2 bucket fields dropped: %+v", got)
+	}
+	if got.FixturesSubdir != "blockchain_tests" {
+		t.Fatalf("fixtures subdir dropped: %+v", got)
+	}
 }
