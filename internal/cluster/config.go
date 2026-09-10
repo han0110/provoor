@@ -75,6 +75,11 @@ type Telemetry struct {
 type Sidecar struct {
 	SSH  string `yaml:"ssh"`
 	Kind string `yaml:"kind"`
+	// NVHostEngine is the address of an nv-hostengine the dcgm-exporter
+	// sidecar reads, such as 127.0.0.1:5555 for the node's own
+	// nvidia-dcgm.service. Empty embeds an engine in the sidecar, which then
+	// takes every GPU and SYS_ADMIN, and needs nothing from the host.
+	NVHostEngine string `yaml:"nv_hostengine"`
 }
 
 // Zkvm reads the zkvm key of a configuration file, which selects the package
@@ -203,25 +208,30 @@ func (t Telemetry) interval() time.Duration {
 	return time.Duration(t.IntervalMs) * time.Millisecond
 }
 
-// Validate rejects an unknown kind, a repeated sidecar, or a host the
-// deployment does not dial.
+// Validate rejects an unknown kind, a host engine on a sidecar that reads
+// none, a repeated sidecar, or a host the deployment does not dial.
 func (t Telemetry) Validate(destinations []string) error {
 	dialed := map[string]bool{}
 	for _, destination := range destinations {
 		dialed[destination] = true
 	}
-	seen := map[Sidecar]bool{}
+	type placement struct{ ssh, kind string }
+	seen := map[placement]bool{}
 	for i, sidecar := range t.Sidecars {
 		if sidecar.Kind != sidecarDCGM && sidecar.Kind != sidecarNode {
 			return fmt.Errorf("telemetry sidecar %d kind %q is not %s or %s", i, sidecar.Kind, sidecarDCGM, sidecarNode)
 		}
+		if sidecar.NVHostEngine != "" && sidecar.Kind != sidecarDCGM {
+			return fmt.Errorf("telemetry sidecar %d sets nv_hostengine, which only %s reads", i, sidecarDCGM)
+		}
 		if !dialed[sidecar.SSH] {
 			return fmt.Errorf("telemetry sidecar %d names host %q, which runs no coordinator or worker", i, sidecar.SSH)
 		}
-		if seen[sidecar] {
+		at := placement{sidecar.SSH, sidecar.Kind}
+		if seen[at] {
 			return fmt.Errorf("telemetry sidecar %s on host %q repeats", sidecar.Kind, sidecar.SSH)
 		}
-		seen[sidecar] = true
+		seen[at] = true
 	}
 	return nil
 }

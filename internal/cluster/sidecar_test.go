@@ -11,10 +11,19 @@ import (
 	"time"
 )
 
+// TestDCGMSidecarSpec covers the default, an embedded host engine, which
+// needs every GPU, SYS_ADMIN for the profiling fields, and root.
 func TestDCGMSidecarSpec(t *testing.T) {
-	spec := sidecarSpec(sidecarDCGM, 250*time.Millisecond)
-	if len(spec.HostConfig.Resources.DeviceRequests) != 0 || len(spec.HostConfig.CapAdd) != 0 {
-		t.Errorf("the sidecar must need no device and no capability, got %+v", spec.HostConfig.Resources)
+	spec := sidecarSpec(Sidecar{Kind: sidecarDCGM}, 250*time.Millisecond)
+	requests := spec.HostConfig.Resources.DeviceRequests
+	if len(requests) != 1 || requests[0].Count != -1 {
+		t.Errorf("device requests = %+v, want every GPU", requests)
+	}
+	if len(spec.HostConfig.CapAdd) != 1 || spec.HostConfig.CapAdd[0] != "SYS_ADMIN" {
+		t.Errorf("cap add = %v, want SYS_ADMIN", spec.HostConfig.CapAdd)
+	}
+	if spec.Config.User != "" {
+		t.Errorf("user = %q, want root", spec.Config.User)
 	}
 	if spec.HostConfig.NetworkMode != "host" || len(spec.HostConfig.PortBindings) != 0 {
 		t.Errorf("network mode = %q with %d bindings, want host and none", spec.HostConfig.NetworkMode, len(spec.HostConfig.PortBindings))
@@ -23,9 +32,11 @@ func TestDCGMSidecarSpec(t *testing.T) {
 		t.Errorf("cap drop = %v, want ALL", spec.HostConfig.CapDrop)
 	}
 	cmd := strings.Join(spec.Config.Cmd, " ")
+	if strings.Contains(cmd, "-r ") {
+		t.Errorf("command %q names a remote engine, want an embedded one", cmd)
+	}
 	for _, want := range []string{
 		"-f " + dcgmFieldsPath,
-		"-r " + dcgmHostEngine,
 		"-a :" + strconv.Itoa(dcgmPort),
 		"-c 250",
 		"--disable-startup-validate",
@@ -40,8 +51,23 @@ func TestDCGMSidecarSpec(t *testing.T) {
 	}
 }
 
+// TestDCGMSidecarSpecRemote covers a configured host engine, which the sidecar
+// reaches over loopback with no GPU, capability, or root.
+func TestDCGMSidecarSpecRemote(t *testing.T) {
+	spec := sidecarSpec(Sidecar{Kind: sidecarDCGM, NVHostEngine: "127.0.0.1:5555"}, 250*time.Millisecond)
+	if len(spec.HostConfig.Resources.DeviceRequests) != 0 || len(spec.HostConfig.CapAdd) != 0 {
+		t.Errorf("the sidecar must need no device and no capability, got %+v", spec.HostConfig)
+	}
+	if spec.Config.User != "65534:65534" {
+		t.Errorf("user = %q, want nobody", spec.Config.User)
+	}
+	if cmd := strings.Join(spec.Config.Cmd, " "); !strings.Contains(cmd, "-r 127.0.0.1:5555") {
+		t.Errorf("command %q does not name the host engine", cmd)
+	}
+}
+
 func TestNodeSidecarSpec(t *testing.T) {
-	spec := sidecarSpec(sidecarNode, 0)
+	spec := sidecarSpec(Sidecar{Kind: sidecarNode}, 0)
 	cmd := strings.Join(spec.Config.Cmd, " ")
 	for _, want := range []string{
 		"--web.listen-address=:" + strconv.Itoa(nodePort),

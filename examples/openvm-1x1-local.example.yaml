@@ -1,4 +1,5 @@
-# The coordinator and one worker on GPU 0 of the local Docker daemon, which an omitted ssh selects.
+# The coordinator, one worker on GPU 0, and both sidecars on the local Docker daemon, which an omitted ssh selects.
+# The DCGM sidecar embeds its host engine, so the host needs no nvidia-dcgm.service.
 zkvm: openvm
 zkvm_version: 2.1.0-preview
 
@@ -8,6 +9,11 @@ guests:
 
 workers:
   - { gpu: { device_ids: [0] } }
+
+telemetry:
+  sidecars:
+    - kind: dcgm-exporter
+    - kind: node-exporter
 
 config:
   # Use 14.5 GiB for safety margin to avoid prover VRAM OOM.
