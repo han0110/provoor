@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.0](https://github.com/han0110/provoor/compare/v0.8.0...v0.9.0) (2026-09-10)
+
+
+### Features
+
+* benchmark live devnet blocks from an R2 bucket catalog ([#33](https://github.com/han0110/provoor/issues/33)) ([a282e59](https://github.com/han0110/provoor/commit/a282e59f672660e5960292526e1941c4b4036a6c))
+* dcgm-exporter use embedded nv-hostengine by default ([#35](https://github.com/han0110/provoor/issues/35)) ([3119210](https://github.com/han0110/provoor/commit/311921025cdc170ee76a3f26915bf1b8f212e457))
+
+
+### Bug Fixes
+
+* reuse estimation ([#31](https://github.com/han0110/provoor/issues/31)) ([6927048](https://github.com/han0110/provoor/commit/6927048c6506bd65df84d20cff5884e1c79c9e38))
+
 ## [0.8.0](https://github.com/han0110/provoor/compare/v0.7.0...v0.8.0) (2026-09-08)
 
 
