@@ -1,7 +1,7 @@
 //go:build dockergpu
 
 // These tests run the real sidecars against the local Docker daemon. The DCGM
-// ones need an NVIDIA GPU and a host engine on 127.0.0.1:5555.
+// ones need an NVIDIA GPU and no host engine, since the sidecar embeds one.
 //
 //	go test ./internal/cluster/ -tags dockergpu -v -timeout 10m
 package cluster
@@ -40,7 +40,7 @@ func runSidecar(t *testing.T, cli *client.Client, kind, node string, interval ti
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	defer cancel()
 	t.Cleanup(func() { _ = stopSidecar(context.Background(), cli, kind, node) })
-	if err := startSidecar(ctx, cli, kind, node, interval); err != nil {
+	if err := startSidecar(ctx, cli, Sidecar{Kind: kind}, node, interval); err != nil {
 		t.Fatalf("starting the %s sidecar: %v", kind, err)
 	}
 }

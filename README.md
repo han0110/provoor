@@ -73,27 +73,28 @@ scripts/provoor.sh down --config examples/<zkvm>-4x4.example.yaml
 
 ### Configuration
 
-| Key                         | Default                          | Meaning                                                                            |
-| --------------------------- | -------------------------------- | ---------------------------------------------------------------------------------- |
-| `zkvm`                      | required                         | a value from [zkVMs](#zkvms), selects the package that reads the rest              |
-| `zkvm_version`              | required                         | zkVM release the cluster proves under, names the cache volumes                     |
-| `image`                     | `ghcr.io/han0110/provoor/<zkvm>` | cluster image                                                                      |
-| `image_tag`                 | `zkvm_version`                   | cluster image tag                                                                  |
-| `verbose`                   | `0`                              | container log level, 0 info, 1 debug, 2 trace                                      |
-| `guests[].elf`              | required                         | guest ELF, a local path or an http(s) URL                                          |
-| `guests[].vk`               | required                         | verifying key published beside the ELF, a local path or an http(s) URL             |
-| `coordinator.ssh`           | local daemon                     | SSH destination of the coordinator host                                            |
-| `coordinator.ip`            | none                             | address the workers on other hosts dial, required once a worker is on another host |
-| `workers`                   | required, at least one           | per zkVM, see [zkVMs](#zkvms)                                                      |
-| `telemetry.interval_ms`     | `100`                            | DCGM sampling period                                                               |
-| `telemetry.sidecars[].ssh`  | local daemon                     | host of one sidecar, which runs a coordinator or worker                            |
-| `telemetry.sidecars[].kind` | required                         | `dcgm-exporter` or `node-exporter`                                                 |
-| `config`                    | per zkVM                         | prover settings, see [zkVMs](#zkvms)                                               |
+| Key                                  | Default                          | Meaning                                                                                                                          |
+| ------------------------------------ | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `zkvm`                               | required                         | a value from [zkVMs](#zkvms), selects the package that reads the rest                                                            |
+| `zkvm_version`                       | required                         | zkVM release the cluster proves under, names the cache volumes                                                                   |
+| `image`                              | `ghcr.io/han0110/provoor/<zkvm>` | cluster image                                                                                                                    |
+| `image_tag`                          | `zkvm_version`                   | cluster image tag                                                                                                                |
+| `verbose`                            | `0`                              | container log level, 0 info, 1 debug, 2 trace                                                                                    |
+| `guests[].elf`                       | required                         | guest ELF, a local path or an http(s) URL                                                                                        |
+| `guests[].vk`                        | required                         | verifying key published beside the ELF, a local path or an http(s) URL                                                           |
+| `coordinator.ssh`                    | local daemon                     | SSH destination of the coordinator host                                                                                          |
+| `coordinator.ip`                     | none                             | address the workers on other hosts dial, required once a worker is on another host                                               |
+| `workers`                            | required, at least one           | per zkVM, see [zkVMs](#zkvms)                                                                                                    |
+| `telemetry.interval_ms`              | `100`                            | DCGM sampling period                                                                                                             |
+| `telemetry.sidecars[].ssh`           | local daemon                     | host of one sidecar, which runs a coordinator or worker                                                                          |
+| `telemetry.sidecars[].kind`          | required                         | `dcgm-exporter` or `node-exporter`                                                                                               |
+| `telemetry.sidecars[].nv_hostengine` | embedded engine                  | `host:port` of an `nv-hostengine` a `dcgm-exporter` sidecar reads, such as `127.0.0.1:5555` for the node's `nvidia-dcgm.service` |
+| `config`                             | per zkVM                         | prover settings, see [zkVMs](#zkvms)                                                                                             |
 
-| Sidecar kind    | Image                                                     | Port | Container             | Needs                                     |
-| --------------- | --------------------------------------------------------- | ---- | --------------------- | ----------------------------------------- |
-| `dcgm-exporter` | `nvcr.io/nvidia/k8s/dcgm-exporter:4.6.0-4.8.3-distroless` | 9401 | `provoor-dcgm-<host>` | `nvidia-dcgm.service` on `127.0.0.1:5555` |
-| `node-exporter` | `quay.io/prometheus/node-exporter:v1.12.1`                | 9402 | `provoor-node-<host>` | nothing                                   |
+| Sidecar kind    | Image                                                     | Port | Container             | Needs                                                   |
+| --------------- | --------------------------------------------------------- | ---- | --------------------- | ------------------------------------------------------- |
+| `dcgm-exporter` | `nvcr.io/nvidia/k8s/dcgm-exporter:4.6.0-4.8.3-distroless` | 9401 | `provoor-dcgm-<host>` | the NVIDIA runtime, or the engine `nv_hostengine` names |
+| `node-exporter` | `quay.io/prometheus/node-exporter:v1.12.1`                | 9402 | `provoor-node-<host>` | nothing                                                 |
 
 - `scripts/provoor.sh` materializes a `*.example.yaml` template to the sibling `.yaml` before the CLI reads it. The CLI reads every other configuration as written.
 - An unbraced `$NAME` placeholder or an unset `.env` variable stops the run.
@@ -214,19 +215,19 @@ The command does these steps.
 3. Run `scripts/build.sh provoor`.
 4. Run `scripts/build.sh benchmarkoor`.
 
-| Tool                                      | Needed by                              |
-| ----------------------------------------- | -------------------------------------- |
-| Go 1.24.5 or later                        | build                                  |
-| C compiler                                | cgo link of `libere_verifier_c`        |
-| make                                      | `scripts/build.sh benchmarkoor`        |
-| envsubst (GNU gettext)                    | `scripts/config.sh`                    |
-| python3                                   | `scripts/desensitize.sh`               |
-| rsync                                     | `scripts/sync.sh`                      |
-| curl, tar, sha256sum or shasum            | `scripts/fetch-verifier.sh`            |
-| ssh                                       | cluster hosts, `~/.ssh/config` applies |
-| Docker with the NVIDIA container runtime  | every cluster host                     |
-| journalctl on every cluster host          | `provoor logs dump`                    |
-| `nvidia-dcgm.service` on `127.0.0.1:5555` | hosts with a `dcgm-exporter` sidecar   |
+| Tool                                      | Needed by                                                      |
+| ----------------------------------------- | -------------------------------------------------------------- |
+| Go 1.24.5 or later                        | build                                                          |
+| C compiler                                | cgo link of `libere_verifier_c`                                |
+| make                                      | `scripts/build.sh benchmarkoor`                                |
+| envsubst (GNU gettext)                    | `scripts/config.sh`                                            |
+| python3                                   | `scripts/desensitize.sh`                                       |
+| rsync                                     | `scripts/sync.sh`                                              |
+| curl, tar, sha256sum or shasum            | `scripts/fetch-verifier.sh`                                    |
+| ssh                                       | cluster hosts, `~/.ssh/config` applies                         |
+| Docker with the NVIDIA container runtime  | every cluster host                                             |
+| journalctl on every cluster host          | `provoor logs dump`                                            |
+| `nvidia-dcgm.service` on `127.0.0.1:5555` | hosts whose `dcgm-exporter` sidecar sets `nv_hostengine` to it |
 
 ### Scripts
 

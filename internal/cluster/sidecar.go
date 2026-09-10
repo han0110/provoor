@@ -14,15 +14,15 @@ import (
 	"github.com/docker/docker/client"
 )
 
-// The DCGM sidecar reads the node's own nvidia-dcgm.service on loopback and
-// publishes GPU counters. Release 4.8.3 is the floor, the first that names
-// the cumulative DCGM_FI_PROF_*_TOTAL fields, and NVIDIA publishes it for
-// DCGM 4.6 only as a distroless image. The node sidecar publishes processor
-// and memory counters and needs nothing from the host.
+// The DCGM sidecar publishes GPU counters from an embedded host engine, or
+// from the node's own nvidia-dcgm.service when the configuration names it.
+// Release 4.8.3 is the floor, the first that names the cumulative
+// DCGM_FI_PROF_*_TOTAL fields, and NVIDIA publishes it for DCGM 4.6 only as
+// a distroless image. The node sidecar publishes processor and memory
+// counters and needs nothing from the host.
 const (
 	dcgmImage      = "nvcr.io/nvidia/k8s/dcgm-exporter:4.6.0-4.8.3-distroless"
 	dcgmPort       = 9401
-	dcgmHostEngine = "127.0.0.1:5555"
 	dcgmFieldsPath = "/etc/dcgm-exporter/provoor.csv"
 	nodeImage      = "quay.io/prometheus/node-exporter:v1.12.1"
 	nodePort       = 9402
@@ -55,7 +55,7 @@ func StartSidecars(ctx context.Context, cfg Telemetry, hosts *Hosts, out *Output
 	for _, sidecar := range cfg.Sidecars {
 		node := HostName(sidecar.SSH)
 		out.Printf("[%s] starting %s sidecar", node, sidecar.Kind)
-		if err := startSidecar(ctx, hosts.Client(sidecar.SSH), sidecar.Kind, node, cfg.interval()); err != nil {
+		if err := startSidecar(ctx, hosts.Client(sidecar.SSH), sidecar, node, cfg.interval()); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -104,8 +104,9 @@ func sidecarName(kind, node string) string {
 
 // startSidecar runs one sidecar on one node, replacing a leftover from an
 // earlier deployment so the field set always matches this build.
-func startSidecar(ctx context.Context, cli *client.Client, kind, node string, interval time.Duration) error {
-	spec := sidecarSpec(kind, interval)
+func startSidecar(ctx context.Context, cli *client.Client, sidecar Sidecar, node string, interval time.Duration) error {
+	kind := sidecar.Kind
+	spec := sidecarSpec(sidecar, interval)
 	spec.Name = sidecarName(kind, node)
 	spec.HostConfig.LogConfig = Journald(spec.Name)
 	// A pull failure is fatal only when the host has no copy already.
@@ -130,17 +131,18 @@ func stopSidecar(ctx context.Context, cli *client.Client, kind, node string) err
 	return err
 }
 
-// sidecarSpec builds the sidecar of one kind, which needs no GPU, capability,
-// or host mount. Host networking reaches the loopback DCGM engine and
-// publishes the port on the node's addresses.
-func sidecarSpec(kind string, interval time.Duration) Container {
+// sidecarSpec builds one sidecar. Host networking reaches a loopback DCGM
+// engine and publishes the port on the node's addresses. Only a DCGM sidecar
+// with an embedded engine takes the GPUs, SYS_ADMIN for the profiling
+// fields, and root for the driver device nodes.
+func sidecarSpec(sidecar Sidecar, interval time.Duration) Container {
 	hostConfig := &container.HostConfig{
 		NetworkMode:   "host",
 		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
 		CapDrop:       []string{"ALL"},
 		SecurityOpt:   []string{"no-new-privileges"},
 	}
-	if kind == sidecarNode {
+	if sidecar.Kind == sidecarNode {
 		hostConfig.ReadonlyRootfs = true
 		return Container{
 			Config: &container.Config{
@@ -155,24 +157,32 @@ func sidecarSpec(kind string, interval time.Duration) Container {
 			HostConfig: hostConfig,
 		}
 	}
+	cmd := []string{
+		"-f", dcgmFieldsPath,
+		"-a", ":" + strconv.Itoa(dcgmPort),
+		"-c", strconv.Itoa(int(interval.Milliseconds())),
+		// The startup check runs ldconfig, which the distroless image
+		// lacks, and skipping it lets the sidecar run with no GPU.
+		"--disable-startup-validate",
+		// Node identity comes from the scraper, so no hostname reaches
+		// published results.
+		"--no-hostname",
+	}
+	user := ""
+	if sidecar.NVHostEngine != "" {
+		cmd = append(cmd, "-r", sidecar.NVHostEngine)
+		user = "65534:65534"
+	} else {
+		hostConfig.CapAdd = []string{"SYS_ADMIN"}
+		hostConfig.Resources.DeviceRequests = []container.DeviceRequest{{Count: -1, Capabilities: [][]string{{"gpu"}}}}
+	}
 	// The root filesystem stays writable because Docker refuses to extract
 	// the field list into a read-only container.
 	return Container{
 		Config: &container.Config{
 			Image: dcgmImage,
-			User:  "65534:65534",
-			Cmd: []string{
-				"-f", dcgmFieldsPath,
-				"-r", dcgmHostEngine,
-				"-a", ":" + strconv.Itoa(dcgmPort),
-				"-c", strconv.Itoa(int(interval.Milliseconds())),
-				// The startup check runs ldconfig, which the distroless image
-				// lacks, and skipping it lets the sidecar run with no GPU.
-				"--disable-startup-validate",
-				// Node identity comes from the scraper, so no hostname reaches
-				// published results.
-				"--no-hostname",
-			},
+			User:  user,
+			Cmd:   cmd,
 		},
 		HostConfig: hostConfig,
 		Files:      map[string][]byte{dcgmFieldsPath: dcgmFields},

@@ -141,12 +141,16 @@ func TestTelemetryValidate(t *testing.T) {
 		"unknown kind": {Sidecars: []Sidecar{{Kind: "cadvisor"}}},
 		"unknown host": {Sidecars: []Sidecar{{SSH: "user@rig-03", Kind: sidecarDCGM}}},
 		"repeat":       {Sidecars: []Sidecar{{Kind: sidecarNode}, {Kind: sidecarNode}}},
+		"repeat with another engine": {Sidecars: []Sidecar{
+			{Kind: sidecarDCGM}, {Kind: sidecarDCGM, NVHostEngine: "127.0.0.1:5555"},
+		}},
+		"engine on a node exporter": {Sidecars: []Sidecar{{Kind: sidecarNode, NVHostEngine: "127.0.0.1:5555"}}},
 	} {
 		if err := telemetry.Validate(hosts); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
 	}
-	both := Telemetry{Sidecars: []Sidecar{{Kind: sidecarDCGM}, {Kind: sidecarNode}, {SSH: "user@rig-02", Kind: sidecarDCGM}}}
+	both := Telemetry{Sidecars: []Sidecar{{Kind: sidecarDCGM}, {Kind: sidecarNode}, {SSH: "user@rig-02", Kind: sidecarDCGM, NVHostEngine: "127.0.0.1:5555"}}}
 	if err := both.Validate(hosts); err != nil {
 		t.Errorf("both kinds on one host and one on another: %v", err)
 	}
