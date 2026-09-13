@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.0](https://github.com/han0110/provoor/compare/v0.8.0...v0.9.0) (2026-09-13)
+
+
+### Features
+
+* benchmark live devnet blocks from an R2 bucket catalog ([#33](https://github.com/han0110/provoor/issues/33)) ([a282e59](https://github.com/han0110/provoor/commit/a282e59f672660e5960292526e1941c4b4036a6c))
+* dcgm-exporter use embedded nv-hostengine by default ([#35](https://github.com/han0110/provoor/issues/35)) ([3119210](https://github.com/han0110/provoor/commit/311921025cdc170ee76a3f26915bf1b8f212e457))
+* update ere-guests to v0.17.0 ([#36](https://github.com/han0110/provoor/issues/36)) ([027b78c](https://github.com/han0110/provoor/commit/027b78c637b1dc85facb4fea27a3ec8b1d6de2b6))
+
+
+### Bug Fixes
+
+* bump benchmarkoor to stream stateless fixtures ([#38](https://github.com/han0110/provoor/issues/38)) ([acc18ce](https://github.com/han0110/provoor/commit/acc18cea59754c99bf96079d2ae3a3317d1998c3))
+* reuse estimation ([#31](https://github.com/han0110/provoor/issues/31)) ([6927048](https://github.com/han0110/provoor/commit/6927048c6506bd65df84d20cff5884e1c79c9e38))
+
 ## [0.8.0](https://github.com/han0110/provoor/compare/v0.7.0...v0.8.0) (2026-09-08)
 
 
