@@ -143,7 +143,7 @@ func (f *fakeCoordinator) server() *httptest.Server {
 	})
 	mux.HandleFunc("GET /proof_pipeline/{uuid}", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"proof_start_time":"2026-09-03T10:00:00.000Z",` +
-			`"app_proofs":[{"worker_id":0,"completed_at_ms":1788429601700,"segment_start":24,"segment_end":24,"queue_wait_ms":200,"metered_time_ms":300,"prove_time_ms":1140,"fastfwd_time_ms":40,"stark_prove_time_ms":1100,"compression_time_ms":0,"sub_metrics":{"trace_gen_time_ms":40}}],` +
+			`"app_proofs":[{"worker_id":0,"dispatched_at_ms":1788429600010,"worker_start_ms":1788429600020,"worker_end_ms":1788429601690,"completed_at_ms":1788429601700,"segment_start":24,"segment_end":24,"queue_wait_ms":200,"metered_time_ms":300,"prove_time_ms":1140,"fastfwd_time_ms":40,"stark_prove_time_ms":1100,"compression_time_ms":0,"sub_metrics":{"trace_gen_time_ms":40}}],` +
 			`"leaf_proofs":[],"internal_proofs":[]}`))
 	})
 	mux.HandleFunc("GET /workers", func(w http.ResponseWriter, _ *http.Request) {

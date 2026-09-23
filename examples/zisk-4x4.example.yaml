@@ -1,11 +1,11 @@
 zkvm: zisk
-zkvm_version: 1.2.0-alpha
+zkvm_version: 1.3.0-alpha
 
 guests:
-  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.2.0-alpha.elf
-    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.2.0-alpha.vk
-  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-ethrex-zisk-v1.2.0-alpha.elf
-    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-ethrex-zisk-v1.2.0-alpha.vk
+  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.3.0-alpha.elf
+    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.3.0-alpha.vk
+  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-ethrex-zisk-v1.3.0-alpha.elf
+    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-ethrex-zisk-v1.3.0-alpha.vk
 
 coordinator:
   ssh: ${NODE1_SSH}

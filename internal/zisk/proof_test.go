@@ -34,7 +34,7 @@ type proof struct {
 
 // readFixture loads one testdata fixture, the zisk verifier fixtures ere
 // ships or the cluster-prefixed envelope, verifying key, and public values a
-// ZisK 1.2.0-alpha coordinator produced for the warmup block.
+// ZisK 1.3.0-alpha coordinator produced for the warmup block.
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	fixture, err := os.ReadFile(filepath.Join("testdata", name))
@@ -69,7 +69,7 @@ func appendU64Vec(buf []byte, words []uint64) []byte {
 func validEnvelope() envelope {
 	vkWords := []uint64{5, 6, 7, 8}
 	return envelope{
-		kind:         vadcopKindMinimal,
+		kind:         vadcopKindFinal,
 		hashFamily:   vadcopFinalHashFamily,
 		proofWords:   []uint64{1, 2, 3},
 		ziskVKWords:  []uint64{4, 300},
@@ -128,6 +128,10 @@ func decodeProof(t *testing.T, encoded []byte) proof {
 	}
 
 	decoded := proof{proofWords: words(), publicValues: words()}
+	if len(decoded.publicValues) == 0 || decoded.publicValues[0] != 1 {
+		t.Fatalf("public values do not open with the is_vadcop_final_proof flag")
+	}
+	decoded.publicValues = decoded.publicValues[1:]
 	decoded.compressed = encoded[offset] == 1
 	offset++
 	length := int(word())
@@ -169,7 +173,7 @@ func fixtureEnvelope(t *testing.T) envelope {
 	t.Helper()
 	decoded := decodeProof(t, readFixture(t, "proof.bin"))
 	return envelope{
-		kind:         vadcopKindMinimal,
+		kind:         vadcopKindFinal,
 		hashFamily:   vadcopFinalHashFamily,
 		proofWords:   decoded.proofWords,
 		ziskVKWords:  []uint64{9, 10, 11, 12},
@@ -183,7 +187,7 @@ func fixtureEnvelope(t *testing.T) envelope {
 // committed bytes widened word by word.
 func TestFixtureLayout(t *testing.T) {
 	decoded := decodeProof(t, readFixture(t, "proof.bin"))
-	if !decoded.compressed || decoded.hashFamily != vadcopFinalHashFamily {
+	if decoded.compressed || decoded.hashFamily != vadcopFinalHashFamily {
 		t.Fatalf("compressed = %v, hash family = %q", decoded.compressed, decoded.hashFamily)
 	}
 	if want := programVKWords + publicValuesWords; len(decoded.publicValues) != want {
@@ -214,7 +218,7 @@ func TestTranscodeProofRejects(t *testing.T) {
 		wantErr string
 	}{
 		{"plonk", func(e *envelope) { e.plonk = true }, "plonk"},
-		{"not minimal", func(e *envelope) { e.kind = 0 }, "vadcop"},
+		{"not final", func(e *envelope) { e.kind = 2 }, "vadcop"},
 		{"wrong hash", func(e *envelope) { e.hashFamily = "Poseidon2" }, "vadcop"},
 		{"short publics", func(e *envelope) { e.publicValues = e.publicValues[:programVKWords+publicValuesWords-1] }, "public values"},
 		{"short vk", func(e *envelope) { e.vkWords = e.vkWords[:3] }, "program vk"},

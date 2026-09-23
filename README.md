@@ -250,7 +250,7 @@ The command does these steps.
 | Image                             | Built from                       | Tag                              | Published by                                                   |
 | --------------------------------- | -------------------------------- | -------------------------------- | -------------------------------------------------------------- |
 | `ghcr.io/han0110/provoor/provoor` | `dockers/Dockerfile`             | the release version and `latest` | `.github/workflows/release.yaml` on each release               |
-| `ghcr.io/han0110/provoor/zisk`    | `dockers/zkvm/Dockerfile.zisk`   | `1.2.0-alpha`                    | `.github/workflows/publish-zkvm-image.yaml` on manual dispatch |
+| `ghcr.io/han0110/provoor/zisk`    | `dockers/zkvm/Dockerfile.zisk`   | `1.3.0-alpha`                    | `.github/workflows/publish-zkvm-image.yaml` on manual dispatch |
 | `ghcr.io/han0110/provoor/openvm`  | `dockers/zkvm/Dockerfile.openvm` | `2.1.0-preview`                  | `.github/workflows/publish-zkvm-image.yaml` on manual dispatch |
 
 ```sh

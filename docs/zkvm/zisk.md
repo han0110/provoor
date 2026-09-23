@@ -1,11 +1,11 @@
 # ZisK
 
-`zkvm: zisk` selects this zkVM. `examples/zisk-4x4.example.yaml` and `examples/zisk-1x1-local.example.yaml` deploy ZisK 1.2.0-alpha.
+`zkvm: zisk` selects this zkVM. `examples/zisk-4x4.example.yaml` and `examples/zisk-1x1-local.example.yaml` deploy ZisK 1.3.0-alpha.
 
 ## Image
 
 - `dockers/zkvm/Dockerfile.zisk` installs the `cargo_zisk_linux_amd64` release archive of ZisK under `/root/.zisk`.
-- It overlays `zisk-worker-gpu` and `zisk-coordinator` from han0110/zisk `15ac629d`, which caches the Main instruction table, serves the health endpoint, and reports the per task timings.
+- It overlays `zisk-worker-gpu` and `zisk-coordinator` from han0110/zisk `c979cd91`, which serves the health endpoint and reports the per task timings.
 - It builds `zisk-supervisor` from `cmd/zisk-supervisor`.
 
 ## Ports
@@ -31,7 +31,7 @@
 
 | Volume or bind                    | Mount point              | Holds                                                                                                                                                                         |
 | --------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zisk-proving-key-<zkvm_version>` | `/root/.zisk/provingKey` | the proving key from `https://storage.googleapis.com/zisk-setup/zisk-provingkey-<zkvm_version>.tar.gz` and its const-trees, mounted writable in the worker and the setup jobs |
+| `zisk-proving-key-<zkvm_version>` | `/root/.zisk/provingKey` | the proving key from `https://storage.googleapis.com/zisk-setup/zisk-provingkey-<zkvm_version>-blake3.tar.gz` and const-trees, mounted writable in the worker and setup jobs  |
 | `zisk-cache-<zkvm_version>`       | `/root/.zisk/cache`      | registered ELFs, ROM setup, and assembly emulators, addressed by ELF hash, mounted in the coordinator, the worker, and the program setup                                      |
 
 ## Configuration
@@ -64,7 +64,7 @@ The [README](../../README.md#configuration) lists the keys every zkVM shares.
 | restart request             | 30 s                                          | the request to the supervisor                                                         |
 | aggregation                 | 600 s                                         | `phase3_timeout_seconds`, counted from the first worker to finish                     |
 | submit retry                | 5 s                                           | the pause between refused submissions                                                 |
-| worker health check         | every 30 s, 10 s timeout, 10 min start period | kills the ranks when the worker reports itself unrecoverable                          |
+| worker health check         | every 30 s, 10 s timeout, 10 min start period | kills the ranks on an unrecoverable verdict or 19 failures in a row after an answer   |
 
 ## Behavior
 
@@ -74,7 +74,7 @@ The [README](../../README.md#configuration) lists the keys every zkVM shares.
 - The restart count of `zisk-coordinator` climbs by one per forwarder start as well as per failure.
 - The supervisor sends SIGTERM at once and SIGKILL 5 s later. A requested end with a clean exit reports 1, so the restart policy starts the replacement. A coordinator that fails on its own carries its own exit code, and a signaled one reports 128 plus the signal.
 - `serve` restarts the coordinator, registers the ELF, and runs the guest setup before it prints `stateless validator <name> registered, hash <id>`. The setup reads the cache, so the ROM and assembly generation stays outside a benchmark run.
-- `serve` reads `proof_start` and `tasks` off the `ExecutionStats` of every prove job, and `proof_timings` and `records_origin_age_ms` off each task. The fields make the `pipeline` of the metric line, one bar per witness build, per stage 1 contribution, per proof, and per root step of the contributions phase. A coordinator that reports no proof start, no task, or no record leaves it out.
+- `serve` reads `proof_start` and `tasks` off the `ExecutionStats` of every prove job, and `proof_timings` and the coordinator and worker stamps off each task. The fields make the `pipeline` of the metric line, one bar per witness build, per stage 1 contribution, per proof, and per root step of the contributions phase. A coordinator that reports no proof start, no task, or no record leaves it out.
 - The readiness wait returns at once, and the submit retry loop waits out a cluster that refuses the job.
 
 ## Security

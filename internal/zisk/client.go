@@ -311,7 +311,7 @@ func (c *Client) createProveJob(ctx context.Context, input []byte) (string, erro
 	job := &api.JobRequestMessage{JobKind: &api.JobKind{Kind: &api.JobKind_Prove{Prove: &api.ProveRequest{
 		HashId:    c.HashID,
 		Input:     &api.InputKind{Kind: &api.InputKind_Inline{Inline: &api.InputChunk{Data: framed}}},
-		ProofDest: api.ProofKind_PROOF_KIND_STARK_MINIMAL,
+		ProofDest: api.ProofKind_PROOF_KIND_STARK,
 	}}}}
 	submitted, err := c.api.JobRequest(ctx, job)
 	if err != nil {

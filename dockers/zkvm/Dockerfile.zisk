@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc-riscv64-unknown-elf \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-ARG ZISK_VERSION=1.2.0-alpha
+ARG ZISK_VERSION=1.3.0-alpha
 
 # The release archive has the layout ziskup installs. Extracted into
 # /root/.zisk it supplies the binaries, the ziskc and ziskclib archives, and
@@ -45,8 +45,8 @@ RUN curl -fSL "https://github.com/0xPolygonHermez/zisk/releases/download/v${ZISK
     && rm /tmp/zisk.tar.gz \
     && chmod +x /root/.zisk/bin/*
 
-# Overlay of the worker and the coordinator from han0110/zisk 15ac629d.
-RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-15ac629d4ffa2eb212acc5c79f5ed3b3c6f7ee12/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
+# Overlay of the worker and the coordinator from han0110/zisk c979cd91.
+RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-c979cd9104dbc1fb4c2184d69e4163b09d32ced7/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
     && tar --no-same-owner -xzf /tmp/zisk-patched.tar.gz -C /root/.zisk ./bin/zisk-worker-gpu ./bin/zisk-coordinator \
     && rm /tmp/zisk-patched.tar.gz \
     && chmod +x /root/.zisk/bin/zisk-worker-gpu /root/.zisk/bin/zisk-coordinator

@@ -22,15 +22,15 @@ const (
 	// halves publics_full concatenates.
 	programVKWords    = 4
 	publicValuesWords = 64
-	// vadcopKindMinimal is the VadcopKind a compressed proof carries, the
+	// vadcopKindFinal is the VadcopKind an uncompressed proof carries, the
 	// only flavour a prove job asks for.
-	vadcopKindMinimal = 2
+	vadcopKindFinal = 0
 	// vadcopFinalHashFamily is the hash family every accepted proof carries.
-	vadcopFinalHashFamily = "Poseidon1"
+	vadcopFinalHashFamily = "blake3"
 	// maxEnvelopeBytes caps the envelope a transcode reads. A vadcop final
-	// proof runs under 300 KiB, and the cap keeps a coordinator's reply from
+	// proof runs under 1 MiB, and the cap keeps a coordinator's reply from
 	// expanding eightfold into the heap.
-	maxEnvelopeBytes = 1 << 20
+	maxEnvelopeBytes = 4 << 20
 )
 
 // bincodeReader decodes bincode standard-configuration primitives with a
@@ -61,8 +61,8 @@ func transcodeProof(envelope []byte) ([]byte, error) {
 		kind := reader.discriminant()  // kind
 		hashFamily := reader.utf8()    // hash
 		publicValues = reader.u64Vec() // publics_full
-		if reader.err == nil && (kind != vadcopKindMinimal || hashFamily != vadcopFinalHashFamily) {
-			return nil, fmt.Errorf("proof body is not a minimal %s vadcop proof", vadcopFinalHashFamily)
+		if reader.err == nil && (kind != vadcopKindFinal || hashFamily != vadcopFinalHashFamily) {
+			return nil, fmt.Errorf("proof body is not a final %s vadcop proof", vadcopFinalHashFamily)
 		}
 	case variant == 1:
 		return nil, fmt.Errorf("plonk proof body is not supported")
@@ -81,16 +81,17 @@ func transcodeProof(envelope []byte) ([]byte, error) {
 		return nil, fmt.Errorf("public values hold %d words, expected %d", len(publicValues), programVKWords+publicValuesWords)
 	}
 
-	proof := make([]byte, 0, 8*(1+len(proofWords)+1+len(publicValues))+1+8+len(vadcopFinalHashFamily))
+	proof := make([]byte, 0, 8*(1+len(proofWords)+1+1+len(publicValues))+1+8+len(vadcopFinalHashFamily))
 	proof = binary.LittleEndian.AppendUint64(proof, uint64(len(proofWords)))
 	for _, word := range proofWords {
 		proof = binary.LittleEndian.AppendUint64(proof, word)
 	}
-	proof = binary.LittleEndian.AppendUint64(proof, uint64(len(publicValues)))
+	proof = binary.LittleEndian.AppendUint64(proof, uint64(1+len(publicValues)))
+	proof = binary.LittleEndian.AppendUint64(proof, 1) // is_vadcop_final_proof
 	for _, word := range publicValues {
 		proof = binary.LittleEndian.AppendUint64(proof, word)
 	}
-	proof = append(proof, 1) // compressed
+	proof = append(proof, 0) // compressed
 	proof = binary.LittleEndian.AppendUint64(proof, uint64(len(vadcopFinalHashFamily)))
 	return append(proof, vadcopFinalHashFamily...), nil
 }
