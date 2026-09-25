@@ -250,15 +250,15 @@ The command does these steps.
 | Image                             | Built from                       | Tag                              | Published by                                                   |
 | --------------------------------- | -------------------------------- | -------------------------------- | -------------------------------------------------------------- |
 | `ghcr.io/han0110/provoor/provoor` | `dockers/Dockerfile`             | the release version and `latest` | `.github/workflows/release.yaml` on each release               |
-| `ghcr.io/han0110/provoor/zisk`    | `dockers/zkvm/Dockerfile.zisk`   | `1.2.0-alpha`                    | `.github/workflows/publish-zkvm-image.yaml` on manual dispatch |
+| `ghcr.io/han0110/provoor/zisk`    | `dockers/zkvm/Dockerfile.zisk`   | `1.3.0-alpha`                    | `.github/workflows/publish-zkvm-image.yaml` on manual dispatch |
 | `ghcr.io/han0110/provoor/openvm`  | `dockers/zkvm/Dockerfile.openvm` | `2.1.0-preview`                  | `.github/workflows/publish-zkvm-image.yaml` on manual dispatch |
 
 ```sh
 docker build -f dockers/Dockerfile -t ghcr.io/han0110/provoor/provoor:latest .
-docker build -f dockers/Dockerfile --build-arg VERIFIER_LIB=local -t provoor:local .
+docker build -f dockers/Dockerfile --build-arg VERIFIER_LIB=release -t provoor:release .
 ```
 
-- `VERIFIER_LIB=local` takes the library already in `internal/ereverifier/lib`, for an ere revision with no release. The build fails when the directory does not exist. `release`, the default, downloads the pinned asset in a stage of its own, so source edits do not repeat the download.
+- `VERIFIER_LIB=override`, the default, takes the library in `internal/ereverifier/lib_override`, for an ere revision with no release. The build fails when the directory does not exist. `release` downloads the pinned asset in a stage of its own, so source edits do not repeat the download.
 - `VERSION` stamps `provoor --version`, `dev` unless set. The release workflow passes the release tag.
 
 ### Add a zkVM

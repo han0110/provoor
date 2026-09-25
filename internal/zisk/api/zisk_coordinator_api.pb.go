@@ -1,6 +1,6 @@
-// Copied from https://github.com/0xPolygonHermez/zisk/blob/v1.2.0-alpha/distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto.
+// Copied from https://github.com/0xPolygonHermez/zisk/blob/v1.3.0-alpha/distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto.
 // TaskTiming and the proof_start and tasks fields of ExecutionStats come from
-// the branch patch/distributed/v1.2.0-alpha of han0110/zisk.
+// the branch patch/distributed/v1.3.0-alpha of han0110/zisk.
 //
 // Regenerate both *.pb.go from the repository root with protoc 3.21.12,
 // protoc-gen-go v1.36.11, and protoc-gen-go-grpc 1.5.1.
@@ -318,19 +318,22 @@ func (x *ExecutionStats) GetTasks() []*TaskTiming {
 	return nil
 }
 
-// One worker task, stamped on the coordinator clock at receipt.
+// One worker task. The coordinator stamps the dispatch and the receipt, and the
+// worker stamps its receipt and its reply, all in Unix milliseconds.
 type TaskTiming struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	WorkerId           string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	Phase              JobPhase               `protobuf:"varint,2,opt,name=phase,proto3,enum=zisk.coordinator.v1.JobPhase" json:"phase,omitempty"`
-	CompletedAt        *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
-	ComputeDurationMs  uint64                 `protobuf:"varint,4,opt,name=compute_duration_ms,json=computeDurationMs,proto3" json:"compute_duration_ms,omitempty"` // wall time of the proofman phase call, excluding the input load
-	ExecutorTime       *ExecutorTime          `protobuf:"bytes,5,opt,name=executor_time,json=executorTime,proto3" json:"executor_time,omitempty"`                   // contributions phase only
-	Step               uint32                 `protobuf:"varint,6,opt,name=step,proto3" json:"step,omitempty"`                                                      // ordinal within the phase, from one for Recurse and zero elsewhere
-	ProofTimings       []*ProofTiming         `protobuf:"bytes,7,rep,name=proof_timings,json=proofTimings,proto3" json:"proof_timings,omitempty"`
-	RecordsOriginAgeMs uint64                 `protobuf:"varint,8,opt,name=records_origin_age_ms,json=recordsOriginAgeMs,proto3" json:"records_origin_age_ms,omitempty"` // age of the recorder origin when the worker took the records
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId          string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	Phase             JobPhase               `protobuf:"varint,2,opt,name=phase,proto3,enum=zisk.coordinator.v1.JobPhase" json:"phase,omitempty"`
+	CoordinatorEnd    uint64                 `protobuf:"varint,3,opt,name=coordinator_end,json=coordinatorEnd,proto3" json:"coordinator_end,omitempty"`
+	ComputeDurationMs uint64                 `protobuf:"varint,4,opt,name=compute_duration_ms,json=computeDurationMs,proto3" json:"compute_duration_ms,omitempty"` // wall time of the proofman phase call, excluding the input load
+	ExecutorTime      *ExecutorTime          `protobuf:"bytes,5,opt,name=executor_time,json=executorTime,proto3" json:"executor_time,omitempty"`                   // contributions phase only
+	Step              uint32                 `protobuf:"varint,6,opt,name=step,proto3" json:"step,omitempty"`                                                      // ordinal within the phase, from one for Recurse and zero elsewhere
+	ProofTimings      []*ProofTiming         `protobuf:"bytes,7,rep,name=proof_timings,json=proofTimings,proto3" json:"proof_timings,omitempty"`
+	CoordinatorStart  uint64                 `protobuf:"varint,8,opt,name=coordinator_start,json=coordinatorStart,proto3" json:"coordinator_start,omitempty"`
+	WorkerStart       uint64                 `protobuf:"varint,9,opt,name=worker_start,json=workerStart,proto3" json:"worker_start,omitempty"`
+	WorkerEnd         uint64                 `protobuf:"varint,10,opt,name=worker_end,json=workerEnd,proto3" json:"worker_end,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *TaskTiming) Reset() {
@@ -377,11 +380,11 @@ func (x *TaskTiming) GetPhase() JobPhase {
 	return JobPhase_JOB_PHASE_UNSPECIFIED
 }
 
-func (x *TaskTiming) GetCompletedAt() *timestamppb.Timestamp {
+func (x *TaskTiming) GetCoordinatorEnd() uint64 {
 	if x != nil {
-		return x.CompletedAt
+		return x.CoordinatorEnd
 	}
-	return nil
+	return 0
 }
 
 func (x *TaskTiming) GetComputeDurationMs() uint64 {
@@ -412,23 +415,37 @@ func (x *TaskTiming) GetProofTimings() []*ProofTiming {
 	return nil
 }
 
-func (x *TaskTiming) GetRecordsOriginAgeMs() uint64 {
+func (x *TaskTiming) GetCoordinatorStart() uint64 {
 	if x != nil {
-		return x.RecordsOriginAgeMs
+		return x.CoordinatorStart
 	}
 	return 0
 }
 
-// One proof proofman produced, offset from the recorder origin of the response.
+func (x *TaskTiming) GetWorkerStart() uint64 {
+	if x != nil {
+		return x.WorkerStart
+	}
+	return 0
+}
+
+func (x *TaskTiming) GetWorkerEnd() uint64 {
+	if x != nil {
+		return x.WorkerEnd
+	}
+	return 0
+}
+
+// One proof proofman produced, stamped in Unix milliseconds on the worker clock.
 type ProofTiming struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                // instance id, the fold index of a fold record, or zero for a root step
 	ProofType     uint32                 `protobuf:"varint,2,opt,name=proof_type,json=proofType,proto3" json:"proof_type,omitempty"` // proofman ProofType as_usize
 	AirgroupId    uint32                 `protobuf:"varint,3,opt,name=airgroup_id,json=airgroupId,proto3" json:"airgroup_id,omitempty"`
 	AirName       string                 `protobuf:"bytes,4,opt,name=air_name,json=airName,proto3" json:"air_name,omitempty"` // empty for a root step of the contributions phase, a fold and the two final proofs
-	StartOffsetMs uint32                 `protobuf:"varint,5,opt,name=start_offset_ms,json=startOffsetMs,proto3" json:"start_offset_ms,omitempty"`
-	EndOffsetMs   uint32                 `protobuf:"varint,6,opt,name=end_offset_ms,json=endOffsetMs,proto3" json:"end_offset_ms,omitempty"`
-	BreakdownMs   []uint32               `protobuf:"varint,7,rep,packed,name=breakdown_ms,json=breakdownMs,proto3" json:"breakdown_ms,omitempty"` // the proof sections, empty when none
+	Start         uint64                 `protobuf:"varint,5,opt,name=start,proto3" json:"start,omitempty"`
+	End           uint64                 `protobuf:"varint,6,opt,name=end,proto3" json:"end,omitempty"`
+	BreakdownMs   map[string]uint32      `protobuf:"bytes,7,rep,name=breakdown_ms,json=breakdownMs,proto3" json:"breakdown_ms,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"` // the proof sections by name, only the nonzero ones
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -491,21 +508,21 @@ func (x *ProofTiming) GetAirName() string {
 	return ""
 }
 
-func (x *ProofTiming) GetStartOffsetMs() uint32 {
+func (x *ProofTiming) GetStart() uint64 {
 	if x != nil {
-		return x.StartOffsetMs
+		return x.Start
 	}
 	return 0
 }
 
-func (x *ProofTiming) GetEndOffsetMs() uint32 {
+func (x *ProofTiming) GetEnd() uint64 {
 	if x != nil {
-		return x.EndOffsetMs
+		return x.End
 	}
 	return 0
 }
 
-func (x *ProofTiming) GetBreakdownMs() []uint32 {
+func (x *ProofTiming) GetBreakdownMs() map[string]uint32 {
 	if x != nil {
 		return x.BreakdownMs
 	}
@@ -4078,27 +4095,34 @@ const file_zisk_coordinator_api_proto_rawDesc = "" +
 	"\x04plan\x18\x05 \x03(\v2%.zisk.coordinator.v1.AirInstanceCountR\x04plan\x12;\n" +
 	"\vproof_start\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"proofStart\x125\n" +
-	"\x05tasks\x18\a \x03(\v2\x1f.zisk.coordinator.v1.TaskTimingR\x05tasks\"\xa3\x03\n" +
+	"\x05tasks\x18\a \x03(\v2\x1f.zisk.coordinator.v1.TaskTimingR\x05tasks\"\xc9\x03\n" +
 	"\n" +
 	"TaskTiming\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x123\n" +
-	"\x05phase\x18\x02 \x01(\x0e2\x1d.zisk.coordinator.v1.JobPhaseR\x05phase\x12=\n" +
-	"\fcompleted_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x12.\n" +
+	"\x05phase\x18\x02 \x01(\x0e2\x1d.zisk.coordinator.v1.JobPhaseR\x05phase\x12'\n" +
+	"\x0fcoordinator_end\x18\x03 \x01(\x04R\x0ecoordinatorEnd\x12.\n" +
 	"\x13compute_duration_ms\x18\x04 \x01(\x04R\x11computeDurationMs\x12F\n" +
 	"\rexecutor_time\x18\x05 \x01(\v2!.zisk.coordinator.v1.ExecutorTimeR\fexecutorTime\x12\x12\n" +
 	"\x04step\x18\x06 \x01(\rR\x04step\x12E\n" +
-	"\rproof_timings\x18\a \x03(\v2 .zisk.coordinator.v1.ProofTimingR\fproofTimings\x121\n" +
-	"\x15records_origin_age_ms\x18\b \x01(\x04R\x12recordsOriginAgeMs\"\xe7\x01\n" +
+	"\rproof_timings\x18\a \x03(\v2 .zisk.coordinator.v1.ProofTimingR\fproofTimings\x12+\n" +
+	"\x11coordinator_start\x18\b \x01(\x04R\x10coordinatorStart\x12!\n" +
+	"\fworker_start\x18\t \x01(\x04R\vworkerStart\x12\x1d\n" +
+	"\n" +
+	"worker_end\x18\n" +
+	" \x01(\x04R\tworkerEnd\"\xb6\x02\n" +
 	"\vProofTiming\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1d\n" +
 	"\n" +
 	"proof_type\x18\x02 \x01(\rR\tproofType\x12\x1f\n" +
 	"\vairgroup_id\x18\x03 \x01(\rR\n" +
 	"airgroupId\x12\x19\n" +
-	"\bair_name\x18\x04 \x01(\tR\aairName\x12&\n" +
-	"\x0fstart_offset_ms\x18\x05 \x01(\rR\rstartOffsetMs\x12\"\n" +
-	"\rend_offset_ms\x18\x06 \x01(\rR\vendOffsetMs\x12!\n" +
-	"\fbreakdown_ms\x18\a \x03(\rR\vbreakdownMs\"`\n" +
+	"\bair_name\x18\x04 \x01(\tR\aairName\x12\x14\n" +
+	"\x05start\x18\x05 \x01(\x04R\x05start\x12\x10\n" +
+	"\x03end\x18\x06 \x01(\x04R\x03end\x12T\n" +
+	"\fbreakdown_ms\x18\a \x03(\v21.zisk.coordinator.v1.ProofTiming.BreakdownMsEntryR\vbreakdownMs\x1a>\n" +
+	"\x10BreakdownMsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01\"`\n" +
 	"\x10AirInstanceCount\x12\x1f\n" +
 	"\vairgroup_id\x18\x01 \x01(\rR\n" +
 	"airgroupId\x12\x15\n" +
@@ -4359,7 +4383,7 @@ func file_zisk_coordinator_api_proto_rawDescGZIP() []byte {
 }
 
 var file_zisk_coordinator_api_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_zisk_coordinator_api_proto_msgTypes = make([]protoimpl.MessageInfo, 62)
+var file_zisk_coordinator_api_proto_msgTypes = make([]protoimpl.MessageInfo, 63)
 var file_zisk_coordinator_api_proto_goTypes = []any{
 	(ProofKind)(0),                             // 0: zisk.coordinator.v1.ProofKind
 	(JobPhase)(0),                              // 1: zisk.coordinator.v1.JobPhase
@@ -4425,32 +4449,33 @@ var file_zisk_coordinator_api_proto_goTypes = []any{
 	(*PushJobHintsInputRequest)(nil),           // 61: zisk.coordinator.v1.PushJobHintsInputRequest
 	(*CancelJobRequest)(nil),                   // 62: zisk.coordinator.v1.CancelJobRequest
 	(*CancelJobResponse)(nil),                  // 63: zisk.coordinator.v1.CancelJobResponse
-	(*timestamppb.Timestamp)(nil),              // 64: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),                // 65: google.protobuf.Duration
-	(*emptypb.Empty)(nil),                      // 66: google.protobuf.Empty
+	nil,                                        // 64: zisk.coordinator.v1.ProofTiming.BreakdownMsEntry
+	(*timestamppb.Timestamp)(nil),              // 65: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),                // 66: google.protobuf.Duration
+	(*emptypb.Empty)(nil),                      // 67: google.protobuf.Empty
 }
 var file_zisk_coordinator_api_proto_depIdxs = []int32{
 	2,  // 0: zisk.coordinator.v1.ExecutionStats.cost_per_type:type_name -> zisk.coordinator.v1.CostPerType
 	7,  // 1: zisk.coordinator.v1.ExecutionStats.executor_time:type_name -> zisk.coordinator.v1.ExecutorTime
 	6,  // 2: zisk.coordinator.v1.ExecutionStats.plan:type_name -> zisk.coordinator.v1.AirInstanceCount
-	64, // 3: zisk.coordinator.v1.ExecutionStats.proof_start:type_name -> google.protobuf.Timestamp
+	65, // 3: zisk.coordinator.v1.ExecutionStats.proof_start:type_name -> google.protobuf.Timestamp
 	4,  // 4: zisk.coordinator.v1.ExecutionStats.tasks:type_name -> zisk.coordinator.v1.TaskTiming
 	1,  // 5: zisk.coordinator.v1.TaskTiming.phase:type_name -> zisk.coordinator.v1.JobPhase
-	64, // 6: zisk.coordinator.v1.TaskTiming.completed_at:type_name -> google.protobuf.Timestamp
-	7,  // 7: zisk.coordinator.v1.TaskTiming.executor_time:type_name -> zisk.coordinator.v1.ExecutorTime
-	5,  // 8: zisk.coordinator.v1.TaskTiming.proof_timings:type_name -> zisk.coordinator.v1.ProofTiming
+	7,  // 6: zisk.coordinator.v1.TaskTiming.executor_time:type_name -> zisk.coordinator.v1.ExecutorTime
+	5,  // 7: zisk.coordinator.v1.TaskTiming.proof_timings:type_name -> zisk.coordinator.v1.ProofTiming
+	64, // 8: zisk.coordinator.v1.ProofTiming.breakdown_ms:type_name -> zisk.coordinator.v1.ProofTiming.BreakdownMsEntry
 	8,  // 9: zisk.coordinator.v1.ExecutorTime.asm:type_name -> zisk.coordinator.v1.AsmExecution
 	9,  // 10: zisk.coordinator.v1.InputKind.inline:type_name -> zisk.coordinator.v1.InputChunk
 	0,  // 11: zisk.coordinator.v1.Proof.proof_kind:type_name -> zisk.coordinator.v1.ProofKind
-	64, // 12: zisk.coordinator.v1.Proof.started_at:type_name -> google.protobuf.Timestamp
-	64, // 13: zisk.coordinator.v1.Proof.completed_at:type_name -> google.protobuf.Timestamp
+	65, // 12: zisk.coordinator.v1.Proof.started_at:type_name -> google.protobuf.Timestamp
+	65, // 13: zisk.coordinator.v1.Proof.completed_at:type_name -> google.protobuf.Timestamp
 	14, // 14: zisk.coordinator.v1.JobFailure.timeout:type_name -> zisk.coordinator.v1.JobFailureTimeout
 	15, // 15: zisk.coordinator.v1.JobFailure.input:type_name -> zisk.coordinator.v1.JobFailureInput
 	16, // 16: zisk.coordinator.v1.JobFailure.execution:type_name -> zisk.coordinator.v1.JobFailureExecution
 	17, // 17: zisk.coordinator.v1.JobFailure.internal:type_name -> zisk.coordinator.v1.JobFailureInternal
 	18, // 18: zisk.coordinator.v1.JobFailure.cancelled:type_name -> zisk.coordinator.v1.JobFailureCancelled
 	1,  // 19: zisk.coordinator.v1.JobFailureTimeout.phase:type_name -> zisk.coordinator.v1.JobPhase
-	65, // 20: zisk.coordinator.v1.JobFailureTimeout.limit:type_name -> google.protobuf.Duration
+	66, // 20: zisk.coordinator.v1.JobFailureTimeout.limit:type_name -> google.protobuf.Duration
 	21, // 21: zisk.coordinator.v1.AggregationProgramSpec.normalize:type_name -> zisk.coordinator.v1.NormalizeCircuit
 	22, // 22: zisk.coordinator.v1.AggregationProgramSpec.program_vks:type_name -> zisk.coordinator.v1.ProgramVk
 	23, // 23: zisk.coordinator.v1.RegisterAggregationProgramRequest.spec:type_name -> zisk.coordinator.v1.AggregationProgramSpec
@@ -4462,18 +4487,18 @@ var file_zisk_coordinator_api_proto_depIdxs = []int32{
 	39, // 29: zisk.coordinator.v1.JobKind.execute:type_name -> zisk.coordinator.v1.ExecuteRequest
 	35, // 30: zisk.coordinator.v1.JobKind.setup_aggregation_program:type_name -> zisk.coordinator.v1.SetupAggregationProgramRequest
 	10, // 31: zisk.coordinator.v1.ProveRequest.input:type_name -> zisk.coordinator.v1.InputKind
-	64, // 32: zisk.coordinator.v1.ProveRequest.proof_timeout:type_name -> google.protobuf.Timestamp
+	65, // 32: zisk.coordinator.v1.ProveRequest.proof_timeout:type_name -> google.protobuf.Timestamp
 	0,  // 33: zisk.coordinator.v1.ProveRequest.proof_dest:type_name -> zisk.coordinator.v1.ProofKind
 	10, // 34: zisk.coordinator.v1.ProveRequest.hints:type_name -> zisk.coordinator.v1.InputKind
 	11, // 35: zisk.coordinator.v1.ProveResponse.proof:type_name -> zisk.coordinator.v1.Proof
 	3,  // 36: zisk.coordinator.v1.ProveResponse.stats:type_name -> zisk.coordinator.v1.ExecutionStats
 	11, // 37: zisk.coordinator.v1.WrapRequest.proof:type_name -> zisk.coordinator.v1.Proof
 	0,  // 38: zisk.coordinator.v1.WrapRequest.proof_dest:type_name -> zisk.coordinator.v1.ProofKind
-	64, // 39: zisk.coordinator.v1.WrapRequest.wrap_timeout:type_name -> google.protobuf.Timestamp
+	65, // 39: zisk.coordinator.v1.WrapRequest.wrap_timeout:type_name -> google.protobuf.Timestamp
 	11, // 40: zisk.coordinator.v1.WrapResponse.proof:type_name -> zisk.coordinator.v1.Proof
 	11, // 41: zisk.coordinator.v1.AggregateProofsResponse.proof:type_name -> zisk.coordinator.v1.Proof
 	10, // 42: zisk.coordinator.v1.ExecuteRequest.input:type_name -> zisk.coordinator.v1.InputKind
-	64, // 43: zisk.coordinator.v1.ExecuteRequest.execute_timeout:type_name -> google.protobuf.Timestamp
+	65, // 43: zisk.coordinator.v1.ExecuteRequest.execute_timeout:type_name -> google.protobuf.Timestamp
 	10, // 44: zisk.coordinator.v1.ExecuteRequest.hints:type_name -> zisk.coordinator.v1.InputKind
 	3,  // 45: zisk.coordinator.v1.ExecuteResponse.stats:type_name -> zisk.coordinator.v1.ExecutionStats
 	30, // 46: zisk.coordinator.v1.JobKindResponse.setup:type_name -> zisk.coordinator.v1.SetupResponse
@@ -4499,16 +4524,16 @@ var file_zisk_coordinator_api_proto_depIdxs = []int32{
 	57, // 66: zisk.coordinator.v1.JobEvent.completed:type_name -> zisk.coordinator.v1.JobEventCompleted
 	58, // 67: zisk.coordinator.v1.JobEvent.cancelled:type_name -> zisk.coordinator.v1.JobEventCancelled
 	59, // 68: zisk.coordinator.v1.JobEvent.failed:type_name -> zisk.coordinator.v1.JobEventFailed
-	64, // 69: zisk.coordinator.v1.JobEventQueued.timestamp:type_name -> google.protobuf.Timestamp
-	64, // 70: zisk.coordinator.v1.JobEventStarted.timestamp:type_name -> google.protobuf.Timestamp
+	65, // 69: zisk.coordinator.v1.JobEventQueued.timestamp:type_name -> google.protobuf.Timestamp
+	65, // 70: zisk.coordinator.v1.JobEventStarted.timestamp:type_name -> google.protobuf.Timestamp
 	1,  // 71: zisk.coordinator.v1.JobEventProgress.phase:type_name -> zisk.coordinator.v1.JobPhase
-	64, // 72: zisk.coordinator.v1.JobEventProgress.timestamp:type_name -> google.protobuf.Timestamp
-	64, // 73: zisk.coordinator.v1.JobEventWaitingForInput.timestamp:type_name -> google.protobuf.Timestamp
+	65, // 72: zisk.coordinator.v1.JobEventProgress.timestamp:type_name -> google.protobuf.Timestamp
+	65, // 73: zisk.coordinator.v1.JobEventWaitingForInput.timestamp:type_name -> google.protobuf.Timestamp
 	41, // 74: zisk.coordinator.v1.JobEventCompleted.result:type_name -> zisk.coordinator.v1.JobKindResponse
-	64, // 75: zisk.coordinator.v1.JobEventCompleted.timestamp:type_name -> google.protobuf.Timestamp
-	64, // 76: zisk.coordinator.v1.JobEventCancelled.timestamp:type_name -> google.protobuf.Timestamp
+	65, // 75: zisk.coordinator.v1.JobEventCompleted.timestamp:type_name -> google.protobuf.Timestamp
+	65, // 76: zisk.coordinator.v1.JobEventCancelled.timestamp:type_name -> google.protobuf.Timestamp
 	13, // 77: zisk.coordinator.v1.JobEventFailed.failure:type_name -> zisk.coordinator.v1.JobFailure
-	64, // 78: zisk.coordinator.v1.JobEventFailed.timestamp:type_name -> google.protobuf.Timestamp
+	65, // 78: zisk.coordinator.v1.JobEventFailed.timestamp:type_name -> google.protobuf.Timestamp
 	9,  // 79: zisk.coordinator.v1.PushJobInputRequest.chunk:type_name -> zisk.coordinator.v1.InputChunk
 	9,  // 80: zisk.coordinator.v1.PushJobHintsInputRequest.chunk:type_name -> zisk.coordinator.v1.InputChunk
 	19, // 81: zisk.coordinator.v1.ZiskCoordinatorApi.RegisterGuestProgram:input_type -> zisk.coordinator.v1.RegisterGuestProgramRequest
@@ -4524,8 +4549,8 @@ var file_zisk_coordinator_api_proto_depIdxs = []int32{
 	27, // 91: zisk.coordinator.v1.ZiskCoordinatorApi.JobRequest:output_type -> zisk.coordinator.v1.JobResponse
 	43, // 92: zisk.coordinator.v1.ZiskCoordinatorApi.WaitJobResult:output_type -> zisk.coordinator.v1.WaitJobResultResponse
 	52, // 93: zisk.coordinator.v1.ZiskCoordinatorApi.WatchJob:output_type -> zisk.coordinator.v1.JobEvent
-	66, // 94: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobInput:output_type -> google.protobuf.Empty
-	66, // 95: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobHintsInput:output_type -> google.protobuf.Empty
+	67, // 94: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobInput:output_type -> google.protobuf.Empty
+	67, // 95: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobHintsInput:output_type -> google.protobuf.Empty
 	63, // 96: zisk.coordinator.v1.ZiskCoordinatorApi.CancelJob:output_type -> zisk.coordinator.v1.CancelJobResponse
 	89, // [89:97] is the sub-list for method output_type
 	81, // [81:89] is the sub-list for method input_type
@@ -4596,7 +4621,7 @@ func file_zisk_coordinator_api_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_zisk_coordinator_api_proto_rawDesc), len(file_zisk_coordinator_api_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   62,
+			NumMessages:   63,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

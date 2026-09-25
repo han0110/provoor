@@ -1,6 +1,6 @@
-// Copied from https://github.com/0xPolygonHermez/zisk/blob/v1.2.0-alpha/distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto.
+// Copied from https://github.com/0xPolygonHermez/zisk/blob/v1.3.0-alpha/distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto.
 // TaskTiming and the proof_start and tasks fields of ExecutionStats come from
-// the branch patch/distributed/v1.2.0-alpha of han0110/zisk.
+// the branch patch/distributed/v1.3.0-alpha of han0110/zisk.
 //
 // Regenerate both *.pb.go from the repository root with protoc 3.21.12,
 // protoc-gen-go v1.36.11, and protoc-gen-go-grpc 1.5.1.

@@ -8,7 +8,11 @@ import (
 )
 
 // PipelineSchemaVersion is the wire version of the timeline.
-const PipelineSchemaVersion = 1
+const PipelineSchemaVersion = 2
+
+// NetworkTransportLabel labels the time a task result spends between the
+// coordinator and the worker.
+const NetworkTransportLabel = "Network Transport"
 
 // Phases a task belongs to. The frontend colors by phase and shades by legend
 // entry, and titles every bar by kind.
@@ -132,6 +136,13 @@ func (builder *PipelineBuilder[Key]) Place(kind int, worker Key, id string, endM
 		Breakdown:  breakdown,
 	})
 	return startMs
+}
+
+// NetworkTransportMs is the time of one round trip that neither side spends on
+// the task, the reply leg plus the dispatch leg. The two legs read two clocks,
+// so a clock skew that makes the sum negative clamps it to zero.
+func NetworkTransportMs(coordinatorStartMs, workerStartMs, workerEndMs, coordinatorEndMs int64) int64 {
+	return max(coordinatorEndMs-workerEndMs+workerStartMs-coordinatorStartMs, 0)
 }
 
 // Pipeline sorts the tasks by start, then by kind, and returns the timeline.

@@ -75,8 +75,9 @@ var pipelineBreakdown = []struct {
 	{"Wait Plan Mem Cpp", (*api.ExecutorTime).GetCountAndPlanMoDuration},
 }
 
-// proofBreakdownLabels are the sections of one record, in the order the worker
-// reports them. The first fourteen are the GPU sections of a proof or a commit.
+// proofBreakdownLabels are the section names of one record, in the order of
+// PROOF_TIMING_SECTION_NAMES in proofman. The first fourteen are the GPU
+// sections of a proof or a commit.
 // The rest are the host steps of the launch, the harvest, and the witness
 // build, and the stream spans that no GPU section brackets. A witness build
 // opens at its buffer take, so no section names the queue before it. A section
@@ -112,19 +113,18 @@ var proofBreakdownLabels = []string{
 }
 
 // breakdownLabels are the labels of pipelineBreakdown, then proofBreakdownLabels,
-// in the same order.
+// in the same order, then the network transport label.
 var breakdownLabels = func() []string {
 	labels := make([]string, len(pipelineBreakdown))
 	for index, entry := range pipelineBreakdown {
 		labels[index] = entry.label
 	}
-	return append(labels, proofBreakdownLabels...)
+	return append(append(labels, proofBreakdownLabels...), cluster.NetworkTransportLabel)
 }()
 
-// mapPipeline places every record the stats carry on the proof clock. The
-// coordinator stamps each task result on receipt, and the origin age the worker
-// reports sets the records of that result back from that stamp. A coordinator
-// that reports no proof start, no task, or no record reports no timeline.
+// mapPipeline places every record the stats carry on the proof clock, which
+// starts at the proof start. A coordinator that reports no proof start, no
+// task, or no record reports no timeline.
 func mapPipeline(stats *api.ExecutionStats) (*cluster.Pipeline, error) {
 	if stats.GetProofStart() == nil || len(stats.GetTasks()) == 0 {
 		return nil, nil
@@ -139,8 +139,7 @@ func mapPipeline(stats *api.ExecutionStats) (*cluster.Pipeline, error) {
 		default:
 			return nil, fmt.Errorf("task of phase %s, which the timeline does not map", task.GetPhase())
 		}
-		endMs := task.GetCompletedAt().AsTime().UnixMilli() - proofStartMs
-		if err := placeProofs(builder, task, endMs-int64(task.GetRecordsOriginAgeMs()), withAirgroup); err != nil {
+		if err := placeProofs(builder, task, proofStartMs, withAirgroup); err != nil {
 			return nil, err
 		}
 	}
@@ -151,28 +150,33 @@ func mapPipeline(stats *api.ExecutionStats) (*cluster.Pipeline, error) {
 	return pipeline, nil
 }
 
-// placeProofs places one bar per record the task reports, at originMs plus the
-// offsets of each record. The worker takes the records before it replies, so no
-// bar draws past the reply of its task. A fold in flight holds the origin
-// across tasks, so originMs is signed and falls before the proof start whenever
-// the origin is older than the task. The Execute bar also carries the executor
-// durations, which the record does not measure as sections.
-func placeProofs(builder *cluster.PipelineBuilder[string], task *api.TaskTiming, originMs int64, withAirgroup bool) error {
+// placeProofs places one bar per record the task reports. A task of one record
+// and a dispatch stamp draws its bar over the whole round trip on the
+// coordinator clock and adds the network transport to its sections. Any other
+// task draws each bar over the worker stamps of its record. The Execute bar
+// also carries the executor durations, which the record does not measure as
+// sections.
+func placeProofs(builder *cluster.PipelineBuilder[string], task *api.TaskTiming, proofStartMs int64, withAirgroup bool) error {
+	roundTrip := len(task.GetProofTimings()) == 1 && task.GetCoordinatorStart() != 0
 	for _, proof := range task.GetProofTimings() {
 		kind, err := proofKind(proof.GetProofType())
 		if err != nil {
 			return err
 		}
-		startOffsetMs, endOffsetMs := int64(proof.GetStartOffsetMs()), int64(proof.GetEndOffsetMs())
-		breakdown, err := mapProofBreakdown(proof.GetBreakdownMs())
-		if err != nil {
-			return err
-		}
+		startMs, endMs := int64(proof.GetStart()), int64(proof.GetEnd())
+		breakdown := mapProofBreakdown(proof.GetBreakdownMs())
 		if kind == kindExecute {
 			breakdown = append(mapBreakdown(task.GetExecutorTime()), breakdown...)
 		}
+		if roundTrip {
+			startMs, endMs = int64(task.GetCoordinatorStart()), int64(task.GetCoordinatorEnd())
+			transportMs := cluster.NetworkTransportMs(startMs, int64(task.GetWorkerStart()), int64(task.GetWorkerEnd()), endMs)
+			if transportMs > 0 {
+				breakdown = append(breakdown, [2]int64{int64(len(breakdownLabels) - 1), transportMs})
+			}
+		}
 		id := proofID(kind, proof, withAirgroup)
-		builder.Place(kind, task.GetWorkerId(), id, originMs+endOffsetMs, endOffsetMs-startOffsetMs, breakdown)
+		builder.Place(kind, task.GetWorkerId(), id, endMs-proofStartMs, endMs-startMs, breakdown)
 	}
 	return nil
 }
@@ -263,19 +267,15 @@ func mapBreakdown(executorTime *api.ExecutorTime) [][2]int64 {
 	return breakdown
 }
 
-// mapProofBreakdown indexes the sections of one record, which follow the
-// executor labels. A section the worker reports as zero is left out. A record
-// of more sections than the labels name fails, because no label names the
-// sections past the list.
-func mapProofBreakdown(sections []uint32) ([][2]int64, error) {
-	if len(sections) > len(proofBreakdownLabels) {
-		return nil, fmt.Errorf("record of %d sections, which the timeline does not map", len(sections))
-	}
+// mapProofBreakdown indexes the sections of one record by name, which follow
+// the executor labels, in label order. A section the worker reports as zero is
+// left out, and a section of a name no label carries is dropped.
+func mapProofBreakdown(sections map[string]uint32) [][2]int64 {
 	var breakdown [][2]int64
-	for index, duration := range sections {
-		if duration > 0 {
+	for index, label := range proofBreakdownLabels {
+		if duration := sections[label]; duration > 0 {
 			breakdown = append(breakdown, [2]int64{int64(len(pipelineBreakdown) + index), int64(duration)})
 		}
 	}
-	return breakdown, nil
+	return breakdown
 }

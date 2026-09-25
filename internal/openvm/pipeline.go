@@ -45,13 +45,14 @@ var pipelineBreakdown = []struct{ label, subMetric string }{
 	{"Openings", "prover.openings_time_ms"},
 }
 
-// breakdownLabels are the labels of pipelineBreakdown, in the same order.
+// breakdownLabels are the labels of pipelineBreakdown, in the same order, then
+// the network transport label.
 var breakdownLabels = func() []string {
 	labels := make([]string, len(pipelineBreakdown))
 	for index, entry := range pipelineBreakdown {
 		labels[index] = entry.label
 	}
-	return labels
+	return append(labels, cluster.NetworkTransportLabel)
 }()
 
 // pipelineView is the coordinator's view of one proof's task results, without
@@ -64,9 +65,15 @@ type pipelineView struct {
 }
 
 // taskTiming is one task result, stamped by the manager with the worker that
-// produced it and the clock at receipt.
+// produced it, the clock at dispatch, and the clock at receipt. The worker
+// stamps its receipt and its reply. Only the first app segment of a worker
+// carries a dispatch stamp, and a later segment stamps the start of its proving
+// as its receipt.
 type taskTiming struct {
 	WorkerID          int                `json:"worker_id"`
+	DispatchedAtMs    int64              `json:"dispatched_at_ms"`
+	WorkerStartMs     int64              `json:"worker_start_ms"`
+	WorkerEndMs       int64              `json:"worker_end_ms"`
 	CompletedAtMs     int64              `json:"completed_at_ms"`
 	SegmentStart      int                `json:"segment_start"`
 	SegmentEnd        int                `json:"segment_end"`
@@ -123,10 +130,16 @@ func (c *Client) proofPipeline(ctx context.Context, proofUUID string) (*cluster.
 	return mapPipeline(&view, workers.Workers)
 }
 
-// mapPipeline places every task result on the proof clock. The manager stamps
-// each record on receipt, and the durations it reports set the record's tasks
-// back from that stamp. A task reaching before the proof start is cut off at
-// zero, and a task of no length is left out.
+// mapPipeline places every task result on the proof clock. Every reply ends its
+// last bar at the manager receipt and adds the network transport to the
+// sections of one bar. A leaf starts at the dispatch. An internal task starts
+// at the dispatch and ends where its wrap starts. A later app segment fast
+// forwards from its receipt stamp and proves until the manager receipt. The
+// first app segment has no stamp at its proving start, so its segment lasts
+// the stark proving time plus the network transport. The fast forward ends
+// where the segment starts, and the metering ends the queue wait before the
+// fast forward. A task reaching before the proof start is cut off at zero, and
+// a task of no length is left out.
 func mapPipeline(view *pipelineView, registrations []workerRegistration) (*cluster.Pipeline, error) {
 	builder := cluster.NewPipelineBuilder(mapRegistrations(registrations))
 	proofStartMs := view.ProofStartTime.UnixMilli()
@@ -137,20 +150,44 @@ func mapPipeline(view *pipelineView, registrations []workerRegistration) (*clust
 	for _, timing := range view.AppProofs {
 		id := fmt.Sprintf("#%d", timing.SegmentStart)
 		endMs := timing.CompletedAtMs - proofStartMs
-		segmentStartMs := place(kindSegment, timing, id, endMs, timing.StarkProveTimeMs, mapBreakdown(timing.SubMetrics))
-		place(kindFastForward, timing, id, segmentStartMs, timing.FastForwardTimeMs, nil)
-		place(kindExecution, timing, id, endMs-timing.ProveTimeMs-timing.QueueWaitMs, timing.MeteredTimeMs, nil)
+		transportMs := networkTransportMs(timing)
+		durationMs := timing.StarkProveTimeMs + transportMs
+		if timing.DispatchedAtMs == 0 {
+			durationMs = timing.CompletedAtMs - timing.WorkerStartMs - timing.FastForwardTimeMs
+		}
+		segmentStartMs := place(kindSegment, timing, id, endMs, durationMs, withTransport(mapBreakdown(timing.SubMetrics), transportMs))
+		fastForwardStartMs := place(kindFastForward, timing, id, segmentStartMs, timing.FastForwardTimeMs, nil)
+		place(kindExecution, timing, id, fastForwardStartMs-timing.QueueWaitMs, timing.MeteredTimeMs, nil)
 	}
 	for _, timing := range view.LeafProofs {
-		place(kindLeaf, timing, segmentRange(timing), timing.CompletedAtMs-proofStartMs, timing.ProveTimeMs, mapBreakdown(timing.SubMetrics))
+		breakdown := withTransport(mapBreakdown(timing.SubMetrics), networkTransportMs(timing))
+		place(kindLeaf, timing, segmentRange(timing), timing.CompletedAtMs-proofStartMs, timing.CompletedAtMs-timing.DispatchedAtMs, breakdown)
 	}
 	for _, timing := range view.InternalProofs {
 		id := fmt.Sprintf("L%d %s", timing.LayerIndex, segmentRange(timing))
 		endMs := timing.CompletedAtMs - proofStartMs
-		place(kindInternal, timing, id, endMs-timing.CompressionTimeMs, timing.ProveTimeMs, mapBreakdown(timing.SubMetrics))
+		breakdown := withTransport(mapBreakdown(timing.SubMetrics), networkTransportMs(timing))
+		wrapStartMs := endMs - timing.CompressionTimeMs
+		place(kindInternal, timing, id, wrapStartMs, wrapStartMs-(timing.DispatchedAtMs-proofStartMs), breakdown)
 		place(kindWrap, timing, id, endMs, timing.CompressionTimeMs, mapBreakdown(timing.WrapSubMetrics))
 	}
 	return builder.Pipeline(pipelineKinds, breakdownLabels)
+}
+
+// networkTransportMs is the network transport of one task result. A task of
+// no dispatch stamp has only the reply leg.
+func networkTransportMs(timing taskTiming) int64 {
+	dispatchedAtMs := cmp.Or(timing.DispatchedAtMs, timing.WorkerStartMs)
+	return cluster.NetworkTransportMs(dispatchedAtMs, timing.WorkerStartMs, timing.WorkerEndMs, timing.CompletedAtMs)
+}
+
+// withTransport adds the network transport to the sections of one bar. A
+// transport of zero is left out.
+func withTransport(breakdown [][2]int64, transportMs int64) [][2]int64 {
+	if transportMs == 0 {
+		return breakdown
+	}
+	return append(breakdown, [2]int64{int64(len(pipelineBreakdown)), transportMs})
 }
 
 // mapRegistrations orders the registered workers by worker id and reads the
