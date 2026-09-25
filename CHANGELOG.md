@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.0](https://github.com/han0110/provoor/compare/v0.9.0...v0.10.0) (2026-09-25)
+
+
+### Features
+
+* bump openvm rev ([#39](https://github.com/han0110/provoor/issues/39)) ([e56c675](https://github.com/han0110/provoor/commit/e56c675c20297a4d883830245bb3d55255ca12b1))
+* zisk v1.3.0 alpha ([#42](https://github.com/han0110/provoor/issues/42)) ([2073703](https://github.com/han0110/provoor/commit/2073703e720a756a66555012acd5fc52c80d8130))
+
+
+### Bug Fixes
+
+* config and openvm rev ([#41](https://github.com/han0110/provoor/issues/41)) ([22df91c](https://github.com/han0110/provoor/commit/22df91c8b9599e70cdc377292c36bf8503e0c677))
+
 ## [0.9.0](https://github.com/han0110/provoor/compare/v0.8.0...v0.9.0) (2026-09-13)
 
 
