@@ -255,10 +255,10 @@ The command does these steps.
 
 ```sh
 docker build -f dockers/Dockerfile -t ghcr.io/han0110/provoor/provoor:latest .
-docker build -f dockers/Dockerfile --build-arg VERIFIER_LIB=local -t provoor:local .
+docker build -f dockers/Dockerfile --build-arg VERIFIER_LIB=release -t provoor:release .
 ```
 
-- `VERIFIER_LIB=local` takes the library already in `internal/ereverifier/lib`, for an ere revision with no release. The build fails when the directory does not exist. `release`, the default, downloads the pinned asset in a stage of its own, so source edits do not repeat the download.
+- `VERIFIER_LIB=override`, the default, takes the library in `internal/ereverifier/lib_override`, for an ere revision with no release. The build fails when the directory does not exist. `release` downloads the pinned asset in a stage of its own, so source edits do not repeat the download.
 - `VERSION` stamps `provoor --version`, `dev` unless set. The release workflow passes the release tag.
 
 ### Add a zkVM
