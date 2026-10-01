@@ -20,12 +20,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// runConfig is what a run's config.json says about the guest program it
-// benchmarked and the fixtures it ran.
+// runConfig is what a run's config.json says about the run, the guest program
+// it benchmarked, and the fixtures it ran.
 type runConfig struct {
-	Zkvm      string
-	ELFSource string
+	Timestamp int64
 	SuiteHash string
+	Instance  instance
+	Metadata  config.MetadataConfig
+	ELFSource string
 }
 
 // readRunConfig reads the run's config.json.
@@ -37,24 +39,23 @@ func readRunConfig(runDir string) (*runConfig, error) {
 	return parseRunConfig(data)
 }
 
-// parseRunConfig takes the zkVM, the guest ELF source, and the suite hash of a
-// run from its config.json.
+// parseRunConfig takes the timestamp, the suite hash, the instance, the labels,
+// and the guest ELF source of a run from its config.json.
 func parseRunConfig(data []byte) (*runConfig, error) {
 	var parsed struct {
+		Timestamp int64  `json:"timestamp"`
 		SuiteHash string `json:"suite_hash"`
 		Instance  struct {
+			ID        string   `json:"id"`
+			Client    string   `json:"client"`
 			ExtraArgs []string `json:"extra_args"`
 		} `json:"instance"`
-		Metadata struct {
-			Labels struct {
-				Zkvm string `json:"zkvm"`
-			} `json:"labels"`
-		} `json:"metadata"`
+		Metadata config.MetadataConfig `json:"metadata"`
 	}
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		return nil, err
 	}
-	if parsed.Metadata.Labels.Zkvm == "" {
+	if parsed.Metadata.Labels["zkvm"] == "" {
 		return nil, errors.New("metadata.labels holds no zkvm label")
 	}
 	source, err := elfSource(parsed.Instance.ExtraArgs)
@@ -62,13 +63,15 @@ func parseRunConfig(data []byte) (*runConfig, error) {
 		return nil, err
 	}
 	return &runConfig{
-		Zkvm:      parsed.Metadata.Labels.Zkvm,
-		ELFSource: source,
+		Timestamp: parsed.Timestamp,
 		SuiteHash: parsed.SuiteHash,
+		Instance:  instance{ID: parsed.Instance.ID, Client: parsed.Instance.Client},
+		Metadata:  parsed.Metadata,
+		ELFSource: source,
 	}, nil
 }
 
-// elfSource is the value of the --elf argument the run served, written either
+// elfSource is the value of the --elf argument of an instance, written either
 // as one argument or as two.
 func elfSource(args []string) (string, error) {
 	for i, arg := range args {
@@ -117,16 +120,74 @@ func prepareFixtures(ctx context.Context, runDir, suiteHash string) (string, err
 	if err != nil {
 		return "", err
 	}
-	// The download reports its progress on its own logger, which this command
-	// does not print.
-	log := logrus.New()
-	log.SetOutput(io.Discard)
-	source := executor.NewEESTSource(log, eestSourceConfig(summary.Source.EEST), cacheDir, nil, "")
+	source := executor.NewEESTSource(discardLogger(), eestSourceConfig(summary.Source.EEST), cacheDir, nil, "")
 	prepared, err := source.Prepare(ctx)
 	if err != nil {
 		return "", err
 	}
 	return prepared.BasePath, nil
+}
+
+// preparedSuite is the suite of a configuration, with the names of its tests
+// and the directory that holds their fixtures.
+type preparedSuite struct {
+	names    []string
+	fixtures string
+	hash     string
+}
+
+// prepareSuite prepares the EEST fixtures a configuration selects, in the
+// benchmarkoor cache when they need a download. It writes suites/<hash>/ under
+// the results directory from the inputs benchmarkoor run gives its executor.
+func prepareSuite(ctx context.Context, cfg *config.Config) (*preparedSuite, error) {
+	benchmark := &cfg.Runner.Benchmark
+	filter, err := executor.CompileFilter(benchmark.Tests.Filter)
+	if err != nil {
+		return nil, err
+	}
+	cacheDir, err := cfg.ResolveCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	log := discardLogger()
+	source := executor.NewEESTSource(log, benchmark.Tests.Source.EESTFixtures, cacheDir, filter, cfg.Runner.GitHubToken)
+	prepared, err := source.Prepare(ctx)
+	if err != nil {
+		return nil, err
+	}
+	hash, err := executor.ComputeSuiteHash(prepared)
+	if err != nil {
+		return nil, err
+	}
+	sourceInfo, err := source.GetSourceInfo()
+	if err != nil {
+		return nil, err
+	}
+	info := &executor.SuiteInfo{Hash: hash, Source: sourceInfo, Filter: benchmark.Tests.Filter}
+	if len(benchmark.Tests.Metadata.Labels) > 0 {
+		info.Metadata = &benchmark.Tests.Metadata
+	}
+	// The owner stays nil, since this command writes every file as the
+	// calling user.
+	err = executor.CreateSuiteOutput(log, benchmark.ResultsDir, hash, info, prepared, nil,
+		benchmark.ResultsUpload.GetMaxPreRunUploadSize())
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, len(prepared.Tests))
+	for i, test := range prepared.Tests {
+		names[i] = test.Name
+	}
+	return &preparedSuite{names: names, fixtures: prepared.BasePath, hash: hash}, nil
+}
+
+// discardLogger returns the logger of a fixtures source and of the suite
+// output. The download reports its progress there, and this command does not
+// print it.
+func discardLogger() *logrus.Logger {
+	log := logrus.New()
+	log.SetOutput(io.Discard)
+	return log
 }
 
 // eestSourceConfig rebuilds the fixtures source a suite summary records, for

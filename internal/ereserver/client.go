@@ -26,8 +26,8 @@ const (
 	errorBodyLimit = 4096
 )
 
-// Image returns the ere-server image reference for a zkVM and a version tag
-// without the leading v.
+// Image returns the ere-server image reference for a zkVM and an image tag,
+// such as 0.18.0 or 77e2aae.
 func Image(zkvm, version string) string {
 	return "ghcr.io/eth-act/ere/ere-server-" + zkvm + ":" + version
 }
