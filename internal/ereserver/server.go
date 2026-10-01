@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/containerd/errdefs"
@@ -40,6 +41,10 @@ const (
 // Server is a local ere-server container that holds one guest program.
 type Server struct {
 	Client
+	// ImageSHA256 is the digest of the image in the form that benchmarkoor
+	// records for the client of a run.
+	ImageSHA256 string
+
 	docker   *client.Client
 	name     string
 	attached types.HijackedResponse
@@ -52,6 +57,10 @@ type Server struct {
 // its stdin, so the ELF never reaches the host filesystem. The caller closes
 // the returned server.
 func Start(ctx context.Context, docker *client.Client, image string, elf []byte, output *cluster.Output) (*Server, error) {
+	imageSHA256, err := imageDigest(ctx, docker, image)
+	if err != nil {
+		return nil, err
+	}
 	port, err := freePort()
 	if err != nil {
 		return nil, fmt.Errorf("reserving a port for %s: %w", image, err)
@@ -74,12 +83,13 @@ func Start(ctx context.Context, docker *client.Client, image string, elf []byte,
 		return nil, fmt.Errorf("attaching to %s: %w", name, err)
 	}
 	s := &Server{
-		Client:   Client{BaseURL: fmt.Sprintf("http://127.0.0.1:%d", port), HTTP: &http.Client{}},
-		docker:   docker,
-		name:     name,
-		attached: attached,
-		output:   output.Prefixed(logLabel),
-		streamed: make(chan struct{}),
+		Client:      Client{BaseURL: fmt.Sprintf("http://127.0.0.1:%d", port), HTTP: &http.Client{}},
+		ImageSHA256: imageSHA256,
+		docker:      docker,
+		name:        name,
+		attached:    attached,
+		output:      output.Prefixed(logLabel),
+		streamed:    make(chan struct{}),
 	}
 	go func() {
 		defer close(s.streamed)
@@ -179,6 +189,21 @@ func hostConfig(port int) *container.HostConfig {
 
 func containerPort(port int) nat.Port {
 	return nat.Port(strconv.Itoa(port) + "/tcp")
+}
+
+// imageDigest returns the digest in the first repository digest of an image,
+// or the image ID of a local build. GetImageDigest of benchmarkoor does the
+// same.
+func imageDigest(ctx context.Context, docker *client.Client, image string) (string, error) {
+	inspect, err := docker.ImageInspect(ctx, image)
+	if err != nil {
+		return "", fmt.Errorf("inspecting %s: %w", image, err)
+	}
+	if len(inspect.RepoDigests) == 0 {
+		return inspect.ID, nil
+	}
+	_, digest, _ := strings.Cut(inspect.RepoDigests[0], "@")
+	return digest, nil
 }
 
 // freePort takes a loopback port the kernel reports as free and releases it

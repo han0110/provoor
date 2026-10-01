@@ -6,8 +6,9 @@ The benchmarkoor UI runs as a static results viewer when its runtime
 directory.
 
 Publishing is automated in the `provoor-runs` submodule. Its `scripts/build.sh`
-regenerates the derived index and suite stats, builds the UI against the Pages
-base path, and stages `results/` and `config.json` into `site/`. The `deploy`
+regenerates the run index, the estimate index, and the suite stats. It then
+builds the UI against the Pages base path and stages `results/` and
+`config.json` into `site/`. The `deploy`
 workflow runs it on every push to `main`, uploads `site/` with
 `actions/upload-pages-artifact`, and publishes it with `actions/deploy-pages`.
 Passing `--serve` hosts the result on port 3002 under the same base path the

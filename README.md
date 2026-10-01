@@ -6,7 +6,7 @@ zkVM proving clusters as [Benchmarkoor](https://github.com/ethpandaops/benchmark
 
 - `provoor up` deploys a proving cluster over SSH-reached Docker daemons, one coordinator plus GPU worker containers. The `zkvm` key selects one of the [zkVMs](#zkvms).
 - `provoor serve` is a JSON-RPC forwarder that `benchmarkoor`[^forked-benchmarkoor] starts as a client container. To answer `engine_proveStatelessValidator`, it submits the stateless input to the cluster.
-- `provoor estimate` executes the guest program of a finished run on the input of each test, in an [ere-server](https://github.com/eth-act/ere) container. It records what one execution costs.
+- `provoor estimate` executes the guest program of a finished run on the input of each test, in an [ere-server](https://github.com/eth-act/ere) container. It also executes the guest program of each instance of a benchmarkoor configuration. It records what one execution costs.
 - The forwarder verifies every proof with the ere verifier against the `.vk` published beside the guest ELF. A test passes only when the verified public values match the expected output.
 - Both `up` and `serve` check the key derived from the ELF against the configured one at startup. A mismatch stops both before the first measured proof.
 
@@ -171,32 +171,59 @@ The forwarder does these steps at startup.
 - The warmup block is the 60M gas PUSH28 block of EEST `tests-zkevm-benchmark@v0.8.2`. It splits into about 230 segments, so every worker pays its one-time costs before the first measured proof.
 - Run the benchmark on the coordinator host, so the stateless input reaches the cluster over loopback.
 - Forwarder flags travel through the instance `extra_args`. The run configurations set `ready_timeout: 15m`, since the forwarder listens only after the warmup.
-- Results land in `provoor-runs/results` and render in the benchmarkoor UI.
+- Results land in `provoor-runs/results/runs`, and [estimates](#estimate-cost) in `provoor-runs/results/estimates` beside them. Both render in the benchmarkoor UI.
 
 ## Estimate cost
 
 ```sh
 ./provoor estimate provoor-runs/results/runs/<run_id>
+(cd provoor-runs && ../provoor estimate ../benchmarkoor/examples/provoor/<file>.example.yaml)
+./provoor estimate link provoor-runs/results/runs/<run_id> provoor-runs/results/estimates/<estimate_id>
 ```
 
-| Flag            | Default                       | Meaning                                       |
-| --------------- | ----------------------------- | --------------------------------------------- |
-| `--image`       | the ere-server of the zkVM    | ere-server image                              |
-| `--concurrency` | `min(16, cores)`              | concurrent estimations against the one server |
+| Flag                  | Default          | Meaning                                       |
+| --------------------- | ---------------- | --------------------------------------------- |
+| `--ere-tag`           | `ereServerTags`  | ere-server image tag for every instance       |
+| `--elf`               | the run's ELF    | guest ELF source, a local path or a URL       |
+| `-c`, `--concurrency` | `min(16, cores)` | concurrent estimations against the one server |
 
-The command does these steps.
+The target is a run directory or a benchmarkoor configuration. Every estimate lands in `estimates/<id>/result.estimate.json` of the results directory, beside `runs/` and `suites/`.
 
-1. Read `config.json` of the run for the `zkvm` label, the `--elf` argument of the instance, and the suite hash.
-2. Read `result.json` for the test names, and `result.estimate.json` for the tests an earlier command estimated. Copy the estimations of the other runs in the results directory that used the same image and ELF. A rerun of a guest then starts where the earlier run ended.
-3. Prepare the EEST fixtures the suite `summary.json` names, in the benchmarkoor cache `~/.cache/benchmarkoor`. A release the cache does not hold downloads first.
+For a run directory, the command reads `config.json` and `result.json` of the run. They give the timestamp, the suite hash, the instance, the labels, the `--elf` argument, and the test names. The `--elf` flag replaces the `--elf` argument of the run. The estimate takes the run id, so it links to the run.
+
+`provoor estimate link` gives an estimate, for example one of a configuration, the id of a run, so the UI links them. The estimate must sit in the results directory of the run and have the suite hash and the ELF digest of the run. When `estimates/<run id>` is free, the command renames the estimate directory, keeps the artifact as it is, and regenerates an existing `estimates/index.json`.
+
+For a configuration, the command does these steps.
+
+1. Read `results_dir` and `tests` of `runner.benchmark`, `global.directories.cachedir`, and `runner.github_token`. For each instance, read the id, the client, the merged labels, and the `--elf` argument. Only EEST fixtures carry stateless inputs, so a configuration without `eest_fixtures` stops the command.
+2. Map the labels of each instance to its image and read its ELF. This step comes before the fixture work, so a typo fails in seconds.
+3. Prepare the filtered EEST fixtures, hash the suite, and write `suites/<hash>/` as `benchmarkoor run` does. The hash takes minutes for a full release.
+4. For each instance, select the latest estimate with the same instance id, image, ELF, and suite. An estimate of a run can also match. Without a match, start a new estimate `<unix>_<8 hex>_<instance>` with the header of the configuration. Print the estimate id.
+
+Then the command does these steps for each estimate.
+
+1. Copy the estimations of the other estimates with the same image, ELF, and suite. A rerun of a guest then starts where the earlier estimate ended.
+2. Print `nothing to do` when no test is left, and skip the next steps.
+3. For a run directory, prepare the EEST fixtures the suite `summary.json` names, in the benchmarkoor cache `~/.cache/benchmarkoor`. A release the cache does not hold downloads first.
 4. Pull the ere-server image and start it on the guest ELF, then estimate every remaining test.
 
-- The default image is `ghcr.io/eth-act/ere/ere-server-<zkvm>:0.18.0`, the ere release the proof verifier also comes from.
+The `zkvm` and `zkvm_version` labels select the ere-server image through `ereServerTags` in `internal/estimate/estimate.go`.
+
+| `zkvm`   | `zkvm_version`   | Image                                          |
+| -------- | ---------------- | ---------------------------------------------- |
+| `openvm` | `v2.1.0-preview` | `ghcr.io/eth-act/ere/ere-server-openvm:0.18.0` |
+| `zisk`   | `v1.2.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.18.0`   |
+| `zisk`   | `v1.3.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:77e2aae`  |
+
+- `--ere-tag` replaces the map for every instance. Without it, a pair of labels outside the map stops the command. `77e2aae` is an ere revision with no release.
+- `results_dir` resolves against the working directory, as in benchmarkoor, so a configuration runs from `provoor-runs`.
 - The estimation runs on the CPU of the local Docker daemon, so it needs neither a cluster nor a GPU.
 - The input of a test is the stateless input of the benchmark block of its fixture, the bytes the benchmark proves.
-- `result.estimate.json` carries `zkvm`, `image`, `elf_url` and `elf_sha256`, and a `tests` map of the cost per component and the peak heap use. It also carries a `failures` map of the guest error messages. Each zkVM names its own cost components.
+- `result.estimate.json` starts with a header of `timestamp`, `suite_hash`, `instance`, and `metadata`, named as in the `config.json` of a run. `timestamp` is the start of the run, or the start of a new estimate of a configuration. The header never holds `extra_args`, since they carry rig addresses. A run directory refreshes the header on every invocation, and a continued estimate keeps its header.
+- `result.estimate.json` carries `zkvm`, `image`, `elf_url` and `elf_sha256`, and a `tests` map of the cost per component and the peak heap use. It also carries a `failures` map of the guest error messages. Each zkVM names its own cost components. An invocation that starts an ere-server records its `image_sha256`, as a run does for its client. Every invocation records its `command`, with the image tag, and for a run directory the ELF source. A local path in `command` and in `elf_url` is relative to the working directory, so the artifact holds no home path.
 - The command saves the artifact every 50 estimations, so a stopped command continues where it stopped. A test under `failures` is final, so remove it from the artifact to estimate it again. The command stops when the artifact holds estimations of another image or another ELF.
 - A guest failure is recorded and the command continues. Every other failure stops it.
+- A new estimate shows in the UI after `generate-estimate-index-file` regenerates `estimates/index.json`. `provoor-runs/scripts/build.sh` runs it.
 
 ## Publish results
 
