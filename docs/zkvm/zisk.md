@@ -1,11 +1,11 @@
 # ZisK
 
-`zkvm: zisk` selects this zkVM. `examples/zisk-4x4.example.yaml` and `examples/zisk-1x1-local.example.yaml` deploy ZisK 1.3.0-alpha.
+`zkvm: zisk` selects this zkVM. `examples/zisk-4x4.example.yaml` and `examples/zisk-1x1-local.example.yaml` deploy ZisK 1.3.1-alpha.
 
 ## Image
 
 - `dockers/zkvm/Dockerfile.zisk` installs the `cargo_zisk_linux_amd64` release archive of ZisK under `/root/.zisk`.
-- It overlays `zisk-worker-gpu` and `zisk-coordinator` from han0110/zisk `c979cd91`, which serves the health endpoint and reports the per task timings.
+- It overlays `zisk-worker-gpu` and `zisk-coordinator` from han0110/zisk `3c59896d`, which serves the health endpoint and reports the per task timings.
 - It builds `zisk-supervisor` from `cmd/zisk-supervisor`.
 
 ## Ports
@@ -36,7 +36,7 @@
 
 ## Configuration
 
-The [README](../../README.md#configuration) lists the keys every zkVM shares.
+The [README](../../README.md#configuration) lists the main keys every zkVM shares.
 
 | Key                             | Default                                            | Meaning                                                                                      |
 | ------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------- |

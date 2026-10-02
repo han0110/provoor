@@ -73,14 +73,17 @@ The tracked `*.example.yaml` templates hold `${...}` placeholders instead of rea
 
 ### Configuration
 
-| Key                    | Meaning                                                            |
-| ---------------------- | ------------------------------------------------------------------ |
-| `zkvm`, `zkvm_version` | zkVM and its release, which also picks the image tag               |
-| `guests[].elf`, `.vk`  | guest ELF and verifying key, a local path or a URL                 |
-| `coordinator`          | `ssh` destination (local daemon when omitted) and `ip` of the host |
-| `workers`              | worker hosts and GPUs, see the zkVM document                       |
-| `telemetry.sidecars`   | `dcgm-exporter` (port 9401) and `node-exporter` (port 9402) hosts  |
-| `config`               | prover settings, see the zkVM document                             |
+| Key                                  | Meaning                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `zkvm`, `zkvm_version`               | zkVM and its release, which also picks the image tag                                                          |
+| `image`, `image_tag`                 | cluster image, `ghcr.io/han0110/provoor/<zkvm>:<zkvm_version>` unless set, for example a local registry build |
+| `verbose`                            | container log level, 0 info, 1 debug, 2 trace                                                                 |
+| `guests[].elf`, `.vk`                | guest ELF and verifying key, a local path or a URL                                                            |
+| `coordinator`                        | `ssh` destination (local daemon when omitted) and `ip` of the host                                            |
+| `workers`                            | worker hosts and GPUs, see the zkVM document                                                                  |
+| `telemetry.sidecars`                 | `dcgm-exporter` (port 9401) and `node-exporter` (port 9402) hosts                                             |
+| `telemetry.sidecars[].nv_hostengine` | `host:port` of the host's `nv-hostengine`, such as `127.0.0.1:5555` on hosts that run `nvidia-dcgm.service`   |
+| `config`                             | prover settings, see the zkVM document                                                                        |
 
 ## Inspect a cluster
 
@@ -109,7 +112,7 @@ Run it on the coordinator host, so the stateless input reaches the cluster over 
 | `--timeout`                       | `10m`       | budget of one proof                                             |
 | `--on-cluster-error`              | `fail-test` | `fail-test` answers the error and continues, `fail-run` exits 1 |
 
-- At startup the forwarder proves a warmup block, the 60M gas PUSH28 block of `tests-zkevm-benchmark@v0.8.2`, so every worker pays its one-time costs before the first measured proof. It listens only after the warmup, so the run configurations set `ready_timeout: 15m`.
+- At startup the forwarder proves a warmup block, the 60M gas PUSH28 block that execution-specs `tests/benchmark` fills at `tests-zkevm@v21.0.1`, so every worker pays its one-time costs before the first measured proof. It listens only after the warmup, so the run configurations set `ready_timeout: 15m`.
 - One proof runs at a time.
 - A test passes only when the verified public values match the expected output. A cluster error answers JSON-RPC error `-32000`.
 - After a failed proof the forwarder proves the warmup block again, so the next test starts on a recovered cluster.
@@ -137,6 +140,7 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `ereSer
 | `openvm` | `v2.1.0-preview` | `ghcr.io/eth-act/ere/ere-server-openvm:0.18.0` |
 | `zisk`   | `v1.2.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.18.0`   |
 | `zisk`   | `v1.3.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:77e2aae`  |
+| `zisk`   | `v1.3.1-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.0`   |
 
 - A rerun with the same image, ELF, and suite resumes where the last one stopped. Recorded guest failures are not retried.
 - A new estimate shows in the UI after `provoor-runs/scripts/build.sh` regenerates `estimates/index.json`.

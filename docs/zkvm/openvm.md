@@ -35,7 +35,7 @@
 
 ## Configuration
 
-The [README](../../README.md#configuration) lists the keys every zkVM shares.
+The [README](../../README.md#configuration) lists the main keys every zkVM shares.
 
 | Key                        | Default                                         | Meaning                                                                                |
 | -------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------- |
