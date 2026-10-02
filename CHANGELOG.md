@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/han0110/provoor/compare/v0.10.0...v0.11.0) (2026-10-02)
+
+
+### Features
+
+* estimation page ([#43](https://github.com/han0110/provoor/issues/43)) ([0b3dcad](https://github.com/han0110/provoor/commit/0b3dcadfa20b9e9e335ff2bd7d3780e094a508c0))
+
 ## [0.10.0](https://github.com/han0110/provoor/compare/v0.9.0...v0.10.0) (2026-09-25)
 
 
