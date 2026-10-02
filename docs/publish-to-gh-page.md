@@ -15,7 +15,7 @@ Passing `--serve` hosts the result on port 3002 under the same base path the
 deployment uses, so a preview matches production.
 
 Results reach that checkout through `scripts/sync.sh` and
-`scripts/desensitize.sh`, which the [README](../README.md#scripts) describes.
+`scripts/desensitize.sh`, which the [README](../README.md#publish-results) describes.
 
 ## Constraints worth knowing
 

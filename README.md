@@ -43,8 +43,6 @@ flowchart LR
 | ZisK   | `zisk`   | 7000            | [docs/zkvm/zisk.md](docs/zkvm/zisk.md)     |
 | OpenVM | `openvm` | 3000            | [docs/zkvm/openvm.md](docs/zkvm/openvm.md) |
 
-Each document covers the image, ports, containers, volumes, configuration keys, budgets, behavior, and security of one zkVM.
-
 ## Deploy a cluster
 
 ```sh
@@ -53,58 +51,36 @@ scripts/provoor.sh up --config examples/<zkvm>-4x4.example.yaml
 scripts/provoor.sh down --config examples/<zkvm>-4x4.example.yaml
 ```
 
-### Examples
+`<zkvm>-4x4` deploys four hosts with four GPUs each, and `<zkvm>-1x1-local` deploys one GPU on the local Docker daemon.
 
-| Example                                  | Deploys                                                                             |
-| ---------------------------------------- | ----------------------------------------------------------------------------------- |
-| `examples/<zkvm>-4x4.example.yaml`       | four hosts with four GPUs each, the hosts filled from `.env`                        |
-| `examples/<zkvm>-1x1-local.example.yaml` | the coordinator and one worker on GPU 0 of the local Docker daemon, for development |
+- `up` is idempotent and leaves running containers alone. The first `up` is slow, because each zkVM prepares its proving keys and guest artifacts.
+- `up` and `serve` stop when the key derived from the ELF differs from the configured `.vk`.
+- `down` keeps the cache volumes and the journald logs, so the next `up` is fast.
 
 ### Environment variables
 
-| `.env` variable                    | Fills                                                                                                                                                  |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `NODE<n>_SSH`                      | `coordinator.ssh`, `workers[].ssh`, and `telemetry.sidecars[].ssh` in `examples/*.example.yaml`                                                        |
-| `NODE<n>_IP`                       | `coordinator.ip` and `workers[].ip` in `examples/*.example.yaml`, and the `remote_metrics` endpoints in `benchmarkoor/examples/provoor/*.example.yaml` |
-| `COORDINATOR_IP`                   | `--coordinator-endpoint` in `benchmarkoor/examples/provoor/*.example.yaml`                                                                             |
-| `COORDINATOR_SSH`                  | the default `--ssh` of `scripts/sync.sh`                                                                                                               |
-| `REMOTE_RESULTS_DIR`               | the default `--remote-results-dir` of `scripts/sync.sh`                                                                                                |
-| `NODE<n>_HOST`, `NODE<n>_HOSTNAME` | no template, `scripts/desensitize.sh` replaces their values in results                                                                                 |
+The tracked `*.example.yaml` templates hold `${...}` placeholders instead of real hosts. `scripts/provoor.sh` and `scripts/benchmarkoor.sh` fill them from `.env`, which git ignores, and an unset variable stops them. Fill `.env` once per rig.
+
+| Variable                                | Set it to                                                | Used by                                       |
+| --------------------------------------- | -------------------------------------------------------- | --------------------------------------------- |
+| `NODE<n>_SSH`                           | SSH destination of node n, or a `~/.ssh/config` alias    | `provoor up`, `down`, `ps`, `logs`            |
+| `NODE<n>_IP`                            | private IP of node n                                     | cluster wiring and the benchmark metrics      |
+| `COORDINATOR_IP`                        | private IP of the coordinator node                       | the forwarder in the benchmark configurations |
+| `COORDINATOR_SSH`, `REMOTE_RESULTS_DIR` | SSH destination and results directory of the coordinator | `scripts/sync.sh`                             |
+| `NODE<n>_HOST`, `NODE<n>_HOSTNAME`      | public domain and short hostname of node n               | `scripts/desensitize.sh` only                 |
+
+`scripts/sync.sh` replaces every `.env` value in the synced results with its variable name. Set every value that can appear in a log, so published results carry no rig address.
 
 ### Configuration
 
-| Key                                  | Default                          | Meaning                                                                                                                          |
-| ------------------------------------ | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `zkvm`                               | required                         | a value from [zkVMs](#zkvms), selects the package that reads the rest                                                            |
-| `zkvm_version`                       | required                         | zkVM release the cluster proves under, names the cache volumes                                                                   |
-| `image`                              | `ghcr.io/han0110/provoor/<zkvm>` | cluster image                                                                                                                    |
-| `image_tag`                          | `zkvm_version`                   | cluster image tag                                                                                                                |
-| `verbose`                            | `0`                              | container log level, 0 info, 1 debug, 2 trace                                                                                    |
-| `guests[].elf`                       | required                         | guest ELF, a local path or an http(s) URL                                                                                        |
-| `guests[].vk`                        | required                         | verifying key published beside the ELF, a local path or an http(s) URL                                                           |
-| `coordinator.ssh`                    | local daemon                     | SSH destination of the coordinator host                                                                                          |
-| `coordinator.ip`                     | none                             | address the workers on other hosts dial, required once a worker is on another host                                               |
-| `workers`                            | required, at least one           | per zkVM, see [zkVMs](#zkvms)                                                                                                    |
-| `telemetry.interval_ms`              | `100`                            | DCGM sampling period                                                                                                             |
-| `telemetry.sidecars[].ssh`           | local daemon                     | host of one sidecar, which runs a coordinator or worker                                                                          |
-| `telemetry.sidecars[].kind`          | required                         | `dcgm-exporter` or `node-exporter`                                                                                               |
-| `telemetry.sidecars[].nv_hostengine` | embedded engine                  | `host:port` of an `nv-hostengine` a `dcgm-exporter` sidecar reads, such as `127.0.0.1:5555` for the node's `nvidia-dcgm.service` |
-| `config`                             | per zkVM                         | prover settings, see [zkVMs](#zkvms)                                                                                             |
-
-| Sidecar kind    | Image                                                     | Port | Container             | Needs                                                   |
-| --------------- | --------------------------------------------------------- | ---- | --------------------- | ------------------------------------------------------- |
-| `dcgm-exporter` | `nvcr.io/nvidia/k8s/dcgm-exporter:4.6.0-4.8.3-distroless` | 9401 | `provoor-dcgm-<host>` | the NVIDIA runtime, or the engine `nv_hostengine` names |
-| `node-exporter` | `quay.io/prometheus/node-exporter:v1.12.1`                | 9402 | `provoor-node-<host>` | nothing                                                 |
-
-- `scripts/provoor.sh` materializes a `*.example.yaml` template to the sibling `.yaml` before the CLI reads it. The CLI reads every other configuration as written.
-- An unbraced `$NAME` placeholder or an unset `.env` variable stops the run.
-- The CLI rejects unknown configuration keys.
-- `up` is idempotent and streams its progress as `[label] message` lines. It leaves a running coordinator or worker alone and reports it as `already running`. Every `up` replaces a sidecar.
-- `down` keeps the cache volumes and the journald logs, so the next `up` is fast. Read a log with `journalctl CONTAINER_NAME=<container>` on the host, or write the journal of a whole run with `provoor logs dump`.
-- Neither `up` nor `down` talks to the client API.
-- The vk mismatch error identifies both keys.
-- A telemetry failure does not fail `up`. The line `telemetry unavailable: ...` reports it, and an empty sidecar list prints `telemetry: no sidecars configured`.
-- The first `up` is slow. Each zkVM prepares its proving keys and guest artifacts, minutes per guest on a GPU.
+| Key                    | Meaning                                                            |
+| ---------------------- | ------------------------------------------------------------------ |
+| `zkvm`, `zkvm_version` | zkVM and its release, which also picks the image tag               |
+| `guests[].elf`, `.vk`  | guest ELF and verifying key, a local path or a URL                 |
+| `coordinator`          | `ssh` destination (local daemon when omitted) and `ip` of the host |
+| `workers`              | worker hosts and GPUs, see the zkVM document                       |
+| `telemetry.sidecars`   | `dcgm-exporter` (port 9401) and `node-exporter` (port 9402) hosts  |
+| `config`               | prover settings, see the zkVM document                             |
 
 ## Inspect a cluster
 
@@ -114,24 +90,7 @@ scripts/provoor.sh logs --config examples/<zkvm>-4x4.example.yaml --follow
 ./provoor logs dump --config examples/<zkvm>-4x4.example.yaml --run provoor-runs/results/runs/<run_id>
 ```
 
-| Command     | Flag                 | Default          | Meaning                                          |
-| ----------- | -------------------- | ---------------- | ------------------------------------------------ |
-| `ps`        | `--config`           | the local daemon | cluster configuration file                       |
-| `ps`        | `-a`, `--all`        | `false`          | list the stopped containers too                  |
-| `logs`      | `--config`           | the local daemon | cluster configuration file                       |
-| `logs`      | `-f`, `--follow`     | `false`          | keep streaming until interrupted                 |
-| `logs`      | `-t`, `--timestamps` | `false`          | print the timestamp of every line                |
-| `logs dump` | `--run`              | required         | benchmark run directory, which names the window  |
-| `logs dump` | `--config`           | required         | cluster configuration file                       |
-| `logs dump` | `--sudo`             | `false`          | run journalctl under sudo -n on the remote hosts |
-
-- Every container `provoor up` deploys carries the label `provoor`. Without `--config`, `ps` and `logs` cover the labeled containers of the local daemon.
-- `--config` selects the hosts and the container names of that configuration, so it also finds a cluster deployed before the label existed.
-- `ps` prints `NODE` and `NAME` ahead of the `IMAGE`, `COMMAND`, `CREATED`, `STATUS`, and `PORTS` columns of `docker ps`, and `logs` prints every line behind `<node>/<container>`. On a terminal each prefix carries its own color.
-- `logs` covers the coordinator, the workers, and the sidecars, the stopped ones included.
-- `logs dump` reads `timestamp` and `timestamp_end` of the run's `config.json`. A run that carries no `timestamp_end` is unfinished, so its window reaches the present.
-- `logs dump` writes `coordinator.log` and one `worker_<n>-gpu_<ids>.log` per worker into the run directory, and overwrites an existing file. Every line carries the timestamp of its journal entry in the shape of `logs --timestamps`, and a failed read leaves no file.
-- `logs dump` runs `journalctl` as the SSH user on every remote host, so without `--sudo` that user must be able to read the system journal there. Membership of the `adm` or `systemd-journal` group gives that right, and `--sudo` runs `journalctl` under `sudo -n` for a user with passwordless sudo instead. The journal of the local daemon is read as the user.
+`logs dump` writes the coordinator and worker logs of a run's time window into the run directory. It reads the journal of every host as the SSH user, so that user needs the `adm` or `systemd-journal` group, or passwordless sudo with `--sudo`.
 
 ## Run a benchmark
 
@@ -139,39 +98,21 @@ scripts/provoor.sh logs --config examples/<zkvm>-4x4.example.yaml --follow
 scripts/benchmarkoor.sh run --config benchmarkoor/examples/provoor/<zkvm>-eest-v0.8.2-10M.example.yaml
 ```
 
-| Flag                     | Default     | Meaning                                                                                                      |
-| ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------ |
-| `--zkvm`                 | required    | a value from [zkVMs](#zkvms)                                                                                 |
-| `--stateless-validator`  | required    | stateless validator name, printed at startup                                                                 |
-| `--elf`                  | required    | guest ELF source, a local path or a URL                                                                      |
-| `--vk`                   | required    | guest verifying key source, a local path or a URL                                                            |
-| `--coordinator-endpoint` | required    | coordinator client API endpoint, `http://<coordinator ip>:<client API port>`, the port is in [zkVMs](#zkvms) |
-| `--listen`               | `:8551`     | JSON-RPC listen address                                                                                      |
-| `--timeout`              | `10m`       | budget of one proof                                                                                          |
-| `--on-cluster-error`     | `fail-test` | `fail-test` answers the error and continues, `fail-run` exits 1                                              |
+Run it on the coordinator host, so the stateless input reaches the cluster over loopback. Results land in `provoor-runs/results/runs`. The run configuration passes these forwarder flags through the instance `extra_args`.
 
-The forwarder does these steps at startup.
+| Flag                              | Default     | Meaning                                                         |
+| --------------------------------- | ----------- | --------------------------------------------------------------- |
+| `--zkvm`, `--stateless-validator` | required    | zkVM and guest name                                             |
+| `--elf`, `--vk`                   | required    | guest ELF and verifying key, a local path or a URL              |
+| `--coordinator-endpoint`          | required    | `http://<coordinator ip>:<client API port>`                     |
+| `--listen`                        | `:8551`     | JSON-RPC listen address                                         |
+| `--timeout`                       | `10m`       | budget of one proof                                             |
+| `--on-cluster-error`              | `fail-test` | `fail-test` answers the error and continues, `fail-run` exits 1 |
 
-1. Resolve the ELF and the vk.
-2. Dial the cluster and provision the guest on it.
-3. Wait for the cluster to report itself ready.
-4. Print `stateless validator <name> ...` with the registration detail of the zkVM.
-5. Prove the warmup block and check its output. Print `prover warmed in <duration>`.
-6. Listen and print `listening on <address>`.
-
+- At startup the forwarder proves a warmup block, the 60M gas PUSH28 block of `tests-zkevm-benchmark@v0.8.2`, so every worker pays its one-time costs before the first measured proof. It listens only after the warmup, so the run configurations set `ready_timeout: 15m`.
 - One proof runs at a time.
-- The forwarder waits for cluster readiness before each proof, on the request context and outside the measurement.
-- The forwarder subtracts the time the cluster refused the submission from the measured proving time. `waited <duration> for the cluster to admit <hash>` reports a wait over one second.
-- After a failed proof the forwarder proves the warmup block again before it answers. The recovery of a crashed worker then lands in the failed call, and the next proof starts on a whole cluster. A client that went away and `fail-run` skip it.
-- Each phase change prints `proving <hash> phase <phase>`.
-- Verified public values that differ from `expectedStatelessOutput` answer `INVALID` with the committed `statelessOutput`.
-- A cluster error answers JSON-RPC error `-32000`. With `fail-run` the process exits 1 while the client is still connected.
-- `web3_clientVersion` answers the guest ELF name.
-- The metric JSON line carries `block.number`, `block.hash`, `block.gas_used`, `timing.total_ms`, `throughput.mgas_per_sec`, `statelessInputSize`, `provingTimeMs`, `clusterReportedProvingTimeMs`, `proofSize`, `outputMatched`, and `pipeline` on a zkVM that reports a task timeline.
-- The warmup block is the 60M gas PUSH28 block of EEST `tests-zkevm-benchmark@v0.8.2`. It splits into about 230 segments, so every worker pays its one-time costs before the first measured proof.
-- Run the benchmark on the coordinator host, so the stateless input reaches the cluster over loopback.
-- Forwarder flags travel through the instance `extra_args`. The run configurations set `ready_timeout: 15m`, since the forwarder listens only after the warmup.
-- Results land in `provoor-runs/results/runs`, and [estimates](#estimate-cost) in `provoor-runs/results/estimates` beside them. Both render in the benchmarkoor UI.
+- A test passes only when the verified public values match the expected output. A cluster error answers JSON-RPC error `-32000`.
+- After a failed proof the forwarder proves the warmup block again, so the next test starts on a recovered cluster.
 
 ## Estimate cost
 
@@ -181,31 +122,13 @@ The forwarder does these steps at startup.
 ./provoor estimate link provoor-runs/results/runs/<run_id> provoor-runs/results/estimates/<estimate_id>
 ```
 
-| Flag                  | Default          | Meaning                                       |
-| --------------------- | ---------------- | --------------------------------------------- |
-| `--ere-tag`           | `ereServerTags`  | ere-server image tag for every instance       |
-| `--elf`               | the run's ELF    | guest ELF source, a local path or a URL       |
-| `-c`, `--concurrency` | `min(16, cores)` | concurrent estimations against the one server |
+`estimate` executes the guest on the input of every test in an ere-server container on the local CPU, so it needs no cluster and no GPU. Each test gets its cost per component and its peak heap use in `estimates/<id>/result.estimate.json`. `estimate link` attaches an estimate of a configuration to a run with the same suite and ELF, so the UI links them.
 
-The target is a run directory or a benchmarkoor configuration. Every estimate lands in `estimates/<id>/result.estimate.json` of the results directory, beside `runs/` and `suites/`.
-
-For a run directory, the command reads `config.json` and `result.json` of the run. They give the timestamp, the suite hash, the instance, the labels, the `--elf` argument, and the test names. The `--elf` flag replaces the `--elf` argument of the run. The estimate takes the run id, so it links to the run.
-
-`provoor estimate link` gives an estimate, for example one of a configuration, the id of a run, so the UI links them. The estimate must sit in the results directory of the run and have the suite hash and the ELF digest of the run. When `estimates/<run id>` is free, the command renames the estimate directory, keeps the artifact as it is, and regenerates an existing `estimates/index.json`.
-
-For a configuration, the command does these steps.
-
-1. Read `results_dir` and `tests` of `runner.benchmark`, `global.directories.cachedir`, and `runner.github_token`. For each instance, read the id, the client, the merged labels, and the `--elf` argument. Only EEST fixtures carry stateless inputs, so a configuration without `eest_fixtures` stops the command.
-2. Map the labels of each instance to its image and read its ELF. This step comes before the fixture work, so a typo fails in seconds.
-3. Prepare the filtered EEST fixtures, hash the suite, and write `suites/<hash>/` as `benchmarkoor run` does. The hash takes minutes for a full release.
-4. For each instance, select the latest estimate with the same instance id, image, ELF, and suite. An estimate of a run can also match. Without a match, start a new estimate `<unix>_<8 hex>_<instance>` with the header of the configuration. Print the estimate id.
-
-Then the command does these steps for each estimate.
-
-1. Copy the estimations of the other estimates with the same image, ELF, and suite. A rerun of a guest then starts where the earlier estimate ended.
-2. Print `nothing to do` when no test is left, and skip the next steps.
-3. For a run directory, prepare the EEST fixtures the suite `summary.json` names, in the benchmarkoor cache `~/.cache/benchmarkoor`. A release the cache does not hold downloads first.
-4. Pull the ere-server image and start it on the guest ELF, then estimate every remaining test.
+| Flag                  | Default          | Meaning                                 |
+| --------------------- | ---------------- | --------------------------------------- |
+| `--ere-tag`           | from the labels  | ere-server image tag for every instance |
+| `--elf`               | the run's ELF    | guest ELF, a local path or a URL        |
+| `-c`, `--concurrency` | `min(16, cores)` | concurrent estimations                  |
 
 The `zkvm` and `zkvm_version` labels select the ere-server image through `ereServerTags` in `internal/estimate/estimate.go`.
 
@@ -215,93 +138,40 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `ereSer
 | `zisk`   | `v1.2.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.18.0`   |
 | `zisk`   | `v1.3.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:77e2aae`  |
 
-- `--ere-tag` replaces the map for every instance. Without it, a pair of labels outside the map stops the command. `77e2aae` is an ere revision with no release.
-- `results_dir` resolves against the working directory, as in benchmarkoor, so a configuration runs from `provoor-runs`.
-- The estimation runs on the CPU of the local Docker daemon, so it needs neither a cluster nor a GPU.
-- The input of a test is the stateless input of the benchmark block of its fixture, the bytes the benchmark proves.
-- `result.estimate.json` starts with a header of `timestamp`, `suite_hash`, `instance`, and `metadata`, named as in the `config.json` of a run. `timestamp` is the start of the run, or the start of a new estimate of a configuration. The header never holds `extra_args`, since they carry rig addresses. A run directory refreshes the header on every invocation, and a continued estimate keeps its header.
-- `result.estimate.json` carries `zkvm`, `image`, `elf_url` and `elf_sha256`, and a `tests` map of the cost per component and the peak heap use. It also carries a `failures` map of the guest error messages. Each zkVM names its own cost components. An invocation that starts an ere-server records its `image_sha256`, as a run does for its client. Every invocation records its `command`, with the image tag, and for a run directory the ELF source. A local path in `command` and in `elf_url` is relative to the working directory, so the artifact holds no home path.
-- The command saves the artifact every 50 estimations, so a stopped command continues where it stopped. A test under `failures` is final, so remove it from the artifact to estimate it again. The command stops when the artifact holds estimations of another image or another ELF.
-- A guest failure is recorded and the command continues. Every other failure stops it.
-- A new estimate shows in the UI after `generate-estimate-index-file` regenerates `estimates/index.json`. `provoor-runs/scripts/build.sh` runs it.
+- A rerun with the same image, ELF, and suite resumes where the last one stopped. Recorded guest failures are not retried.
+- A new estimate shows in the UI after `provoor-runs/scripts/build.sh` regenerates `estimates/index.json`.
 
 ## Publish results
 
-1. Run `scripts/sync.sh`. It pulls the results into `provoor-runs/results` and desensitizes them.
-2. Run `git checkout main` in `provoor-runs`. A clone and `scripts/build.sh benchmarkoor` leave the submodule on a detached HEAD.
-3. Commit and push. The `deploy` workflow of `provoor-runs` publishes the site on every push to `main`.
+1. Run `scripts/sync.sh`. It pulls the results into `provoor-runs/results` and replaces every `.env` value in them with its variable name.
+2. Run `git checkout main` in `provoor-runs`, then commit and push. The `deploy` workflow publishes the site.
 
-[docs/publish-to-gh-page.md](docs/publish-to-gh-page.md) describes the pipeline and its limits.
+[docs/publish-to-gh-page.md](docs/publish-to-gh-page.md) describes the pipeline.
 
 ## Development
 
-### Prerequisites
-
-1. Run `git clone --recursive https://github.com/han0110/provoor.git`.
-2. Run `scripts/fetch-verifier.sh`.
-3. Run `scripts/build.sh provoor`.
-4. Run `scripts/build.sh benchmarkoor`.
-
-| Tool                                      | Needed by                                                      |
-| ----------------------------------------- | -------------------------------------------------------------- |
-| Go 1.24.5 or later                        | build                                                          |
-| C compiler                                | cgo link of `libere_verifier_c`                                |
-| make                                      | `scripts/build.sh benchmarkoor`                                |
-| envsubst (GNU gettext)                    | `scripts/config.sh`                                            |
-| python3                                   | `scripts/desensitize.sh`                                       |
-| rsync                                     | `scripts/sync.sh`                                              |
-| curl, tar, sha256sum or shasum            | `scripts/fetch-verifier.sh`                                    |
-| ssh                                       | cluster hosts, `~/.ssh/config` applies                         |
-| Docker with the NVIDIA container runtime  | every cluster host                                             |
-| journalctl on every cluster host          | `provoor logs dump`                                            |
-| `nvidia-dcgm.service` on `127.0.0.1:5555` | hosts whose `dcgm-exporter` sidecar sets `nv_hostengine` to it |
-
-### Scripts
-
-| Script                        | Does                                                                                                                                                                                                                                                                                             |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `scripts/config.sh` (sourced) | Resolves every `--config` value. It materializes a `*.example.yaml` template to the sibling `.yaml` from `.env` with `envsubst`. Every other `--config` path becomes absolute.                                                                                                                   |
-| `scripts/provoor.sh`          | Runs the `provoor` built in the repository root, or the one on `PATH` when the repository root holds none.                                                                                                                                                                                       |
-| `scripts/benchmarkoor.sh`     | Runs `benchmarkoor/bin/benchmarkoor` in the `provoor-runs` working directory. A relative `results_dir` and every relative argument other than `--config` resolve there.                                                                                                                          |
-| `scripts/build.sh`            | `provoor` builds the CLI into the repository root. `benchmarkoor` resets every submodule to the recorded revision with `--force` and runs `make build-core`.                                                                                                                                     |
-| `scripts/fetch-verifier.sh`   | Downloads `libere_verifier_c` of ere `ERE_VERSION` (v0.18.0) into `internal/ereverifier/lib` and checks the archive against its pinned sha256 digest.                                                                                                                                            |
-| `scripts/sync.sh`             | Pulls the remote results with `rsync -a` into `provoor-runs/results`, then runs `scripts/desensitize.sh`. Excludes `*.request`, and the two runner logs unless `--log` is passed.                                                                                                                         |
-| `scripts/desensitize.sh`      | Replaces every non-empty `.env` value in `provoor-runs/results` with its variable name. Longer values apply first and ties keep `.env` order. The script skips gzip files. A final scan fails the script when a value survives.                                                                  |
-
-- Run `scripts/fetch-verifier.sh` again when `ERE_VERSION` changes. A stale library rejects the proofs of a current cluster.
-- `scripts/build.sh benchmarkoor` overwrites uncommitted work in a submodule.
-- `scripts/desensitize.sh` is idempotent. A second run finds nothing to replace.
-
-### Container images
-
-| Image                             | Built from                       | Tag                              | Published by                                                   |
-| --------------------------------- | -------------------------------- | -------------------------------- | -------------------------------------------------------------- |
-| `ghcr.io/han0110/provoor/provoor` | `dockers/Dockerfile`             | the release version and `latest` | `.github/workflows/release.yaml` on each release               |
-| `ghcr.io/han0110/provoor/zisk`    | `dockers/zkvm/Dockerfile.zisk`   | `1.3.0-alpha`                    | `.github/workflows/publish-zkvm-image.yaml` on manual dispatch |
-| `ghcr.io/han0110/provoor/openvm`  | `dockers/zkvm/Dockerfile.openvm` | `2.1.0-preview`                  | `.github/workflows/publish-zkvm-image.yaml` on manual dispatch |
-
 ```sh
-docker build -f dockers/Dockerfile -t ghcr.io/han0110/provoor/provoor:latest .
-docker build -f dockers/Dockerfile --build-arg VERIFIER_LIB=release -t provoor:release .
+git clone --recursive https://github.com/han0110/provoor.git
+scripts/fetch-verifier.sh
+scripts/build.sh provoor
+scripts/build.sh benchmarkoor
 ```
 
-- `VERIFIER_LIB=override`, the default, takes the library in `internal/ereverifier/lib_override`, for an ere revision with no release. The build fails when the directory does not exist. `release` downloads the pinned asset in a stage of its own, so source edits do not repeat the download.
-- `VERSION` stamps `provoor --version`, `dev` unless set. The release workflow passes the release tag.
+The build needs Go 1.24.5 or later and a C compiler for the cgo link of the ere verifier. Cluster hosts need SSH access and Docker with the NVIDIA container runtime.
 
-### Add a zkVM
+- Run `scripts/fetch-verifier.sh` again when its `ERE_VERSION` changes. A stale verifier rejects the proofs of a current cluster.
+- `scripts/build.sh benchmarkoor` force-resets the submodules, so it discards uncommitted work in them.
 
-1. Add `internal/<zkvm>` with the entry points `Load`, `Up`, `Down`, and `Dial` of the existing packages.
-2. Add the `zkvm` value to `cmd/provoor/main.go`.
-3. Add `dockers/zkvm/Dockerfile.<zkvm>`, and the `zkvm` choice and its `case` arm in `.github/workflows/publish-zkvm-image.yaml`.
-4. Add `examples/<zkvm>-4x4.example.yaml` and `examples/<zkvm>-1x1-local.example.yaml`, and load both in `TestLoadExamples` of `internal/<zkvm>/config_test.go`.
-5. Add the run configurations under `benchmarkoor/examples/provoor/`.
-6. Add `docs/zkvm/<zkvm>.md` with the sections of the existing documents, and a row in [zkVMs](#zkvms) and [Container images](#container-images).
+| Image                             | Built from                       | Published by                                                   |
+| --------------------------------- | -------------------------------- | -------------------------------------------------------------- |
+| `ghcr.io/han0110/provoor/provoor` | `dockers/Dockerfile`             | `.github/workflows/release.yaml` on each release               |
+| `ghcr.io/han0110/provoor/zisk`    | `dockers/zkvm/Dockerfile.zisk`   | `.github/workflows/publish-zkvm-image.yaml` on manual dispatch |
+| `ghcr.io/han0110/provoor/openvm`  | `dockers/zkvm/Dockerfile.openvm` | `.github/workflows/publish-zkvm-image.yaml` on manual dispatch |
 
-`Dial` binds an `ereverifier` kind, so the pinned ere release must verify the zkVM.
+To add a zkVM, follow an existing one. It needs an `internal/<zkvm>` package, a Dockerfile, examples, run configurations, and a document under `docs/zkvm`. The pinned ere release must verify its proofs.
 
 ## Security
 
 - `provoor serve` answers unauthenticated JSON-RPC on `:8551`.
-- The exporter ports 9401 and 9402 are open on every interface of a host with a sidecar.
-- Each zkVM opens its cluster ports on every interface of its hosts. The Security section of its document in [zkVMs](#zkvms) lists them.
+- The exporter ports 9401 and 9402 and the cluster ports of each zkVM are open on every interface. The zkVM documents list the cluster ports.
 - Keep these hosts on a private network or firewall the ports.
