@@ -46,6 +46,7 @@ var ereServerTags = map[string]map[string]string{
 		"v1.2.0-alpha": "0.18.0",
 		// 77e2aae is an ere revision with no release.
 		"v1.3.0-alpha": "77e2aae",
+		"v1.3.1-alpha": "0.19.0",
 	},
 }
 

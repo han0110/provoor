@@ -1,8 +1,7 @@
 # VERIFIER_LIB selects where libere_verifier_c comes from. release downloads
-# the pinned ere asset and override takes the library in
-# internal/ereverifier/lib_override, for an ere revision with no release. It
-# holds a build of ere 77e2aae2, which verifies ZisK 1.3.0-alpha proofs.
-ARG VERIFIER_LIB=override
+# the pinned ere asset and local takes the library already in
+# internal/ereverifier/lib.
+ARG VERIFIER_LIB=release
 
 FROM golang:1.24-bookworm AS verifier-release
 
@@ -11,10 +10,10 @@ WORKDIR /src
 COPY scripts/ scripts/
 RUN scripts/fetch-verifier.sh
 
-FROM golang:1.24-bookworm AS verifier-override
+FROM golang:1.24-bookworm AS verifier-local
 
 WORKDIR /src
-COPY internal/ereverifier/lib_override/ internal/ereverifier/lib/
+COPY internal/ereverifier/lib/ internal/ereverifier/lib/
 
 FROM verifier-${VERIFIER_LIB} AS verifier
 

@@ -137,6 +137,7 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `ereSer
 | `openvm` | `v2.1.0-preview` | `ghcr.io/eth-act/ere/ere-server-openvm:0.18.0` |
 | `zisk`   | `v1.2.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.18.0`   |
 | `zisk`   | `v1.3.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:77e2aae`  |
+| `zisk`   | `v1.3.1-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.0`   |
 
 - A rerun with the same image, ELF, and suite resumes where the last one stopped. Recorded guest failures are not retried.
 - A new estimate shows in the UI after `provoor-runs/scripts/build.sh` regenerates `estimates/index.json`.
