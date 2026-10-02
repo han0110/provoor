@@ -73,14 +73,17 @@ The tracked `*.example.yaml` templates hold `${...}` placeholders instead of rea
 
 ### Configuration
 
-| Key                    | Meaning                                                            |
-| ---------------------- | ------------------------------------------------------------------ |
-| `zkvm`, `zkvm_version` | zkVM and its release, which also picks the image tag               |
-| `guests[].elf`, `.vk`  | guest ELF and verifying key, a local path or a URL                 |
-| `coordinator`          | `ssh` destination (local daemon when omitted) and `ip` of the host |
-| `workers`              | worker hosts and GPUs, see the zkVM document                       |
-| `telemetry.sidecars`   | `dcgm-exporter` (port 9401) and `node-exporter` (port 9402) hosts  |
-| `config`               | prover settings, see the zkVM document                             |
+| Key                                  | Meaning                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `zkvm`, `zkvm_version`               | zkVM and its release, which also picks the image tag                                                          |
+| `image`, `image_tag`                 | cluster image, `ghcr.io/han0110/provoor/<zkvm>:<zkvm_version>` unless set, for example a local registry build |
+| `verbose`                            | container log level, 0 info, 1 debug, 2 trace                                                                 |
+| `guests[].elf`, `.vk`                | guest ELF and verifying key, a local path or a URL                                                            |
+| `coordinator`                        | `ssh` destination (local daemon when omitted) and `ip` of the host                                            |
+| `workers`                            | worker hosts and GPUs, see the zkVM document                                                                  |
+| `telemetry.sidecars`                 | `dcgm-exporter` (port 9401) and `node-exporter` (port 9402) hosts                                             |
+| `telemetry.sidecars[].nv_hostengine` | `host:port` of the host's `nv-hostengine`, such as `127.0.0.1:5555` on hosts that run `nvidia-dcgm.service`   |
+| `config`                             | prover settings, see the zkVM document                                                                        |
 
 ## Inspect a cluster
 
