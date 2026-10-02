@@ -20,10 +20,11 @@ import (
 	"github.com/han0110/provoor/internal/cluster"
 )
 
-// warmupInput is the stateless input of the 60M gas PUSH28 block of the EEST
-// tests-zkevm-benchmark@v0.8.2 release. It splits into about 230 segments, so
-// every worker of a cluster up to that size receives a shard. Each one pays
-// its one-time costs before the first measured proof.
+// warmupInput is the stateless input of the 60M gas PUSH28 block that
+// tests/benchmark of execution-specs fills at tests-zkevm@v21.0.1. It splits
+// into about 230 segments, so every worker of a cluster up to that size
+// receives a shard. Each one pays its one-time costs before the first measured
+// proof.
 //
 //go:embed warmup-input.bin
 var warmupInput []byte

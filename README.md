@@ -109,7 +109,7 @@ Run it on the coordinator host, so the stateless input reaches the cluster over 
 | `--timeout`                       | `10m`       | budget of one proof                                             |
 | `--on-cluster-error`              | `fail-test` | `fail-test` answers the error and continues, `fail-run` exits 1 |
 
-- At startup the forwarder proves a warmup block, the 60M gas PUSH28 block of `tests-zkevm-benchmark@v0.8.2`, so every worker pays its one-time costs before the first measured proof. It listens only after the warmup, so the run configurations set `ready_timeout: 15m`.
+- At startup the forwarder proves a warmup block, the 60M gas PUSH28 block that execution-specs `tests/benchmark` fills at `tests-zkevm@v21.0.1`, so every worker pays its one-time costs before the first measured proof. It listens only after the warmup, so the run configurations set `ready_timeout: 15m`.
 - One proof runs at a time.
 - A test passes only when the verified public values match the expected output. A cluster error answers JSON-RPC error `-32000`.
 - After a failed proof the forwarder proves the warmup block again, so the next test starts on a recovered cluster.
