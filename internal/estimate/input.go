@@ -193,10 +193,14 @@ func discardLogger() *logrus.Logger {
 // eestSourceConfig rebuilds the fixtures source a suite summary records, for
 // the remote modes the runner can prepare again on this host.
 func eestSourceConfig(info *executor.EESTSourceInfo) *config.EESTFixturesSource {
+	var fixturesURL []string
+	if info.FixturesURL != "" {
+		fixturesURL = strings.Split(info.FixturesURL, ",")
+	}
 	return &config.EESTFixturesSource{
 		GitHubRepo:            info.GitHubRepo,
 		GitHubRelease:         info.GitHubRelease,
-		FixturesURL:           info.FixturesURL,
+		FixturesURL:           fixturesURL,
 		FixturesSubdir:        info.FixturesSubdir,
 		R2BucketURL:           info.R2BucketURL,
 		R2BucketStartingBlock: info.R2BucketStartingBlock,

@@ -229,10 +229,14 @@ func TestEESTSourceConfig(t *testing.T) {
 		R2BucketBlocks:        1000,
 	}
 	got := eestSourceConfig(info)
-	if !got.UseR2Bucket() || got.R2BucketStartingBlock != 100000 || got.R2BucketBlocks != 1000 {
+	if !got.UseR2Bucket() || got.UseFixturesURL() || got.R2BucketStartingBlock != 100000 || got.R2BucketBlocks != 1000 {
 		t.Fatalf("r2 bucket fields dropped: %+v", got)
 	}
 	if got.FixturesSubdir != "blockchain_tests" {
 		t.Fatalf("fixtures subdir dropped: %+v", got)
+	}
+	got = eestSourceConfig(&executor.EESTSourceInfo{FixturesURL: "https://x/a.tar.gz,https://x/b.tar.gz"})
+	if !slices.Equal(got.FixturesURL, []string{"https://x/a.tar.gz", "https://x/b.tar.gz"}) {
+		t.Fatalf("fixtures urls not split: %+v", got)
 	}
 }
