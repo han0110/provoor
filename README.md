@@ -98,7 +98,7 @@ scripts/provoor.sh logs --config examples/<zkvm>-4x4.example.yaml --follow
 ## Run a benchmark
 
 ```sh
-scripts/benchmarkoor.sh run --config benchmarkoor/examples/provoor/<zkvm>-eest-v0.8.2-10M.example.yaml
+scripts/benchmarkoor.sh run --config benchmarkoor/examples/provoor/<zkvm>-eest-v21.0.5-30M.example.yaml
 ```
 
 Run it on the coordinator host, so the stateless input reaches the cluster over loopback. Results land in `provoor-runs/results/runs`. The run configuration passes these forwarder flags through the instance `extra_args`.
@@ -137,7 +137,7 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `ereSer
 
 | `zkvm`   | `zkvm_version`   | Image                                          |
 | -------- | ---------------- | ---------------------------------------------- |
-| `openvm` | `v2.1.0-preview` | `ghcr.io/eth-act/ere/ere-server-openvm:0.18.0` |
+| `openvm` | `v2.1.0-preview` | `ghcr.io/eth-act/ere/ere-server-openvm:0.19.0` |
 | `zisk`   | `v1.2.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.18.0`   |
 | `zisk`   | `v1.3.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:77e2aae`  |
 | `zisk`   | `v1.3.1-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.0`   |

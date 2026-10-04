@@ -41,7 +41,7 @@ const (
 // ereServerTags maps the zkvm and zkvm_version labels of an instance to the tag
 // of the ere-server image that estimates the cost of its guest program.
 var ereServerTags = map[string]map[string]string{
-	"openvm": {"v2.1.0-preview": "0.18.0"},
+	"openvm": {"v2.1.0-preview": "0.19.0"},
 	"zisk": {
 		"v1.2.0-alpha": "0.18.0",
 		// 77e2aae is an ere revision with no release.

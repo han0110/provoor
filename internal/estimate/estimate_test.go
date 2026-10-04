@@ -218,7 +218,7 @@ func TestEreServerTag(t *testing.T) {
 		want        string
 		wantErr     bool
 	}{
-		{name: "openvm v2.1.0-preview", zkvm: "openvm", zkvmVersion: "v2.1.0-preview", want: "0.18.0"},
+		{name: "openvm v2.1.0-preview", zkvm: "openvm", zkvmVersion: "v2.1.0-preview", want: "0.19.0"},
 		{name: "zisk v1.2.0-alpha", zkvm: "zisk", zkvmVersion: "v1.2.0-alpha", want: "0.18.0"},
 		{name: "zisk v1.3.0-alpha", zkvm: "zisk", zkvmVersion: "v1.3.0-alpha", want: "77e2aae"},
 		{name: "zisk v1.3.1-alpha", zkvm: "zisk", zkvmVersion: "v1.3.1-alpha", want: "0.19.0"},
