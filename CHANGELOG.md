@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/han0110/provoor/compare/v0.10.0...v0.11.0) (2026-10-05)
+
+
+### Features
+
+* estimation page ([#43](https://github.com/han0110/provoor/issues/43)) ([0b3dcad](https://github.com/han0110/provoor/commit/0b3dcadfa20b9e9e335ff2bd7d3780e094a508c0))
+* zisk v1.3.1-alpha and ere v0.19.0 verifier ([#45](https://github.com/han0110/provoor/issues/45)) ([31bd770](https://github.com/han0110/provoor/commit/31bd770fa77310b70d30998a0d7492f2590b5de8))
+
 ## [0.10.0](https://github.com/han0110/provoor/compare/v0.9.0...v0.10.0) (2026-09-25)
 
 
