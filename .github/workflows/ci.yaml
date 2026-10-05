@@ -18,9 +18,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # TODO: Temporary. Run scripts/fetch-verifier.sh again after an ere release
-      # verifies ZisK 1.3.0-alpha proofs, and remove lib_override.
-      - run: cp -r internal/ereverifier/lib_override internal/ereverifier/lib
+      - run: scripts/fetch-verifier.sh
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./...

@@ -34,7 +34,7 @@ type proof struct {
 
 // readFixture loads one testdata fixture, the zisk verifier fixtures ere
 // ships or the cluster-prefixed envelope, verifying key, and public values a
-// ZisK 1.3.0-alpha coordinator produced for the warmup block.
+// ZisK 1.3.1-alpha coordinator produced for the warmup block.
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	fixture, err := os.ReadFile(filepath.Join("testdata", name))
