@@ -6,6 +6,8 @@ guests:
     vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.3.1-alpha.vk
   - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-ethrex-zisk-v1.3.1-alpha.elf
     vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-ethrex-zisk-v1.3.1-alpha.vk
+  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-nimbus-zisk-v1.3.1-alpha.elf
+    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-nimbus-zisk-v1.3.1-alpha.vk
 
 coordinator:
   ssh: ${NODE1_SSH}
