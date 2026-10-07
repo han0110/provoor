@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/han0110/provoor/compare/v0.11.0...v0.12.0) (2026-10-07)
+
+
+### Features
+
+* rebuild zisk v1.3.1-alpha guests locally, add nimbus, move openvm to ere-guests v0.18.0 ([#50](https://github.com/han0110/provoor/issues/50)) ([7fc2b94](https://github.com/han0110/provoor/commit/7fc2b947123104b0d91dc4fa37b3f91e2a4995bb))
+
 ## [0.11.0](https://github.com/han0110/provoor/compare/v0.10.0...v0.11.0) (2026-10-05)
 
 
