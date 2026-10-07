@@ -4,8 +4,8 @@ zkvm: openvm
 zkvm_version: 2.1.0-preview
 
 guests:
-  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-openvm-v2.1.0-preview.elf
-    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-openvm-v2.1.0-preview.vk
+  - elf: https://github.com/eth-act/ere-guests/releases/download/v0.18.0/stateless-validator-reth-openvm-v2.1.0-preview.elf
+    vk: https://github.com/eth-act/ere-guests/releases/download/v0.18.0/stateless-validator-reth-openvm-v2.1.0-preview.vk
 
 workers:
   - { gpu: { device_ids: [0] } }
