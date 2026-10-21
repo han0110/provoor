@@ -1,5 +1,5 @@
 // Vendored verbatim from
-// https://github.com/eth-act/ere/blob/v0.19.0/bindings/golang/verifier.go
+// https://github.com/eth-act/ere/blob/v0.19.3/bindings/golang/verifier.go
 
 //go:build cgo
 

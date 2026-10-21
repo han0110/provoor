@@ -1,6 +1,6 @@
 # ZisK
 
-`zkvm: zisk` selects this zkVM. `examples/zisk-4x4.example.yaml` and `examples/zisk-1x1-local.example.yaml` deploy ZisK 1.3.1-alpha.
+`zkvm: zisk` selects this zkVM. `examples/zisk-4x4.example.yaml` and `examples/zisk-1x1-local.example.yaml` deploy ZisK 1.3.2-alpha.
 
 ## Image
 
