@@ -363,7 +363,7 @@ func TestSetupSpec(t *testing.T) {
 		t.Errorf("Cmd = %v", spec.Config.Cmd)
 	}
 	wantEnv := []string{
-		"KEY_URL=https://storage.googleapis.com/zisk-setup/zisk-provingkey-1.2.0-alpha-blake3.tar.gz",
+		"KEY_URL=https://storage.googleapis.com/zisk-setup/zisk-provingkey-1.2.0-alpha.tar.gz",
 		"PROVING_KEY_DIR=/root/.zisk/provingKey",
 	}
 	if !reflect.DeepEqual(spec.Config.Env, wantEnv) {
@@ -386,6 +386,21 @@ func TestSetupSpec(t *testing.T) {
 	if len(hostCfg.DeviceRequests) != 1 ||
 		!reflect.DeepEqual(hostCfg.DeviceRequests[0].DeviceIDs, []string{"0", "1", "2", "3"}) {
 		t.Errorf("DeviceRequests = %+v", hostCfg.DeviceRequests)
+	}
+}
+
+func TestProvingKeyArchive(t *testing.T) {
+	cases := map[string]string{
+		"0.18.0":      "zisk-provingkey-0.18.0.tar.gz",
+		"1.2.0-alpha": "zisk-provingkey-1.2.0-alpha.tar.gz",
+		"1.3.0-alpha": "zisk-provingkey-1.3.0-alpha-blake3.tar.gz",
+		"1.3.2-alpha": "zisk-provingkey-1.3.2-alpha-blake3.tar.gz",
+		"2.0.0":       "zisk-provingkey-2.0.0-blake3.tar.gz",
+	}
+	for version, want := range cases {
+		if got := provingKeyArchive(version); got != want {
+			t.Errorf("provingKeyArchive(%q) = %q, want %q", version, got, want)
+		}
 	}
 }
 
