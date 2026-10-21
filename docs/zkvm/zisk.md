@@ -1,11 +1,10 @@
 # ZisK
 
 `zkvm: zisk` selects this zkVM. `examples/zisk-4x4.example.yaml` and `examples/zisk-1x1-local.example.yaml` deploy ZisK 1.3.2-alpha.
-
 ## Image
 
 - `dockers/zkvm/Dockerfile.zisk` installs the `cargo_zisk_linux_amd64` release archive of ZisK under `/root/.zisk`.
-- It overlays `zisk-worker-gpu` and `zisk-coordinator` from han0110/zisk `3c59896d`, which serves the health endpoint and reports the per task timings.
+- It overlays `zisk-worker-gpu` and `zisk-coordinator` from han0110/zisk `91099508`, which serves the health endpoint and reports the per task timings.
 - It builds `zisk-supervisor` from `cmd/zisk-supervisor`.
 
 ## Ports
@@ -29,10 +28,10 @@
 
 ## Volumes
 
-| Volume or bind                    | Mount point              | Holds                                                                                                                                                                         |
-| --------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zisk-proving-key-<zkvm_version>` | `/root/.zisk/provingKey` | the proving key from `https://storage.googleapis.com/zisk-setup/zisk-provingkey-<zkvm_version>-blake3.tar.gz` and const-trees, mounted writable in the worker and setup jobs  |
-| `zisk-cache-<zkvm_version>`       | `/root/.zisk/cache`      | registered ELFs, ROM setup, and assembly emulators, addressed by ELF hash, mounted in the coordinator, the worker, and the program setup                                      |
+| Volume or bind                    | Mount point              | Holds                                                                                                                                                                                                                                 |
+| --------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zisk-proving-key-<zkvm_version>` | `/root/.zisk/provingKey` | the proving key from `https://storage.googleapis.com/zisk-setup/zisk-provingkey-<zkvm_version>-blake3.tar.gz`, or `zisk-provingkey-<zkvm_version>.tar.gz` below 1.3.0, and const-trees, mounted writable in the worker and setup jobs |
+| `zisk-cache-<zkvm_version>`       | `/root/.zisk/cache`      | registered ELFs, ROM setup, and assembly emulators, addressed by ELF hash, mounted in the coordinator, the worker, and the program setup                                                                                              |
 
 ## Configuration
 
