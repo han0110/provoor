@@ -47,7 +47,12 @@ func main() {
 		psCommand(),
 		logsCommand(),
 		serveCommand(),
-		estimateCommand(),
+		estimateCommand("estimate", "Estimates the proving cost of every test of a benchmark run or of a benchmarkoor configuration",
+			"Renames an estimate to the id of a run with the same suite and guest ELF, so the UI links them",
+			"concurrent estimations", estimate.Run, estimate.Link),
+		estimateCommand("profile", "Profiles the proving cost per guest call stack of every test of a benchmark run or of a benchmarkoor configuration",
+			"Renames a profile and its estimate to the id of a run with the same suite and guest ELF, so the UI links them",
+			"concurrent profiled tests", estimate.Profile, estimate.LinkProfile),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -326,37 +331,40 @@ func serveCommand() *cobra.Command {
 	return cmd
 }
 
-func estimateCommand() *cobra.Command {
+func estimateCommand(name, short, linkShort, concurrencyUsage string,
+	run func(ctx context.Context, target, ereTag, elfURL string, concurrency int, output io.Writer) error,
+	link func(ctx context.Context, runDir, estimateDir string, output io.Writer) error,
+) *cobra.Command {
 	var (
 		ereTag      string
 		elfSource   string
 		concurrency int
 	)
 	cmd := &cobra.Command{
-		Use:   "estimate <run-dir | benchmarkoor-config>",
-		Short: "Estimates the proving cost of every test of a benchmark run or of a benchmarkoor configuration",
+		Use:   name + " <run-dir | benchmarkoor-config>",
+		Short: short,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if concurrency < 1 {
 				return fmt.Errorf("concurrency %d is not a positive count", concurrency)
 			}
-			return estimate.Run(cmd.Context(), args[0], ereTag, elfSource, concurrency, cmd.OutOrStdout())
+			return run(cmd.Context(), args[0], ereTag, elfSource, concurrency, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&ereTag, "ere-tag", "", "ere-server image tag, by default the one the zkvm labels map to")
 	cmd.Flags().StringVar(&elfSource, "elf", "", "guest ELF source of a run directory, a local path or an http(s) URL")
-	cmd.Flags().IntVarP(&concurrency, "concurrency", "c", min(16, runtime.NumCPU()), "concurrent estimations")
-	cmd.AddCommand(estimateLinkCommand())
+	cmd.Flags().IntVarP(&concurrency, "concurrency", "c", min(16, runtime.NumCPU()), concurrencyUsage)
+	cmd.AddCommand(estimateLinkCommand(name, linkShort, link))
 	return cmd
 }
 
-func estimateLinkCommand() *cobra.Command {
+func estimateLinkCommand(name, short string, link func(ctx context.Context, runDir, estimateDir string, output io.Writer) error) *cobra.Command {
 	return &cobra.Command{
-		Use:   "link <run-dir> <estimate-dir>",
-		Short: "Renames an estimate to the id of a run with the same suite and guest ELF, so the UI links them",
+		Use:   "link <run-dir> <" + name + "-dir>",
+		Short: short,
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return estimate.Link(cmd.Context(), args[0], args[1], cmd.OutOrStdout())
+			return link(cmd.Context(), args[0], args[1], cmd.OutOrStdout())
 		},
 	}
 }

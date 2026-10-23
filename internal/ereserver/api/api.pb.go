@@ -1,4 +1,6 @@
-// Copied from https://github.com/eth-act/ere/blob/v0.18.0/crates/server/api/proto/api.proto.
+// Copied from https://github.com/eth-act/ere/blob/v0.19.4/crates/server/api/proto/api.proto.
+// ExecuteEstimatedCostOk keeps peak_heap_bytes in place of the reserved field,
+// because the ere v0.19.0 and earlier images that ereServerTags maps send it.
 //
 // Regenerate api.pb.go from the repository root with protoc 3.21.12 and
 // protoc-gen-go v1.36.11.
@@ -31,6 +33,176 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type SetupRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Elf           []byte                 `protobuf:"bytes,1,opt,name=elf,proto3" json:"elf,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetupRequest) Reset() {
+	*x = SetupRequest{}
+	mi := &file_api_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetupRequest) ProtoMessage() {}
+
+func (x *SetupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetupRequest.ProtoReflect.Descriptor instead.
+func (*SetupRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *SetupRequest) GetElf() []byte {
+	if x != nil {
+		return x.Elf
+	}
+	return nil
+}
+
+type SetupResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Result:
+	//
+	//	*SetupResponse_Ok
+	//	*SetupResponse_Err
+	Result        isSetupResponse_Result `protobuf_oneof:"result"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetupResponse) Reset() {
+	*x = SetupResponse{}
+	mi := &file_api_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetupResponse) ProtoMessage() {}
+
+func (x *SetupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetupResponse.ProtoReflect.Descriptor instead.
+func (*SetupResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *SetupResponse) GetResult() isSetupResponse_Result {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+func (x *SetupResponse) GetOk() *SetupOk {
+	if x != nil {
+		if x, ok := x.Result.(*SetupResponse_Ok); ok {
+			return x.Ok
+		}
+	}
+	return nil
+}
+
+func (x *SetupResponse) GetErr() string {
+	if x != nil {
+		if x, ok := x.Result.(*SetupResponse_Err); ok {
+			return x.Err
+		}
+	}
+	return ""
+}
+
+type isSetupResponse_Result interface {
+	isSetupResponse_Result()
+}
+
+type SetupResponse_Ok struct {
+	Ok *SetupOk `protobuf:"bytes,1,opt,name=ok,proto3,oneof"`
+}
+
+type SetupResponse_Err struct {
+	Err string `protobuf:"bytes,2,opt,name=err,proto3,oneof"`
+}
+
+func (*SetupResponse_Ok) isSetupResponse_Result() {}
+
+func (*SetupResponse_Err) isSetupResponse_Result() {}
+
+type SetupOk struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProgramVk     []byte                 `protobuf:"bytes,1,opt,name=program_vk,json=programVk,proto3" json:"program_vk,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetupOk) Reset() {
+	*x = SetupOk{}
+	mi := &file_api_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetupOk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetupOk) ProtoMessage() {}
+
+func (x *SetupOk) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetupOk.ProtoReflect.Descriptor instead.
+func (*SetupOk) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *SetupOk) GetProgramVk() []byte {
+	if x != nil {
+		return x.ProgramVk
+	}
+	return nil
+}
+
 type ExecuteRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InputStdin    []byte                 `protobuf:"bytes,1,opt,name=input_stdin,json=inputStdin,proto3" json:"input_stdin,omitempty"`
@@ -41,7 +213,7 @@ type ExecuteRequest struct {
 
 func (x *ExecuteRequest) Reset() {
 	*x = ExecuteRequest{}
-	mi := &file_api_proto_msgTypes[0]
+	mi := &file_api_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -53,7 +225,7 @@ func (x *ExecuteRequest) String() string {
 func (*ExecuteRequest) ProtoMessage() {}
 
 func (x *ExecuteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[0]
+	mi := &file_api_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -66,7 +238,7 @@ func (x *ExecuteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteRequest.ProtoReflect.Descriptor instead.
 func (*ExecuteRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{0}
+	return file_api_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ExecuteRequest) GetInputStdin() []byte {
@@ -96,7 +268,7 @@ type ExecuteResponse struct {
 
 func (x *ExecuteResponse) Reset() {
 	*x = ExecuteResponse{}
-	mi := &file_api_proto_msgTypes[1]
+	mi := &file_api_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -108,7 +280,7 @@ func (x *ExecuteResponse) String() string {
 func (*ExecuteResponse) ProtoMessage() {}
 
 func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[1]
+	mi := &file_api_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -121,7 +293,7 @@ func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteResponse.ProtoReflect.Descriptor instead.
 func (*ExecuteResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{1}
+	return file_api_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ExecuteResponse) GetResult() isExecuteResponse_Result {
@@ -175,7 +347,7 @@ type ExecuteOk struct {
 
 func (x *ExecuteOk) Reset() {
 	*x = ExecuteOk{}
-	mi := &file_api_proto_msgTypes[2]
+	mi := &file_api_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -187,7 +359,7 @@ func (x *ExecuteOk) String() string {
 func (*ExecuteOk) ProtoMessage() {}
 
 func (x *ExecuteOk) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[2]
+	mi := &file_api_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -200,7 +372,7 @@ func (x *ExecuteOk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteOk.ProtoReflect.Descriptor instead.
 func (*ExecuteOk) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{2}
+	return file_api_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ExecuteOk) GetPublicValues() []byte {
@@ -227,7 +399,7 @@ type ExecuteEstimatedCostRequest struct {
 
 func (x *ExecuteEstimatedCostRequest) Reset() {
 	*x = ExecuteEstimatedCostRequest{}
-	mi := &file_api_proto_msgTypes[3]
+	mi := &file_api_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -239,7 +411,7 @@ func (x *ExecuteEstimatedCostRequest) String() string {
 func (*ExecuteEstimatedCostRequest) ProtoMessage() {}
 
 func (x *ExecuteEstimatedCostRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[3]
+	mi := &file_api_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -252,7 +424,7 @@ func (x *ExecuteEstimatedCostRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteEstimatedCostRequest.ProtoReflect.Descriptor instead.
 func (*ExecuteEstimatedCostRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{3}
+	return file_api_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ExecuteEstimatedCostRequest) GetInputStdin() []byte {
@@ -282,7 +454,7 @@ type ExecuteEstimatedCostResponse struct {
 
 func (x *ExecuteEstimatedCostResponse) Reset() {
 	*x = ExecuteEstimatedCostResponse{}
-	mi := &file_api_proto_msgTypes[4]
+	mi := &file_api_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -294,7 +466,7 @@ func (x *ExecuteEstimatedCostResponse) String() string {
 func (*ExecuteEstimatedCostResponse) ProtoMessage() {}
 
 func (x *ExecuteEstimatedCostResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[4]
+	mi := &file_api_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -307,7 +479,7 @@ func (x *ExecuteEstimatedCostResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteEstimatedCostResponse.ProtoReflect.Descriptor instead.
 func (*ExecuteEstimatedCostResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{4}
+	return file_api_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ExecuteEstimatedCostResponse) GetResult() isExecuteEstimatedCostResponse_Result {
@@ -362,7 +534,7 @@ type ExecuteEstimatedCostOk struct {
 
 func (x *ExecuteEstimatedCostOk) Reset() {
 	*x = ExecuteEstimatedCostOk{}
-	mi := &file_api_proto_msgTypes[5]
+	mi := &file_api_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -374,7 +546,7 @@ func (x *ExecuteEstimatedCostOk) String() string {
 func (*ExecuteEstimatedCostOk) ProtoMessage() {}
 
 func (x *ExecuteEstimatedCostOk) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[5]
+	mi := &file_api_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -387,7 +559,7 @@ func (x *ExecuteEstimatedCostOk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteEstimatedCostOk.ProtoReflect.Descriptor instead.
 func (*ExecuteEstimatedCostOk) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{5}
+	return file_api_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ExecuteEstimatedCostOk) GetPublicValues() []byte {
@@ -411,6 +583,208 @@ func (x *ExecuteEstimatedCostOk) GetPeakHeapBytes() uint64 {
 	return 0
 }
 
+type ProfileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InputStdin    []byte                 `protobuf:"bytes,1,opt,name=input_stdin,json=inputStdin,proto3" json:"input_stdin,omitempty"`
+	InputProofs   []byte                 `protobuf:"bytes,2,opt,name=input_proofs,json=inputProofs,proto3,oneof" json:"input_proofs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProfileRequest) Reset() {
+	*x = ProfileRequest{}
+	mi := &file_api_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProfileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProfileRequest) ProtoMessage() {}
+
+func (x *ProfileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProfileRequest.ProtoReflect.Descriptor instead.
+func (*ProfileRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ProfileRequest) GetInputStdin() []byte {
+	if x != nil {
+		return x.InputStdin
+	}
+	return nil
+}
+
+func (x *ProfileRequest) GetInputProofs() []byte {
+	if x != nil {
+		return x.InputProofs
+	}
+	return nil
+}
+
+type ProfileResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Result:
+	//
+	//	*ProfileResponse_Ok
+	//	*ProfileResponse_Err
+	Result        isProfileResponse_Result `protobuf_oneof:"result"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProfileResponse) Reset() {
+	*x = ProfileResponse{}
+	mi := &file_api_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProfileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProfileResponse) ProtoMessage() {}
+
+func (x *ProfileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProfileResponse.ProtoReflect.Descriptor instead.
+func (*ProfileResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ProfileResponse) GetResult() isProfileResponse_Result {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+func (x *ProfileResponse) GetOk() *ProfileOk {
+	if x != nil {
+		if x, ok := x.Result.(*ProfileResponse_Ok); ok {
+			return x.Ok
+		}
+	}
+	return nil
+}
+
+func (x *ProfileResponse) GetErr() string {
+	if x != nil {
+		if x, ok := x.Result.(*ProfileResponse_Err); ok {
+			return x.Err
+		}
+	}
+	return ""
+}
+
+type isProfileResponse_Result interface {
+	isProfileResponse_Result()
+}
+
+type ProfileResponse_Ok struct {
+	Ok *ProfileOk `protobuf:"bytes,1,opt,name=ok,proto3,oneof"`
+}
+
+type ProfileResponse_Err struct {
+	Err string `protobuf:"bytes,2,opt,name=err,proto3,oneof"`
+}
+
+func (*ProfileResponse_Ok) isProfileResponse_Result() {}
+
+func (*ProfileResponse_Err) isProfileResponse_Result() {}
+
+type ProfileOk struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	PublicValues   []byte                 `protobuf:"bytes,1,opt,name=public_values,json=publicValues,proto3" json:"public_values,omitempty"`
+	Pprof          []byte                 `protobuf:"bytes,2,opt,name=pprof,proto3" json:"pprof,omitempty"`
+	PeakStackBytes uint64                 `protobuf:"varint,3,opt,name=peak_stack_bytes,json=peakStackBytes,proto3" json:"peak_stack_bytes,omitempty"`
+	PeakHeapBytes  uint64                 `protobuf:"varint,4,opt,name=peak_heap_bytes,json=peakHeapBytes,proto3" json:"peak_heap_bytes,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ProfileOk) Reset() {
+	*x = ProfileOk{}
+	mi := &file_api_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProfileOk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProfileOk) ProtoMessage() {}
+
+func (x *ProfileOk) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProfileOk.ProtoReflect.Descriptor instead.
+func (*ProfileOk) Descriptor() ([]byte, []int) {
+	return file_api_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ProfileOk) GetPublicValues() []byte {
+	if x != nil {
+		return x.PublicValues
+	}
+	return nil
+}
+
+func (x *ProfileOk) GetPprof() []byte {
+	if x != nil {
+		return x.Pprof
+	}
+	return nil
+}
+
+func (x *ProfileOk) GetPeakStackBytes() uint64 {
+	if x != nil {
+		return x.PeakStackBytes
+	}
+	return 0
+}
+
+func (x *ProfileOk) GetPeakHeapBytes() uint64 {
+	if x != nil {
+		return x.PeakHeapBytes
+	}
+	return 0
+}
+
 type ProveRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InputStdin    []byte                 `protobuf:"bytes,1,opt,name=input_stdin,json=inputStdin,proto3" json:"input_stdin,omitempty"`
@@ -421,7 +795,7 @@ type ProveRequest struct {
 
 func (x *ProveRequest) Reset() {
 	*x = ProveRequest{}
-	mi := &file_api_proto_msgTypes[6]
+	mi := &file_api_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -433,7 +807,7 @@ func (x *ProveRequest) String() string {
 func (*ProveRequest) ProtoMessage() {}
 
 func (x *ProveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[6]
+	mi := &file_api_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -446,7 +820,7 @@ func (x *ProveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProveRequest.ProtoReflect.Descriptor instead.
 func (*ProveRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{6}
+	return file_api_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ProveRequest) GetInputStdin() []byte {
@@ -476,7 +850,7 @@ type ProveResponse struct {
 
 func (x *ProveResponse) Reset() {
 	*x = ProveResponse{}
-	mi := &file_api_proto_msgTypes[7]
+	mi := &file_api_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -488,7 +862,7 @@ func (x *ProveResponse) String() string {
 func (*ProveResponse) ProtoMessage() {}
 
 func (x *ProveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[7]
+	mi := &file_api_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -501,7 +875,7 @@ func (x *ProveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProveResponse.ProtoReflect.Descriptor instead.
 func (*ProveResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{7}
+	return file_api_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ProveResponse) GetResult() isProveResponse_Result {
@@ -556,7 +930,7 @@ type ProveOk struct {
 
 func (x *ProveOk) Reset() {
 	*x = ProveOk{}
-	mi := &file_api_proto_msgTypes[8]
+	mi := &file_api_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -568,7 +942,7 @@ func (x *ProveOk) String() string {
 func (*ProveOk) ProtoMessage() {}
 
 func (x *ProveOk) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[8]
+	mi := &file_api_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -581,7 +955,7 @@ func (x *ProveOk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProveOk.ProtoReflect.Descriptor instead.
 func (*ProveOk) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{8}
+	return file_api_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ProveOk) GetPublicValues() []byte {
@@ -614,7 +988,7 @@ type VerifyRequest struct {
 
 func (x *VerifyRequest) Reset() {
 	*x = VerifyRequest{}
-	mi := &file_api_proto_msgTypes[9]
+	mi := &file_api_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -626,7 +1000,7 @@ func (x *VerifyRequest) String() string {
 func (*VerifyRequest) ProtoMessage() {}
 
 func (x *VerifyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[9]
+	mi := &file_api_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -639,7 +1013,7 @@ func (x *VerifyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyRequest.ProtoReflect.Descriptor instead.
 func (*VerifyRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{9}
+	return file_api_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *VerifyRequest) GetProof() []byte {
@@ -662,7 +1036,7 @@ type VerifyResponse struct {
 
 func (x *VerifyResponse) Reset() {
 	*x = VerifyResponse{}
-	mi := &file_api_proto_msgTypes[10]
+	mi := &file_api_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -674,7 +1048,7 @@ func (x *VerifyResponse) String() string {
 func (*VerifyResponse) ProtoMessage() {}
 
 func (x *VerifyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[10]
+	mi := &file_api_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -687,7 +1061,7 @@ func (x *VerifyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyResponse.ProtoReflect.Descriptor instead.
 func (*VerifyResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{10}
+	return file_api_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *VerifyResponse) GetResult() isVerifyResponse_Result {
@@ -740,7 +1114,7 @@ type VerifyOk struct {
 
 func (x *VerifyOk) Reset() {
 	*x = VerifyOk{}
-	mi := &file_api_proto_msgTypes[11]
+	mi := &file_api_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -752,7 +1126,7 @@ func (x *VerifyOk) String() string {
 func (*VerifyOk) ProtoMessage() {}
 
 func (x *VerifyOk) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[11]
+	mi := &file_api_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -765,7 +1139,7 @@ func (x *VerifyOk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyOk.ProtoReflect.Descriptor instead.
 func (*VerifyOk) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{11}
+	return file_api_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *VerifyOk) GetPublicValues() []byte {
@@ -783,7 +1157,7 @@ type ProgramVkRequest struct {
 
 func (x *ProgramVkRequest) Reset() {
 	*x = ProgramVkRequest{}
-	mi := &file_api_proto_msgTypes[12]
+	mi := &file_api_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -795,7 +1169,7 @@ func (x *ProgramVkRequest) String() string {
 func (*ProgramVkRequest) ProtoMessage() {}
 
 func (x *ProgramVkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[12]
+	mi := &file_api_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -808,7 +1182,7 @@ func (x *ProgramVkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProgramVkRequest.ProtoReflect.Descriptor instead.
 func (*ProgramVkRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{12}
+	return file_api_proto_rawDescGZIP(), []int{18}
 }
 
 type ProgramVkResponse struct {
@@ -824,7 +1198,7 @@ type ProgramVkResponse struct {
 
 func (x *ProgramVkResponse) Reset() {
 	*x = ProgramVkResponse{}
-	mi := &file_api_proto_msgTypes[13]
+	mi := &file_api_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -836,7 +1210,7 @@ func (x *ProgramVkResponse) String() string {
 func (*ProgramVkResponse) ProtoMessage() {}
 
 func (x *ProgramVkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[13]
+	mi := &file_api_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -849,7 +1223,7 @@ func (x *ProgramVkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProgramVkResponse.ProtoReflect.Descriptor instead.
 func (*ProgramVkResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{13}
+	return file_api_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ProgramVkResponse) GetResult() isProgramVkResponse_Result {
@@ -902,7 +1276,7 @@ type ProgramVkOk struct {
 
 func (x *ProgramVkOk) Reset() {
 	*x = ProgramVkOk{}
-	mi := &file_api_proto_msgTypes[14]
+	mi := &file_api_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -914,7 +1288,7 @@ func (x *ProgramVkOk) String() string {
 func (*ProgramVkOk) ProtoMessage() {}
 
 func (x *ProgramVkOk) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_msgTypes[14]
+	mi := &file_api_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -927,7 +1301,7 @@ func (x *ProgramVkOk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProgramVkOk.ProtoReflect.Descriptor instead.
 func (*ProgramVkOk) Descriptor() ([]byte, []int) {
-	return file_api_proto_rawDescGZIP(), []int{14}
+	return file_api_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ProgramVkOk) GetProgramVk() []byte {
@@ -941,7 +1315,16 @@ var File_api_proto protoreflect.FileDescriptor
 
 const file_api_proto_rawDesc = "" +
 	"\n" +
-	"\tapi.proto\x12\x03api\"j\n" +
+	"\tapi.proto\x12\x03api\" \n" +
+	"\fSetupRequest\x12\x10\n" +
+	"\x03elf\x18\x01 \x01(\fR\x03elf\"M\n" +
+	"\rSetupResponse\x12\x1e\n" +
+	"\x02ok\x18\x01 \x01(\v2\f.api.SetupOkH\x00R\x02ok\x12\x12\n" +
+	"\x03err\x18\x02 \x01(\tH\x00R\x03errB\b\n" +
+	"\x06result\"(\n" +
+	"\aSetupOk\x12\x1d\n" +
+	"\n" +
+	"program_vk\x18\x01 \x01(\fR\tprogramVk\"j\n" +
 	"\x0eExecuteRequest\x12\x1f\n" +
 	"\vinput_stdin\x18\x01 \x01(\fR\n" +
 	"inputStdin\x12&\n" +
@@ -970,7 +1353,21 @@ const file_api_proto_rawDesc = "" +
 	"\tCostEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01B\x12\n" +
-	"\x10_peak_heap_bytes\"h\n" +
+	"\x10_peak_heap_bytes\"j\n" +
+	"\x0eProfileRequest\x12\x1f\n" +
+	"\vinput_stdin\x18\x01 \x01(\fR\n" +
+	"inputStdin\x12&\n" +
+	"\finput_proofs\x18\x02 \x01(\fH\x00R\vinputProofs\x88\x01\x01B\x0f\n" +
+	"\r_input_proofs\"Q\n" +
+	"\x0fProfileResponse\x12 \n" +
+	"\x02ok\x18\x01 \x01(\v2\x0e.api.ProfileOkH\x00R\x02ok\x12\x12\n" +
+	"\x03err\x18\x02 \x01(\tH\x00R\x03errB\b\n" +
+	"\x06result\"\x98\x01\n" +
+	"\tProfileOk\x12#\n" +
+	"\rpublic_values\x18\x01 \x01(\fR\fpublicValues\x12\x14\n" +
+	"\x05pprof\x18\x02 \x01(\fR\x05pprof\x12(\n" +
+	"\x10peak_stack_bytes\x18\x03 \x01(\x04R\x0epeakStackBytes\x12&\n" +
+	"\x0fpeak_heap_bytes\x18\x04 \x01(\x04R\rpeakHeapBytes\"h\n" +
 	"\fProveRequest\x12\x1f\n" +
 	"\vinput_stdin\x18\x01 \x01(\fR\n" +
 	"inputStdin\x12&\n" +
@@ -999,10 +1396,12 @@ const file_api_proto_rawDesc = "" +
 	"\x06result\",\n" +
 	"\vProgramVkOk\x12\x1d\n" +
 	"\n" +
-	"program_vk\x18\x01 \x01(\fR\tprogramVk2\xc9\x02\n" +
-	"\vZkvmService\x126\n" +
+	"program_vk\x18\x01 \x01(\fR\tprogramVk2\xb3\x03\n" +
+	"\vZkvmService\x120\n" +
+	"\x05Setup\x12\x11.api.SetupRequest\x1a\x12.api.SetupResponse\"\x00\x126\n" +
 	"\aExecute\x12\x13.api.ExecuteRequest\x1a\x14.api.ExecuteResponse\"\x00\x12]\n" +
-	"\x14ExecuteEstimatedCost\x12 .api.ExecuteEstimatedCostRequest\x1a!.api.ExecuteEstimatedCostResponse\"\x00\x120\n" +
+	"\x14ExecuteEstimatedCost\x12 .api.ExecuteEstimatedCostRequest\x1a!.api.ExecuteEstimatedCostResponse\"\x00\x126\n" +
+	"\aProfile\x12\x13.api.ProfileRequest\x1a\x14.api.ProfileResponse\"\x00\x120\n" +
 	"\x05Prove\x12\x11.api.ProveRequest\x1a\x12.api.ProveResponse\"\x00\x123\n" +
 	"\x06Verify\x12\x12.api.VerifyRequest\x1a\x13.api.VerifyResponse\"\x00\x12<\n" +
 	"\tProgramVk\x12\x15.api.ProgramVkRequest\x1a\x16.api.ProgramVkResponse\"\x00b\x06proto3"
@@ -1019,47 +1418,59 @@ func file_api_proto_rawDescGZIP() []byte {
 	return file_api_proto_rawDescData
 }
 
-var file_api_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_api_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_api_proto_goTypes = []any{
-	(*ExecuteRequest)(nil),               // 0: api.ExecuteRequest
-	(*ExecuteResponse)(nil),              // 1: api.ExecuteResponse
-	(*ExecuteOk)(nil),                    // 2: api.ExecuteOk
-	(*ExecuteEstimatedCostRequest)(nil),  // 3: api.ExecuteEstimatedCostRequest
-	(*ExecuteEstimatedCostResponse)(nil), // 4: api.ExecuteEstimatedCostResponse
-	(*ExecuteEstimatedCostOk)(nil),       // 5: api.ExecuteEstimatedCostOk
-	(*ProveRequest)(nil),                 // 6: api.ProveRequest
-	(*ProveResponse)(nil),                // 7: api.ProveResponse
-	(*ProveOk)(nil),                      // 8: api.ProveOk
-	(*VerifyRequest)(nil),                // 9: api.VerifyRequest
-	(*VerifyResponse)(nil),               // 10: api.VerifyResponse
-	(*VerifyOk)(nil),                     // 11: api.VerifyOk
-	(*ProgramVkRequest)(nil),             // 12: api.ProgramVkRequest
-	(*ProgramVkResponse)(nil),            // 13: api.ProgramVkResponse
-	(*ProgramVkOk)(nil),                  // 14: api.ProgramVkOk
-	nil,                                  // 15: api.ExecuteEstimatedCostOk.CostEntry
+	(*SetupRequest)(nil),                 // 0: api.SetupRequest
+	(*SetupResponse)(nil),                // 1: api.SetupResponse
+	(*SetupOk)(nil),                      // 2: api.SetupOk
+	(*ExecuteRequest)(nil),               // 3: api.ExecuteRequest
+	(*ExecuteResponse)(nil),              // 4: api.ExecuteResponse
+	(*ExecuteOk)(nil),                    // 5: api.ExecuteOk
+	(*ExecuteEstimatedCostRequest)(nil),  // 6: api.ExecuteEstimatedCostRequest
+	(*ExecuteEstimatedCostResponse)(nil), // 7: api.ExecuteEstimatedCostResponse
+	(*ExecuteEstimatedCostOk)(nil),       // 8: api.ExecuteEstimatedCostOk
+	(*ProfileRequest)(nil),               // 9: api.ProfileRequest
+	(*ProfileResponse)(nil),              // 10: api.ProfileResponse
+	(*ProfileOk)(nil),                    // 11: api.ProfileOk
+	(*ProveRequest)(nil),                 // 12: api.ProveRequest
+	(*ProveResponse)(nil),                // 13: api.ProveResponse
+	(*ProveOk)(nil),                      // 14: api.ProveOk
+	(*VerifyRequest)(nil),                // 15: api.VerifyRequest
+	(*VerifyResponse)(nil),               // 16: api.VerifyResponse
+	(*VerifyOk)(nil),                     // 17: api.VerifyOk
+	(*ProgramVkRequest)(nil),             // 18: api.ProgramVkRequest
+	(*ProgramVkResponse)(nil),            // 19: api.ProgramVkResponse
+	(*ProgramVkOk)(nil),                  // 20: api.ProgramVkOk
+	nil,                                  // 21: api.ExecuteEstimatedCostOk.CostEntry
 }
 var file_api_proto_depIdxs = []int32{
-	2,  // 0: api.ExecuteResponse.ok:type_name -> api.ExecuteOk
-	5,  // 1: api.ExecuteEstimatedCostResponse.ok:type_name -> api.ExecuteEstimatedCostOk
-	15, // 2: api.ExecuteEstimatedCostOk.cost:type_name -> api.ExecuteEstimatedCostOk.CostEntry
-	8,  // 3: api.ProveResponse.ok:type_name -> api.ProveOk
-	11, // 4: api.VerifyResponse.ok:type_name -> api.VerifyOk
-	14, // 5: api.ProgramVkResponse.ok:type_name -> api.ProgramVkOk
-	0,  // 6: api.ZkvmService.Execute:input_type -> api.ExecuteRequest
-	3,  // 7: api.ZkvmService.ExecuteEstimatedCost:input_type -> api.ExecuteEstimatedCostRequest
-	6,  // 8: api.ZkvmService.Prove:input_type -> api.ProveRequest
-	9,  // 9: api.ZkvmService.Verify:input_type -> api.VerifyRequest
-	12, // 10: api.ZkvmService.ProgramVk:input_type -> api.ProgramVkRequest
-	1,  // 11: api.ZkvmService.Execute:output_type -> api.ExecuteResponse
-	4,  // 12: api.ZkvmService.ExecuteEstimatedCost:output_type -> api.ExecuteEstimatedCostResponse
-	7,  // 13: api.ZkvmService.Prove:output_type -> api.ProveResponse
-	10, // 14: api.ZkvmService.Verify:output_type -> api.VerifyResponse
-	13, // 15: api.ZkvmService.ProgramVk:output_type -> api.ProgramVkResponse
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	2,  // 0: api.SetupResponse.ok:type_name -> api.SetupOk
+	5,  // 1: api.ExecuteResponse.ok:type_name -> api.ExecuteOk
+	8,  // 2: api.ExecuteEstimatedCostResponse.ok:type_name -> api.ExecuteEstimatedCostOk
+	21, // 3: api.ExecuteEstimatedCostOk.cost:type_name -> api.ExecuteEstimatedCostOk.CostEntry
+	11, // 4: api.ProfileResponse.ok:type_name -> api.ProfileOk
+	14, // 5: api.ProveResponse.ok:type_name -> api.ProveOk
+	17, // 6: api.VerifyResponse.ok:type_name -> api.VerifyOk
+	20, // 7: api.ProgramVkResponse.ok:type_name -> api.ProgramVkOk
+	0,  // 8: api.ZkvmService.Setup:input_type -> api.SetupRequest
+	3,  // 9: api.ZkvmService.Execute:input_type -> api.ExecuteRequest
+	6,  // 10: api.ZkvmService.ExecuteEstimatedCost:input_type -> api.ExecuteEstimatedCostRequest
+	9,  // 11: api.ZkvmService.Profile:input_type -> api.ProfileRequest
+	12, // 12: api.ZkvmService.Prove:input_type -> api.ProveRequest
+	15, // 13: api.ZkvmService.Verify:input_type -> api.VerifyRequest
+	18, // 14: api.ZkvmService.ProgramVk:input_type -> api.ProgramVkRequest
+	1,  // 15: api.ZkvmService.Setup:output_type -> api.SetupResponse
+	4,  // 16: api.ZkvmService.Execute:output_type -> api.ExecuteResponse
+	7,  // 17: api.ZkvmService.ExecuteEstimatedCost:output_type -> api.ExecuteEstimatedCostResponse
+	10, // 18: api.ZkvmService.Profile:output_type -> api.ProfileResponse
+	13, // 19: api.ZkvmService.Prove:output_type -> api.ProveResponse
+	16, // 20: api.ZkvmService.Verify:output_type -> api.VerifyResponse
+	19, // 21: api.ZkvmService.ProgramVk:output_type -> api.ProgramVkResponse
+	15, // [15:22] is the sub-list for method output_type
+	8,  // [8:15] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_init() }
@@ -1067,27 +1478,36 @@ func file_api_proto_init() {
 	if File_api_proto != nil {
 		return
 	}
-	file_api_proto_msgTypes[0].OneofWrappers = []any{}
 	file_api_proto_msgTypes[1].OneofWrappers = []any{
-		(*ExecuteResponse_Ok)(nil),
-		(*ExecuteResponse_Err)(nil),
+		(*SetupResponse_Ok)(nil),
+		(*SetupResponse_Err)(nil),
 	}
 	file_api_proto_msgTypes[3].OneofWrappers = []any{}
 	file_api_proto_msgTypes[4].OneofWrappers = []any{
+		(*ExecuteResponse_Ok)(nil),
+		(*ExecuteResponse_Err)(nil),
+	}
+	file_api_proto_msgTypes[6].OneofWrappers = []any{}
+	file_api_proto_msgTypes[7].OneofWrappers = []any{
 		(*ExecuteEstimatedCostResponse_Ok)(nil),
 		(*ExecuteEstimatedCostResponse_Err)(nil),
 	}
-	file_api_proto_msgTypes[5].OneofWrappers = []any{}
-	file_api_proto_msgTypes[6].OneofWrappers = []any{}
-	file_api_proto_msgTypes[7].OneofWrappers = []any{
+	file_api_proto_msgTypes[8].OneofWrappers = []any{}
+	file_api_proto_msgTypes[9].OneofWrappers = []any{}
+	file_api_proto_msgTypes[10].OneofWrappers = []any{
+		(*ProfileResponse_Ok)(nil),
+		(*ProfileResponse_Err)(nil),
+	}
+	file_api_proto_msgTypes[12].OneofWrappers = []any{}
+	file_api_proto_msgTypes[13].OneofWrappers = []any{
 		(*ProveResponse_Ok)(nil),
 		(*ProveResponse_Err)(nil),
 	}
-	file_api_proto_msgTypes[10].OneofWrappers = []any{
+	file_api_proto_msgTypes[16].OneofWrappers = []any{
 		(*VerifyResponse_Ok)(nil),
 		(*VerifyResponse_Err)(nil),
 	}
-	file_api_proto_msgTypes[13].OneofWrappers = []any{
+	file_api_proto_msgTypes[19].OneofWrappers = []any{
 		(*ProgramVkResponse_Ok)(nil),
 		(*ProgramVkResponse_Err)(nil),
 	}
@@ -1097,7 +1517,7 @@ func file_api_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_rawDesc), len(file_api_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/pprof/profile"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/han0110/provoor/internal/ereserver/api"
@@ -115,6 +116,110 @@ func TestExecuteEstimatedCost(t *testing.T) {
 	}
 }
 
+func TestProfile(t *testing.T) {
+	stdin := []byte("stateless input")
+	peakHeapBytes, peakStackBytes := uint64(4096), uint64(512)
+	// The calls and cost sample types are not components.
+	pprofProfile := encodePprof(t, []string{"calls", "cost", "cost.main", "cost.memory"}, []int64{1, 10, 7, 3}, []int64{2, 5, 4, 1})
+	cases := []struct {
+		name       string
+		status     int
+		body       []byte
+		want       *CostProfile
+		wantGuest  string
+		wantErrors []string
+	}{
+		{
+			name:   "ok",
+			status: http.StatusOK,
+			body:   profileOkBody(t, &api.ProfileOk{Pprof: pprofProfile, PeakStackBytes: peakStackBytes, PeakHeapBytes: peakHeapBytes}),
+			want: &CostProfile{
+				CostEstimation: CostEstimation{Cost: map[string]uint64{"main": 11, "memory": 4}, PeakHeapBytes: &peakHeapBytes, PeakStackBytes: &peakStackBytes},
+				Pprof:          pprofProfile,
+			},
+		},
+		{
+			name:       "ok without cost sample type",
+			status:     http.StatusOK,
+			body:       profileOkBody(t, &api.ProfileOk{Pprof: encodePprof(t, []string{"calls", "cost"}, []int64{1, 10})}),
+			wantErrors: []string{"no cost"},
+		},
+		{
+			name:       "malformed pprof",
+			status:     http.StatusOK,
+			body:       profileOkBody(t, &api.ProfileOk{Pprof: []byte("not a pprof profile")}),
+			wantErrors: []string{"decoding the pprof profile"},
+		},
+		{
+			name:      "guest failure",
+			status:    http.StatusOK,
+			body:      encodeResponse(t, &api.ProfileResponse{Result: &api.ProfileResponse_Err{Err: "guest panicked at block 1"}}),
+			wantGuest: "guest panicked at block 1",
+		},
+		{
+			name:       "transport failure",
+			status:     http.StatusInternalServerError,
+			body:       []byte(`{"code":"internal","msg":"prover died"}`),
+			wantErrors: []string{"profile status 500", "prover died"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := serve(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != "/twirp/api.ZkvmService/Profile" {
+					t.Errorf("request = %s %s", r.Method, r.URL.Path)
+				}
+				if got := r.Header.Get("Content-Type"); got != "application/protobuf" {
+					t.Errorf("Content-Type = %q, want application/protobuf", got)
+				}
+				raw, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				var request api.ProfileRequest
+				if err := proto.Unmarshal(raw, &request); err != nil {
+					t.Error(err)
+					return
+				}
+				if !bytes.Equal(request.InputStdin, stdin) || request.InputProofs != nil {
+					t.Errorf("request = %+v, want stdin %q and no proofs", &request, stdin)
+				}
+				w.WriteHeader(tc.status)
+				_, _ = w.Write(tc.body)
+			})
+
+			got, err := client.Profile(t.Context(), stdin)
+			var guest *GuestError
+			switch {
+			case tc.want != nil:
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(got, tc.want) {
+					t.Errorf("cost profile = %+v, want %+v", got, tc.want)
+				}
+			case tc.wantGuest != "":
+				if !errors.As(err, &guest) {
+					t.Fatalf("err = %v, want a *GuestError", err)
+				}
+				if guest.Error() != tc.wantGuest {
+					t.Errorf("guest error = %q, want %q", guest, tc.wantGuest)
+				}
+			default:
+				if errors.As(err, &guest) {
+					t.Fatalf("err = %v, want a transport error", err)
+				}
+				for _, want := range tc.wantErrors {
+					if err == nil || !strings.Contains(err.Error(), want) {
+						t.Errorf("err = %v, want mention of %q", err, want)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestHealth(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -158,11 +263,34 @@ func errBody(t *testing.T, message string) []byte {
 	return encodeResponse(t, &api.ExecuteEstimatedCostResponse{Result: &api.ExecuteEstimatedCostResponse_Err{Err: message}})
 }
 
-func encodeResponse(t *testing.T, response *api.ExecuteEstimatedCostResponse) []byte {
+func profileOkBody(t *testing.T, ok *api.ProfileOk) []byte {
+	t.Helper()
+	return encodeResponse(t, &api.ProfileResponse{Result: &api.ProfileResponse_Ok{Ok: ok}})
+}
+
+func encodeResponse(t *testing.T, response proto.Message) []byte {
 	t.Helper()
 	body, err := proto.Marshal(response)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return body
+}
+
+// encodePprof encodes a pprof profile with one sample type per name and one
+// sample per list of values.
+func encodePprof(t *testing.T, names []string, samples ...[]int64) []byte {
+	t.Helper()
+	pprof := &profile.Profile{}
+	for _, name := range names {
+		pprof.SampleType = append(pprof.SampleType, &profile.ValueType{Type: name})
+	}
+	for _, values := range samples {
+		pprof.Sample = append(pprof.Sample, &profile.Sample{Value: values})
+	}
+	var encoded bytes.Buffer
+	if err := pprof.WriteUncompressed(&encoded); err != nil {
+		t.Fatal(err)
+	}
+	return encoded.Bytes()
 }

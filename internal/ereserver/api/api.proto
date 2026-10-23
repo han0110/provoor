@@ -1,4 +1,6 @@
-// Copied from https://github.com/eth-act/ere/blob/v0.18.0/crates/server/api/proto/api.proto.
+// Copied from https://github.com/eth-act/ere/blob/v0.19.4/crates/server/api/proto/api.proto.
+// ExecuteEstimatedCostOk keeps peak_heap_bytes in place of the reserved field,
+// because the ere v0.19.0 and earlier images that ereServerTags maps send it.
 //
 // Regenerate api.pb.go from the repository root with protoc 3.21.12 and
 // protoc-gen-go v1.36.11.
@@ -13,11 +15,28 @@ syntax = "proto3";
 package api;
 
 service ZkvmService {
+    rpc Setup(SetupRequest) returns (SetupResponse) {}
     rpc Execute(ExecuteRequest) returns (ExecuteResponse) {}
     rpc ExecuteEstimatedCost(ExecuteEstimatedCostRequest) returns (ExecuteEstimatedCostResponse) {}
+    rpc Profile(ProfileRequest) returns (ProfileResponse) {}
     rpc Prove(ProveRequest) returns (ProveResponse) {}
     rpc Verify(VerifyRequest) returns (VerifyResponse) {}
     rpc ProgramVk(ProgramVkRequest) returns (ProgramVkResponse) {}
+}
+
+message SetupRequest {
+    bytes elf = 1;
+}
+
+message SetupResponse {
+    oneof result {
+        SetupOk ok = 1;
+        string err = 2;
+    }
+}
+
+message SetupOk {
+    bytes program_vk = 1;
 }
 
 message ExecuteRequest {
@@ -53,6 +72,25 @@ message ExecuteEstimatedCostOk {
     bytes public_values = 1;
     map<string, uint64> cost = 2;
     optional uint64 peak_heap_bytes = 3;
+}
+
+message ProfileRequest {
+    bytes input_stdin = 1;
+    optional bytes input_proofs = 2;
+}
+
+message ProfileResponse {
+    oneof result {
+        ProfileOk ok = 1;
+        string err = 2;
+    }
+}
+
+message ProfileOk {
+    bytes public_values = 1;
+    bytes pprof = 2;
+    uint64 peak_stack_bytes = 3;
+    uint64 peak_heap_bytes = 4;
 }
 
 message ProveRequest {
