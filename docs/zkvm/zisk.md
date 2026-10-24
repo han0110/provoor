@@ -1,6 +1,29 @@
 # ZisK
 
-`zkvm: zisk` selects this zkVM. `examples/zisk-4x4.example.yaml` and `examples/zisk-1x1-local.example.yaml` deploy ZisK 1.3.2-alpha.
+`zkvm: zisk` selects this zkVM.
+
+## Examples
+
+| Example file                           | Hosts and GPUs                                                                 | zkVM version  |
+| -------------------------------------- | ------------------------------------------------------------------------------ | ------------- |
+| `examples/zisk-4x4.example.yaml`       | four hosts with four GPUs each, one worker per host, the coordinator on node 1 | `1.3.2-alpha` |
+| `examples/zisk-1x1-local.example.yaml` | GPU 0 of the local Docker daemon, which also runs the coordinator              | `1.3.2-alpha` |
+
+## Up and down
+
+`up` runs these steps in order and stops at the first failure, such as a vk mismatch. A running container stays as it is, so run `down` first to apply a change.
+
+| Step                                                                | Host              | Container                                    | Touches                                                    |
+| ------------------------------------------------------------------- | ----------------- | -------------------------------------------- | ---------------------------------------------------------- |
+| 1. Pull the cluster image                                           | every host        |                                              |                                                            |
+| 2. Download the proving key and build its const-trees, when missing | each worker host  | `zisk-proving-key-setup`                     | writes `zisk-proving-key-<zkvm_version>`                   |
+| 3. Compile each guest in turn and check its vk, on every `up`       | each worker host  | `zisk-program-setup`                         | writes `zisk-cache-<zkvm_version>`                         |
+| 4. Start the coordinator and wait for its ports                     | coordinator host  | `zisk-coordinator`                           | reads `zisk-cache-<zkvm_version>`, ports 7000, 50051, 7002 |
+| 5. Start the worker and wait for its registration                   | each worker host  | `zisk-worker`                                | reads both volumes, the GPUs of `workers[].gpu`            |
+| 6. Start the telemetry sidecars                                     | each sidecar host | `provoor-dcgm-<host>`, `provoor-node-<host>` | ports 9401, 9402                                           |
+
+`down` removes the sidecars, the workers, and the coordinator. It keeps both volumes and the journald logs, so the next `up` skips the proving-key download.
+
 ## Image
 
 - `dockers/zkvm/Dockerfile.zisk` installs the `cargo_zisk_linux_amd64` release archive of ZisK under `/root/.zisk`.
@@ -67,7 +90,6 @@ The [README](../../README.md#configuration) lists the main keys every zkVM share
 
 ## Behavior
 
-- `up` compiles every guest on every worker host before the cluster starts, because a program setup allocates the whole GPU. The setup derives the vk and compares it with the configured one.
 - One worker container per host spans the GPUs its `gpu` selects. It advertises 10 compute units per GPU, and the coordinator holds a job until 10 units per deployed GPU are ready.
 - The coordinator replays each guest setup to every worker that registers, and two setups in a row corrupt the earlier guest. Each forwarder therefore asks the supervisor on port 7002 to end the coordinator before it registers, and the restart policy starts the replacement.
 - The restart count of `zisk-coordinator` climbs by one per forwarder start as well as per failure.

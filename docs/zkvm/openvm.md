@@ -1,6 +1,27 @@
 # OpenVM
 
-`zkvm: openvm` selects this zkVM. `examples/openvm-4x4.example.yaml` and `examples/openvm-1x1-local.example.yaml` deploy OpenVM 2.1.0-preview.
+`zkvm: openvm` selects this zkVM.
+
+## Examples
+
+| Example file                             | Hosts and GPUs                                                                | zkVM version    |
+| ---------------------------------------- | ----------------------------------------------------------------------------- | --------------- |
+| `examples/openvm-4x4.example.yaml`       | four hosts with four GPUs each, one worker per GPU, the coordinator on node 1 | `2.1.0-preview` |
+| `examples/openvm-1x1-local.example.yaml` | GPU 0 of the local Docker daemon, which also runs the coordinator             | `2.1.0-preview` |
+
+## Up and down
+
+`up` runs these steps in order and stops at the first failure, such as a vk mismatch. A running container stays as it is, so run `down` first to apply a change.
+
+| Step                                                                      | Host                                 | Container                                    | Touches                                                                                                                 |
+| ------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1. Pull the cluster image                                                 | every host                           |                                              |                                                                                                                         |
+| 2. Derive the missing keys of each guest, and check the vk of every guest | every host, the coordinator included | `openvm-keygen-probe`, `openvm-keygen`       | writes `openvm-artifacts-<zkvm_version>`                                                                                |
+| 3. Start the coordinator and wait for its port                            | coordinator host                     | `openvm-coordinator`                         | reads `openvm-artifacts-<zkvm_version>`, writes `/var/tmp/openvm-final-proofs` and `/var/tmp/openvm-metrics`, port 3000 |
+| 4. Start one worker per GPU and wait until it compiles every guest        | each worker host                     | `openvm-worker-<gpu>`                        | reads `openvm-artifacts-<zkvm_version>`, writes `openvm-rvr-cache-<zkvm_version>`, port 8001 plus the GPU id            |
+| 5. Start the telemetry sidecars                                           | each sidecar host                    | `provoor-dcgm-<host>`, `provoor-node-<host>` | ports 9401, 9402                                                                                                        |
+
+`down` removes the sidecars, every `openvm-worker-<gpu>`, and the coordinator. It keeps the volumes, the files in `/var/tmp`, and the journald logs, so the next `up` skips keygen.
 
 ## Image
 
@@ -64,12 +85,10 @@ The [README](../../README.md#configuration) lists the main keys every zkVM share
 
 ## Behavior
 
-- Keygen runs per guest per host, the coordinator host included. Keygen is deterministic, so no bytes cross hosts, and a failed run removes the partial program directory.
-- Every `up` compares the sha256 of each `baseline.bin` with the sha256 of the configured vk, programs from an earlier `up` included.
+- Keygen is deterministic, so no bytes cross hosts, and a failed run removes the partial program directory.
 - The program name is `program-<first 8 bytes of sha256(elf) in hex>`. The `--elf` of `serve` must therefore be byte identical to the `guests[].elf` of the deployment.
 - `serve` checks the vk the cluster holds for the program against `--vk` and polls `/readyz` until every worker registers. It then prints `stateless validator <name> provisioned, program <name>`.
 - `serve` reads `GET /proof_pipeline/{uuid}` and `GET /workers` after every proof. The two answers make the `pipeline` of the metric line.
-- The worker ready line, not its registration, gates `up`. A worker binds its socket only after it compiles every loadout program.
 - `up` fixes the loadout in `EDGE_PROGRAMS`, and the coordinator refuses proofs for any other program.
 - The coordinator accepts one proof at a time.
 - At `verbose: 0` the workers log `openvm_cuda_common::memory_manager` at warn.

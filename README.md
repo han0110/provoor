@@ -58,6 +58,8 @@ scripts/provoor.sh down --config examples/<zkvm>-4x4.example.yaml
 - `up` and `serve` stop when the key derived from the ELF differs from the configured `.vk`.
 - `down` keeps the cache volumes and the journald logs, so the next `up` is fast.
 
+[docs/zkvm/zisk.md](docs/zkvm/zisk.md#up-and-down) and [docs/zkvm/openvm.md](docs/zkvm/openvm.md#up-and-down) list each step of `up` and `down`.
+
 ### Environment variables
 
 The tracked `*.example.yaml` templates hold `${...}` placeholders instead of real hosts. `scripts/provoor.sh` and `scripts/benchmarkoor.sh` fill them from `.env`, which git ignores, and an unset variable stops them. Fill `.env` once per rig.
@@ -155,7 +157,13 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `ereSer
 ./provoor profile link provoor-runs/results/runs/<run_id> provoor-runs/results/profiles/<profile_id>
 ```
 
-`profile` executes the guest on the input of every test as `estimate` does, and it also records what each guest call stack costs. Each test gets its cost per component, its peak heap use, and its peak stack use in `profiles/<id>/result.profile.json`. Each test also gets its pprof profile in `profiles/<id>/<test>/profile.pb.gz`, which `go tool pprof` reads. The Profile tab in the test modal of a run shows the same profile. `profile link` attaches a profile of a configuration to a run, as `estimate link` does. `profile` also writes the result to the estimate in `estimates/<id>/`, and `profile link` links it too. An estimate there of another image, ELF, or suite stays unchanged. If `profile` wrote the estimate of a run, an `estimate` of that run needs `--ere-tag` with the tag of the profile.
+`profile` executes the guest program on the input of every test, as `estimate` does, and also records which guest functions spend the cost.
+
+- `profiles/<id>/result.profile.json` holds the cost per component, the peak heap use, and the peak stack use of each test.
+- `profiles/<id>/<test>/profile.pb.gz` holds the pprof profile of one test, which the Profile tab of a run and `go tool pprof` read.
+- `estimates/<id>/` gets the same results as an estimate, so a profiled target needs no separate `estimate`.
+
+`profile link` attaches the profile and its estimate to a run, as `estimate link` does.
 
 | Flag                  | Default          | Meaning                                 |
 | --------------------- | ---------------- | --------------------------------------- |
@@ -171,9 +179,8 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `profil
 | `zisk`   | `v1.3.1-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.2`   |
 | `zisk`   | `v1.3.2-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.4`   |
 
-- A rerun resumes and reuses earlier profiles as `estimate` does. A reused test gets a hard link to the `profile.pb.gz` of the earlier profile.
-- `<test>` is the test name. A component of the name longer than 200 bytes gets the short form that benchmarkoor gives the result directory of the test.
-- The UI finds a profile by the id of its run, so the profiles need no index.
+- A rerun resumes and reuses earlier profiles, as `estimate` does.
+- An existing estimate in `estimates/<id>/` of another image, ELF, or suite stays as it is.
 
 ## Publish results
 
