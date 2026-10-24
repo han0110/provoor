@@ -2,11 +2,14 @@ package estimate
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +24,7 @@ import (
 
 	"github.com/ethpandaops/benchmarkoor/pkg/config"
 	"github.com/ethpandaops/benchmarkoor/pkg/executor"
+	"github.com/google/pprof/profile"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/han0110/provoor/internal/cluster"
@@ -111,7 +115,7 @@ func TestCheckResumable(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := checkResumable(artifactName, tc.result, image, elfSHA256)
+			err := estimateKind.checkResumable(artifactName, tc.result, image, elfSHA256)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("err = %v, want error %v", err, tc.wantErr)
 			}
@@ -168,10 +172,10 @@ func TestEstimateAll(t *testing.T) {
 		Tests:    map[string]*ereserver.CostEstimation{},
 		Failures: map[string]string{},
 	}
-	path := filepath.Join(t.TempDir(), artifactName)
+	results := t.TempDir()
 	client := &ereserver.Client{BaseURL: server.URL, HTTP: server.Client()}
 	pending := pendingTests([]string{okTest, failTest}, result)
-	if err := estimateAll(t.Context(), client, fixtures, pending, 2, result, path, cluster.NewOutput(io.Discard)); err != nil {
+	if err := estimateKind.estimateAll(t.Context(), client, fixtures, pending, 2, results, "run", result, nil, cluster.NewOutput(io.Discard)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -182,7 +186,7 @@ func TestEstimateAll(t *testing.T) {
 	if !reflect.DeepEqual(result, want) {
 		t.Errorf("result = %+v, want %+v", result, want)
 	}
-	written, err := readArtifact(path)
+	written, err := readArtifact(estimateKind.artifactPath(results, "run"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,16 +200,148 @@ func TestEstimateAllSavesNoEmptyArtifact(t *testing.T) {
 		Tests:    map[string]*ereserver.CostEstimation{},
 		Failures: map[string]string{},
 	}
-	path := filepath.Join(t.TempDir(), artifactName)
+	results := t.TempDir()
+	path := estimateKind.artifactPath(results, "run")
 	// The fixtures directory is empty, so the estimation fails before it
 	// contacts the server.
 	pending := pendingTests([]string{"first"}, result)
-	err := estimateAll(t.Context(), &ereserver.Client{}, t.TempDir(), pending, 1, result, path, cluster.NewOutput(io.Discard))
+	err := estimateKind.estimateAll(t.Context(), &ereserver.Client{}, t.TempDir(), pending, 1, results, "run", result, nil, cluster.NewOutput(io.Discard))
 	if err == nil || !strings.Contains(err.Error(), "holds no fixture") {
 		t.Fatalf("estimateAll = %v, want the error of the missing fixture", err)
 	}
 	if _, err := os.Stat(path); err == nil {
 		t.Errorf("stat = %v, want no artifact", err)
+	}
+}
+
+func TestProfileAll(t *testing.T) {
+	const (
+		recordedTest = "benchmark/example/test_input.py::test_recorded[fork_Amsterdam]"
+		failTest     = "benchmark/example/test_input.py::test_fail[fork_Amsterdam]"
+		fixture      = `{
+			"tests/` + recordedTest + `": {"_info": {"fixture-format": "blockchain_test"},
+				"blocks": [{"statelessInputBytes": "0xaabb"}]},
+			"tests/` + longTestName + `": {"_info": {"fixture-format": "blockchain_test"},
+				"blocks": [{"statelessInputBytes": "0xccdd"}]},
+			"tests/` + failTest + `": {"_info": {"fixture-format": "blockchain_test"},
+				"blocks": [{"statelessInputBytes": "0xeeff"}]}}`
+	)
+	fixtures := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fixtures, "example.json"), []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	pprof := &profile.Profile{
+		SampleType: []*profile.ValueType{{Type: "cost.main"}},
+		Sample:     []*profile.Sample{{Value: []int64{12}}},
+	}
+	var servedPprof bytes.Buffer
+	if err := pprof.WriteUncompressed(&servedPprof); err != nil {
+		t.Fatal(err)
+	}
+	served := servedPprof.Bytes()
+	peakHeapBytes, peakStackBytes := uint64(4096), uint64(512)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		var request api.ProfileRequest
+		if err := proto.Unmarshal(body, &request); err != nil {
+			t.Error(err)
+			return
+		}
+		response := &api.ProfileResponse{Result: &api.ProfileResponse_Err{Err: "guest panicked"}}
+		switch {
+		case bytes.Equal(request.InputStdin, []byte{0xaa, 0xbb}):
+			t.Error("profiled the recorded test")
+		case bytes.Equal(request.InputStdin, []byte{0xcc, 0xdd}):
+			response.Result = &api.ProfileResponse_Ok{Ok: &api.ProfileOk{
+				Pprof: served, PeakStackBytes: peakStackBytes, PeakHeapBytes: peakHeapBytes,
+			}}
+		}
+		encoded, err := proto.Marshal(response)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		_, _ = w.Write(encoded)
+	}))
+	t.Cleanup(server.Close)
+
+	// An earlier invocation recorded one test already.
+	recorded := &ereserver.CostEstimation{Cost: map[string]uint64{"main": 1}}
+	result := &artifact{
+		Tests:    map[string]*ereserver.CostEstimation{recordedTest: recorded},
+		Failures: map[string]string{},
+	}
+	// The estimate at the id of the profile holds a test that the profile lacks.
+	const estimatedTest = "benchmark/example/test_input.py::test_estimated[fork_Amsterdam]"
+	mirror := &artifact{
+		Tests:    map[string]*ereserver.CostEstimation{estimatedTest: {Cost: map[string]uint64{"main": 2}}},
+		Failures: map[string]string{},
+	}
+	results := t.TempDir()
+	dir := filepath.Join(results, "profiles", "run")
+	path := filepath.Join(dir, "result.profile.json")
+	client := &ereserver.Client{BaseURL: server.URL, HTTP: server.Client()}
+	pending := pendingTests([]string{recordedTest, longTestName, failTest}, result)
+	if err := profileKind.estimateAll(t.Context(), client, fixtures, pending, 2, results, "run", result, mirror, cluster.NewOutput(io.Discard)); err != nil {
+		t.Fatal(err)
+	}
+
+	want := &artifact{
+		Tests: map[string]*ereserver.CostEstimation{
+			recordedTest: recorded,
+			longTestName: {Cost: map[string]uint64{"main": 12}, PeakHeapBytes: &peakHeapBytes, PeakStackBytes: &peakStackBytes},
+		},
+		Failures: map[string]string{failTest: "guest panicked"},
+	}
+	written, err := readArtifact(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(written, want) {
+		t.Errorf("artifact = %+v, want %+v", written, want)
+	}
+	// The estimate gets the records of the profile and keeps its own.
+	estimated, err := readArtifact(estimateKind.artifactPath(results, "run"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want.Tests[estimatedTest] = mirror.Tests[estimatedTest]
+	if !reflect.DeepEqual(estimated, want) {
+		t.Errorf("estimate = %+v, want %+v", estimated, want)
+	}
+	// Only the profiled test has a profile, at its sanitized path.
+	profilePath := filepath.Join(dir, longTestPath, "profile.pb.gz")
+	info, err := os.Stat(profilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Errorf("mode = %v, want 0644", info.Mode().Perm())
+	}
+	compressed, err := os.ReadFile(profilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inflated, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(inflated, served) {
+		t.Errorf("profile = %x, want the served pprof %x", inflated, served)
+	}
+	for _, name := range []string{recordedTest, failTest} {
+		if _, err := os.Stat(filepath.Join(dir, name, "profile.pb.gz")); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("stat %s = %v, want no profile", name, err)
+		}
 	}
 }
 
@@ -218,11 +354,11 @@ func TestEreServerTag(t *testing.T) {
 		want        string
 		wantErr     bool
 	}{
-		{name: "openvm v2.1.0-preview", zkvm: "openvm", zkvmVersion: "v2.1.0-preview", want: "0.19.0"},
+		{name: "openvm v2.1.0-preview", zkvm: "openvm", zkvmVersion: "v2.1.0-preview", want: "0.19.4"},
 		{name: "zisk v1.2.0-alpha", zkvm: "zisk", zkvmVersion: "v1.2.0-alpha", want: "0.18.0"},
 		{name: "zisk v1.3.0-alpha", zkvm: "zisk", zkvmVersion: "v1.3.0-alpha", want: "77e2aae"},
-		{name: "zisk v1.3.1-alpha", zkvm: "zisk", zkvmVersion: "v1.3.1-alpha", want: "0.19.0"},
-		{name: "zisk v1.3.2-alpha", zkvm: "zisk", zkvmVersion: "v1.3.2-alpha", want: "0.19.3"},
+		{name: "zisk v1.3.1-alpha", zkvm: "zisk", zkvmVersion: "v1.3.1-alpha", want: "0.19.2"},
+		{name: "zisk v1.3.2-alpha", zkvm: "zisk", zkvmVersion: "v1.3.2-alpha", want: "0.19.4"},
 		{name: "unknown version", zkvm: "zisk", zkvmVersion: "v1.4.0-alpha", wantErr: true},
 		{name: "version without the v prefix", zkvm: "zisk", zkvmVersion: "1.3.0-alpha", wantErr: true},
 		{name: "unknown zkvm", zkvm: "sp1", zkvmVersion: "v5.2.1", wantErr: true},
@@ -232,9 +368,36 @@ func TestEreServerTag(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ereServerTag(tc.zkvm, tc.zkvmVersion, tc.ereTag)
+			got, err := estimateKind.ereServerTag(tc.zkvm, tc.zkvmVersion, tc.ereTag)
 			if (err != nil) != tc.wantErr || got != tc.want {
 				t.Errorf("tag = %q, %v, want %q, error %v", got, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestProfileEreServerTag(t *testing.T) {
+	cases := []struct {
+		name        string
+		zkvm        string
+		zkvmVersion string
+		want        string
+		wantErr     bool
+	}{
+		{name: "openvm v2.1.0-preview", zkvm: "openvm", zkvmVersion: "v2.1.0-preview", want: "0.19.4"},
+		{name: "zisk v1.3.1-alpha", zkvm: "zisk", zkvmVersion: "v1.3.1-alpha", want: "0.19.2"},
+		{name: "zisk v1.3.2-alpha", zkvm: "zisk", zkvmVersion: "v1.3.2-alpha", want: "0.19.4"},
+		// The images of zisk v1.2.0-alpha precede the Profile RPC.
+		{name: "zisk v1.2.0-alpha", zkvm: "zisk", zkvmVersion: "v1.2.0-alpha", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := profileKind.ereServerTag(tc.zkvm, tc.zkvmVersion, "")
+			if (err != nil) != tc.wantErr || got != tc.want {
+				t.Errorf("tag = %q, %v, want %q, error %v", got, err, tc.want, tc.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), "pass --ere-tag") {
+				t.Errorf("err = %v, want the --ere-tag hint", err)
 			}
 		})
 	}
@@ -249,7 +412,7 @@ func TestRunRejectsArtifactOfAnotherImage(t *testing.T) {
 		Image: "ghcr.io/eth-act/ere/ere-server-zisk:0.17.0",
 		Tests: map[string]*ereserver.CostEstimation{name: {}},
 	}
-	path := artifactPath(results, "run")
+	path := estimateKind.artifactPath(results, "run")
 	if err := writeArtifact(path, estimated); err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +474,7 @@ func TestReuseEstimates(t *testing.T) {
 		},
 	}
 	for id, estimated := range artifacts {
-		if err := writeArtifact(artifactPath(results, id), estimated); err != nil {
+		if err := writeArtifact(estimateKind.artifactPath(results, id), estimated); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -323,7 +486,7 @@ func TestReuseEstimates(t *testing.T) {
 		Tests:    map[string]*ereserver.CostEstimation{"second": {Cost: map[string]uint64{"rv64": 3}}},
 		Failures: map[string]string{},
 	}
-	reused, err := reuseEstimates(results, "run", names, result)
+	reused, _, err := estimateKind.reuseEstimates(results, "run", names, result)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +522,7 @@ func TestRunReusesCompleteSibling(t *testing.T) {
 		Tests:     map[string]*ereserver.CostEstimation{name: {Cost: map[string]uint64{"rv64": 1}}},
 		Failures:  map[string]string{},
 	}
-	if err := writeArtifact(artifactPath(results, "earlier-run"), estimated); err != nil {
+	if err := writeArtifact(estimateKind.artifactPath(results, "earlier-run"), estimated); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(results)
@@ -382,6 +545,162 @@ func TestRunReusesCompleteSibling(t *testing.T) {
 	}
 }
 
+func TestProfileReusesSibling(t *testing.T) {
+	const ownTest = "benchmark/example/test_input.py::test_own[fork_Amsterdam]"
+	results, runDir, _ := writeRun(t, `{"timestamp": 1790390784, "suite_hash": "f585281e3fea89a8",
+		"instance": {"id": "reth-zisk", "client": "provoor", "extra_args": ["--elf=%s"]},
+		"metadata": {"labels": {"zkvm": "zisk", "zkvm_version": "v1.3.1-alpha"}}}`, ownTest, longTestName)
+	// The profile of the run holds one test, and an earlier profile of the
+	// same guest program holds the other.
+	digest := sha256.Sum256([]byte("guest program"))
+	own := &artifact{
+		Timestamp: 1790390784,
+		SuiteHash: "f585281e3fea89a8",
+		Instance:  instance{ID: "reth-zisk", Client: "provoor"},
+		Metadata:  config.MetadataConfig{Labels: map[string]string{"zkvm": "zisk", "zkvm_version": "v1.3.1-alpha"}},
+		Zkvm:      "zisk",
+		Image:     "ghcr.io/eth-act/ere/ere-server-zisk:0.19.2",
+		ELFURL:    "guest.elf",
+		ELFSHA256: hex.EncodeToString(digest[:]),
+		Tests:     map[string]*ereserver.CostEstimation{ownTest: {Cost: map[string]uint64{"main": 1}}},
+		Failures:  map[string]string{},
+	}
+	earlier := *own
+	earlier.Timestamp = 1788831226
+	earlier.Tests = map[string]*ereserver.CostEstimation{longTestName: {Cost: map[string]uint64{"main": 2}}}
+	profiles := filepath.Join(results, "profiles")
+	files := map[string]string{
+		filepath.Join(profiles, "run", ownTest, "profile.pb.gz"):              "own profile",
+		filepath.Join(profiles, "earlier-run", longTestPath, "profile.pb.gz"): "earlier profile",
+		// An interrupted invocation left this profile without its record.
+		filepath.Join(profiles, "run", longTestPath, "profile.pb.gz"): "stale profile",
+	}
+	for id, profiled := range map[string]*artifact{"run": own, "earlier-run": &earlier} {
+		if err := writeArtifact(filepath.Join(profiles, id, "result.profile.json"), profiled); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, content := range files {
+		if err := writeFile(path, []byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(results)
+	var output bytes.Buffer
+	if err := Profile(t.Context(), runDir, "", "", 1, &output); err != nil {
+		t.Fatal(err)
+	}
+	written, err := readArtifact(filepath.Join(profiles, "run", "result.profile.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := *own
+	want.Tests = map[string]*ereserver.CostEstimation{ownTest: own.Tests[ownTest], longTestName: earlier.Tests[longTestName]}
+	want.Command = []string{"provoor", "profile", filepath.Join("runs", "run"), "--ere-tag", "0.19.2", "--elf", "guest.elf"}
+	if !reflect.DeepEqual(written, &want) {
+		t.Errorf("artifact = %+v, want %+v", written, &want)
+	}
+	// The reused test links the profile of the earlier profile, and the
+	// recorded test keeps its own.
+	source, err := os.Stat(filepath.Join(profiles, "earlier-run", longTestPath, "profile.pb.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked, err := os.Stat(filepath.Join(profiles, "run", longTestPath, "profile.pb.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(source, linked) {
+		t.Error("the reused profile is not a hard link of the earlier one")
+	}
+	kept, err := os.ReadFile(filepath.Join(profiles, "run", ownTest, "profile.pb.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(kept) != "own profile" {
+		t.Errorf("profile = %q, want the own profile", kept)
+	}
+	if want := "profile: reused 1 profiled tests of earlier profiles\nprofile: nothing to do\n"; output.String() != want {
+		t.Errorf("output = %q, want %q", output.String(), want)
+	}
+}
+
+func TestProfileWritesEstimate(t *testing.T) {
+	const (
+		ownTest      = "benchmark/example/test_input.py::test_own[fork_Amsterdam]"
+		estimateTest = "benchmark/example/test_input.py::test_estimate[fork_Amsterdam]"
+		failTest     = "benchmark/example/test_input.py::test_fail[fork_Amsterdam]"
+	)
+	digest := sha256.Sum256([]byte("guest program"))
+	profiled := &artifact{
+		Timestamp: 1790390784,
+		SuiteHash: "f585281e3fea89a8",
+		Instance:  instance{ID: "reth-zisk", Client: "provoor"},
+		Metadata:  config.MetadataConfig{Labels: map[string]string{"zkvm": "zisk", "zkvm_version": "v1.3.1-alpha"}},
+		Zkvm:      "zisk",
+		Image:     "ghcr.io/eth-act/ere/ere-server-zisk:0.19.2",
+		Command:   []string{"provoor", "profile", filepath.Join("runs", "run"), "--ere-tag", "0.19.2", "--elf", "guest.elf"},
+		ELFURL:    "guest.elf",
+		ELFSHA256: hex.EncodeToString(digest[:]),
+		Tests:     map[string]*ereserver.CostEstimation{ownTest: {Cost: map[string]uint64{"main": 1}}},
+		Failures:  map[string]string{failTest: "guest panicked"},
+	}
+	// An earlier estimate at the id of the run holds a test that the profile
+	// lacks, and the other outcome of each test that the profile holds.
+	interchangeable := *profiled
+	interchangeable.Command = []string{"provoor", "estimate", filepath.Join("runs", "run"), "--ere-tag", "0.19.2"}
+	interchangeable.Tests = map[string]*ereserver.CostEstimation{estimateTest: {Cost: map[string]uint64{"main": 2}}, failTest: {Cost: map[string]uint64{"main": 3}}}
+	interchangeable.Failures = map[string]string{ownTest: "guest panicked"}
+	otherImage := interchangeable
+	otherImage.Image = "ghcr.io/eth-act/ere/ere-server-zisk:0.19.0"
+	merged := *profiled
+	merged.Tests = map[string]*ereserver.CostEstimation{ownTest: profiled.Tests[ownTest], estimateTest: interchangeable.Tests[estimateTest]}
+	cases := []struct {
+		name       string
+		estimated  *artifact
+		want       *artifact
+		wantOutput string
+	}{
+		{name: "no estimate", want: profiled, wantOutput: "profile: nothing to do\n"},
+		{name: "interchangeable estimate", estimated: &interchangeable, want: &merged, wantOutput: "profile: nothing to do\n"},
+		{
+			name: "estimate of another image", estimated: &otherImage, want: &otherImage,
+			wantOutput: "profile: keeps estimates/run, which holds another image, ELF, or suite\nprofile: nothing to do\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			results, runDir, _ := writeRun(t, `{"timestamp": 1790390784, "suite_hash": "f585281e3fea89a8",
+				"instance": {"id": "reth-zisk", "client": "provoor", "extra_args": ["--elf=%s"]},
+				"metadata": {"labels": {"zkvm": "zisk", "zkvm_version": "v1.3.1-alpha"}}}`, ownTest)
+			if err := writeArtifact(profileKind.artifactPath(results, "run"), profiled); err != nil {
+				t.Fatal(err)
+			}
+			path := estimateKind.artifactPath(results, "run")
+			if tc.estimated != nil {
+				if err := writeArtifact(path, tc.estimated); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Chdir(results)
+			var output bytes.Buffer
+			if err := Profile(t.Context(), runDir, "", "", 1, &output); err != nil {
+				t.Fatal(err)
+			}
+			written, err := readArtifact(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(written, tc.want) {
+				t.Errorf("estimate = %+v, want %+v", written, tc.want)
+			}
+			if output.String() != tc.wantOutput {
+				t.Errorf("output = %q, want %q", output.String(), tc.wantOutput)
+			}
+		})
+	}
+}
+
 func TestRunSavesNoArtifactBeforeEstimating(t *testing.T) {
 	results, runDir, _ := writeRun(t, `{"suite_hash": "f585281e3fea89a8", "instance": {"extra_args": ["--elf=%s"]},
 		"metadata": {"labels": {"zkvm": "zisk", "zkvm_version": "v1.3.0-alpha"}}}`, "first", "second")
@@ -393,7 +712,7 @@ func TestRunSavesNoArtifactBeforeEstimating(t *testing.T) {
 		ELFSHA256: hex.EncodeToString(digest[:]),
 		Tests:     map[string]*ereserver.CostEstimation{"first": {}},
 	}
-	if err := writeArtifact(artifactPath(results, "earlier-run"), estimated); err != nil {
+	if err := writeArtifact(estimateKind.artifactPath(results, "earlier-run"), estimated); err != nil {
 		t.Fatal(err)
 	}
 	err := Run(t.Context(), runDir, "", "", 1, io.Discard)
@@ -402,6 +721,42 @@ func TestRunSavesNoArtifactBeforeEstimating(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(results, estimatesDir, "run")); err == nil {
 		t.Errorf("stat = %v, want no estimate directory", err)
+	}
+}
+
+func TestProfileSavesNoArtifactBeforeProfiling(t *testing.T) {
+	results, runDir, _ := writeRun(t, `{"suite_hash": "f585281e3fea89a8", "instance": {"extra_args": ["--elf=%s"]},
+		"metadata": {"labels": {"zkvm": "zisk", "zkvm_version": "v1.3.1-alpha"}}}`, "first", "second")
+	// The earlier run profiled the first test, and the suite has no summary.json.
+	digest := sha256.Sum256([]byte("guest program"))
+	profiled := &artifact{
+		SuiteHash: "f585281e3fea89a8",
+		Image:     "ghcr.io/eth-act/ere/ere-server-zisk:0.19.2",
+		ELFSHA256: hex.EncodeToString(digest[:]),
+		Tests:     map[string]*ereserver.CostEstimation{"first": {}},
+	}
+	profiles := filepath.Join(results, "profiles")
+	if err := writeArtifact(filepath.Join(profiles, "earlier-run", "result.profile.json"), profiled); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(filepath.Join(profiles, "earlier-run", "first", "profile.pb.gz"), []byte("earlier profile")); err != nil {
+		t.Fatal(err)
+	}
+	err := Profile(t.Context(), runDir, "", "", 1, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "summary.json") {
+		t.Fatalf("Profile = %v, want the error of the missing suite summary", err)
+	}
+	if _, err := os.Stat(filepath.Join(profiles, "run")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("stat = %v, want no profile directory", err)
+	}
+}
+
+func TestProfileRejectsTestNameOutsideProfile(t *testing.T) {
+	_, runDir, _ := writeRun(t, `{"suite_hash": "f585281e3fea89a8", "instance": {"extra_args": ["--elf=%s"]},
+		"metadata": {"labels": {"zkvm": "zisk", "zkvm_version": "v1.3.1-alpha"}}}`, "first", "../escape")
+	err := Profile(t.Context(), runDir, "", "", 1, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), `test name "../escape"`) {
+		t.Fatalf("Profile = %v, want the error of the test name", err)
 	}
 }
 
@@ -422,7 +777,7 @@ func TestRunRefreshesHeaderOfCompleteEstimate(t *testing.T) {
 		Tests:     map[string]*ereserver.CostEstimation{name: {Cost: map[string]uint64{"rv64": 1}}},
 		Failures:  map[string]string{},
 	}
-	path := artifactPath(results, "run")
+	path := estimateKind.artifactPath(results, "run")
 	if err := writeArtifact(path, estimated); err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +817,7 @@ func TestRunReplacesELFOfRun(t *testing.T) {
 		Tests:     map[string]*ereserver.CostEstimation{name: {Cost: map[string]uint64{"rv64": 1}}},
 		Failures:  map[string]string{},
 	}
-	path := artifactPath(results, "run")
+	path := estimateKind.artifactPath(results, "run")
 	if err := writeArtifact(path, estimated); err != nil {
 		t.Fatal(err)
 	}
@@ -592,7 +947,7 @@ func TestRunConfig(t *testing.T) {
 				seeds = map[string]*artifact{seededID: &partial, "1780000000_aaaaaaaa_ethrex-zisk": &donor, "1785000000_bbbbbbbb_reth-zisk": &older}
 			}
 			for id, estimated := range seeds {
-				if err := writeArtifact(artifactPath(results, id), estimated); err != nil {
+				if err := writeArtifact(estimateKind.artifactPath(results, id), estimated); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -644,7 +999,7 @@ func TestRunConfig(t *testing.T) {
 					Failures:  map[string]string{},
 				}
 			}
-			written, err := readArtifact(artifactPath(results, id))
+			written, err := readArtifact(estimateKind.artifactPath(results, id))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -699,10 +1054,10 @@ func TestLink(t *testing.T) {
 		ELFSHA256: hex.EncodeToString(digest[:]),
 		Tests:     map[string]*ereserver.CostEstimation{"first": {Cost: map[string]uint64{"main": 1}}},
 	}
-	if err := writeArtifact(artifactPath(results, id), estimated); err != nil {
+	if err := writeArtifact(estimateKind.artifactPath(results, id), estimated); err != nil {
 		t.Fatal(err)
 	}
-	written, err := os.ReadFile(artifactPath(results, id))
+	written, err := os.ReadFile(estimateKind.artifactPath(results, id))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -717,7 +1072,7 @@ func TestLink(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(results, estimatesDir, id)); err == nil {
 		t.Errorf("stat = %v, want no estimate under the old id", err)
 	}
-	linked, err := os.ReadFile(artifactPath(results, "run"))
+	linked, err := os.ReadFile(estimateKind.artifactPath(results, "run"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -768,7 +1123,7 @@ func TestLinkRejects(t *testing.T) {
 			if tc.outside {
 				estimatesParent = t.TempDir()
 			}
-			path := artifactPath(estimatesParent, id)
+			path := estimateKind.artifactPath(estimatesParent, id)
 			estimated := &artifact{SuiteHash: tc.suiteHash, ELFSHA256: tc.elfSHA256, Tests: map[string]*ereserver.CostEstimation{"first": {}}}
 			if err := writeArtifact(path, estimated); err != nil {
 				t.Fatal(err)
@@ -789,6 +1144,115 @@ func TestLinkRejects(t *testing.T) {
 	}
 }
 
+func TestLinkProfile(t *testing.T) {
+	const id = "1790500000_aaaaaaaa_reth-zisk"
+	results, runDir, _ := writeRun(t, `{"suite_hash": "f585281e3fea89a8", "instance": {"extra_args": ["--elf=%s"]},
+		"metadata": {"labels": {"zkvm": "zisk", "zkvm_version": "v1.3.1-alpha"}}}`, "first")
+	// The profile of a configuration has the suite and ELF of the run.
+	digest := sha256.Sum256([]byte("guest program"))
+	profiled := &artifact{
+		SuiteHash: "f585281e3fea89a8",
+		ELFSHA256: hex.EncodeToString(digest[:]),
+		Tests:     map[string]*ereserver.CostEstimation{"first": {Cost: map[string]uint64{"main": 1}}},
+	}
+	profiles := filepath.Join(results, "profiles")
+	// The profile wrote its estimate at its id.
+	for _, path := range []string{filepath.Join(profiles, id, "result.profile.json"), estimateKind.artifactPath(results, id)} {
+		if err := writeArtifact(path, profiled); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The link renames the estimate too, so it rewrites the estimate index. It
+	// rewrites no index.json beside the profiles.
+	estimateIndex, profileIndex := filepath.Join(results, estimatesDir, "index.json"), filepath.Join(profiles, "index.json")
+	seeded := map[string]string{
+		filepath.Join(profiles, id, "first", "profile.pb.gz"): "profile",
+		estimateIndex: "{}",
+		profileIndex:  "{}",
+	}
+	for path, content := range seeded {
+		if err := writeFile(path, []byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var output bytes.Buffer
+	if err := LinkProfile(t.Context(), runDir, filepath.Join(profiles, id), &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{filepath.Join(profiles, id), filepath.Join(results, estimatesDir, id)} {
+		if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("stat %s = %v, want nothing under the old id", dir, err)
+		}
+	}
+	linked := map[string]string{
+		filepath.Join(profiles, "run", "first", "profile.pb.gz"): "profile",
+		profileIndex: "{}",
+	}
+	for path, want := range linked {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != want {
+			t.Errorf("%s = %q, want %q", path, got, want)
+		}
+	}
+	data, err := os.ReadFile(estimateIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var index executor.EstimateIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		t.Fatal(err)
+	}
+	if len(index.Entries) != 1 || index.Entries[0].EstimateID != "run" {
+		t.Errorf("index = %s, want one entry with the run id", data)
+	}
+	if want := "profile: linked " + id + " to run run\n"; output.String() != want {
+		t.Errorf("output = %q, want %q", output.String(), want)
+	}
+}
+
+func TestLinkProfileKeepsEstimateOfRun(t *testing.T) {
+	const id = "1790500000_aaaaaaaa_reth-zisk"
+	results, runDir, _ := writeRun(t, `{"suite_hash": "f585281e3fea89a8", "instance": {"extra_args": ["--elf=%s"]},
+		"metadata": {"labels": {"zkvm": "zisk", "zkvm_version": "v1.3.1-alpha"}}}`, "first")
+	digest := sha256.Sum256([]byte("guest program"))
+	profiled := &artifact{
+		SuiteHash: "f585281e3fea89a8",
+		ELFSHA256: hex.EncodeToString(digest[:]),
+		Tests:     map[string]*ereserver.CostEstimation{"first": {Cost: map[string]uint64{"main": 1}}},
+	}
+	// The run has an estimate already, beside the estimate that the profile
+	// wrote at its id.
+	profileEstimate, runEstimate := estimateKind.artifactPath(results, id), estimateKind.artifactPath(results, "run")
+	for _, path := range []string{profileKind.artifactPath(results, id), profileEstimate, runEstimate} {
+		if err := writeArtifact(path, profiled); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// No estimate moves, so the index stays as it is.
+	indexPath := filepath.Join(results, estimatesDir, "index.json")
+	if err := os.WriteFile(indexPath, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := LinkProfile(t.Context(), runDir, filepath.Join(results, "profiles", id), &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{profileKind.artifactPath(results, "run"), profileEstimate, runEstimate} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("stat = %v, want %s in place", err, path)
+		}
+	}
+	if data, err := os.ReadFile(indexPath); err != nil || string(data) != "{}" {
+		t.Errorf("index = %q, %v, want it unchanged", data, err)
+	}
+	if want := "profile: keeps estimates/" + id + ", since estimates/run exists already\nprofile: linked " + id + " to run run\n"; output.String() != want {
+		t.Errorf("output = %q, want %q", output.String(), want)
+	}
+}
+
 func TestInvocation(t *testing.T) {
 	workingDir := t.TempDir()
 	t.Chdir(workingDir)
@@ -802,7 +1266,7 @@ func TestInvocation(t *testing.T) {
 		{target: filepath.Join(workingDir, "results", "runs", "run"), want: filepath.Join("results", "runs", "run")},
 	}
 	for _, tc := range cases {
-		if got, want := invocation(tc.target, "77e2aae"), []string{"provoor", "estimate", tc.want, "--ere-tag", "77e2aae"}; !slices.Equal(got, want) {
+		if got, want := estimateKind.invocation(tc.target, "77e2aae"), []string{"provoor", "estimate", tc.want, "--ere-tag", "77e2aae"}; !slices.Equal(got, want) {
 			t.Errorf("invocation(%q) = %q, want %q", tc.target, got, want)
 		}
 	}
@@ -867,5 +1331,37 @@ func TestWriteArtifact(t *testing.T) {
 				t.Errorf("artifact = %s, want %s", written, tc.want)
 			}
 		})
+	}
+}
+
+func TestWriteFileLeavesNoTemporaryFile(t *testing.T) {
+	// A directory at the path makes the rename fail.
+	path := filepath.Join(t.TempDir(), "profile.pb.gz")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(path, []byte("profile")); err == nil {
+		t.Fatal("writeFile = nil, want the error of the rename")
+	}
+	temporary, err := filepath.Glob(path + ".*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(temporary) != 0 {
+		t.Errorf("temporary files = %v, want none", temporary)
+	}
+}
+
+// longTestName has a last component of 283 bytes, more than the 200 bytes of
+// maxResultPathComponent and the 255 bytes of an ext4 file name.
+const longTestName = "benchmark/stateful/bloatnet/test_bloatnet.py::test_bloatnet_balance_extcodesize[fork_Amsterdam-blockchain_test_engine_x-benchmark-gas-value_60M-bloatnet_contract_0x0000000000000000000000000000000000000001-storage_slots_1000000-access_pattern_sequential-warm_slots_true-cold_accounts_250000-fill_strategy_random]"
+
+// longTestPath is longTestName after sanitizeResultPath. Python gives its last
+// component as component[:183] + "-" + hashlib.sha256(component).hexdigest()[:16].
+const longTestPath = "benchmark/stateful/bloatnet/test_bloatnet.py::test_bloatnet_balance_extcodesize[fork_Amsterdam-blockchain_test_engine_x-benchmark-gas-value_60M-bloatnet_contract_0x0000000000000000000000000000000000000001-storag-96219975f54db213"
+
+func TestSanitizeResultPath(t *testing.T) {
+	if got := sanitizeResultPath(longTestName); got != longTestPath {
+		t.Errorf("sanitizeResultPath = %q, want %q", got, longTestPath)
 	}
 }

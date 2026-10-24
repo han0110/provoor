@@ -1,10 +1,13 @@
 // Package estimate estimates what proving every test of a benchmark run, or of
 // each instance of a benchmarkoor configuration, costs. It executes the guest
-// program on each test's input in an ere-server.
+// program on each test's input in an ere-server. A profile also records what
+// each guest call stack costs, in one pprof profile per test.
 package estimate
 
 import (
+	"bytes"
 	"cmp"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -14,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -41,14 +45,86 @@ const (
 // ereServerTags maps the zkvm and zkvm_version labels of an instance to the tag
 // of the ere-server image that estimates the cost of its guest program.
 var ereServerTags = map[string]map[string]string{
-	"openvm": {"v2.1.0-preview": "0.19.0"},
+	"openvm": {"v2.1.0-preview": "0.19.4"},
 	"zisk": {
 		"v1.2.0-alpha": "0.18.0",
 		// 77e2aae is an ere revision with no release.
 		"v1.3.0-alpha": "77e2aae",
-		"v1.3.1-alpha": "0.19.0",
-		"v1.3.2-alpha": "0.19.3",
+		"v1.3.1-alpha": "0.19.2",
+		"v1.3.2-alpha": "0.19.4",
 	},
+}
+
+// profileEreServerTags maps the labels as ereServerTags does, to the tag of the
+// ere-server image that profiles the guest program. ere v0.19.1 is the first
+// release with the Profile RPC, so a zkVM version that only earlier releases
+// support has no tag.
+var profileEreServerTags = map[string]map[string]string{
+	"openvm": {"v2.1.0-preview": "0.19.4"},
+	"zisk": {
+		"v1.3.1-alpha": "0.19.2",
+		"v1.3.2-alpha": "0.19.4",
+	},
+}
+
+// kind is what sets a command of the package apart. A profile is an estimate
+// whose tests also keep the pprof profile of their execution, which holds the
+// cost per guest call stack.
+type kind struct {
+	// name is the command, which also prefixes the output lines.
+	name string
+	// gerund, past, and records are the words of the output lines and the
+	// errors, such as estimating, estimated, and estimations.
+	gerund, past, records string
+	// dir holds one directory per estimate, beside the runs and the suites of
+	// a results directory. It is also the plural of name.
+	dir string
+	// artifactName is the artifact in the directory of an estimate.
+	artifactName string
+	// tags maps the zkvm and zkvm_version labels of an instance to the tag of
+	// the ere-server image.
+	tags map[string]map[string]string
+	// testFile is the file of each test record in the directory of its test,
+	// or empty when the records have no file.
+	testFile string
+	// measure executes the guest program on the input of one test. It returns
+	// the record of the test and the content of its test file.
+	measure func(ctx context.Context, client *ereserver.Client, stdin []byte) (*ereserver.CostEstimation, []byte, error)
+}
+
+var (
+	estimateKind = &kind{
+		name: "estimate", gerund: "estimating", past: "estimated", records: "estimations",
+		dir: estimatesDir, artifactName: artifactName, tags: ereServerTags, measure: estimateTest,
+	}
+	profileKind = &kind{
+		name: "profile", gerund: "profiling", past: "profiled", records: "profiled tests",
+		dir: "profiles", artifactName: "result.profile.json", tags: profileEreServerTags,
+		testFile: "profile.pb.gz", measure: profileTest,
+	}
+)
+
+// estimateTest measures one test of an estimate, which has no test file.
+func estimateTest(ctx context.Context, client *ereserver.Client, stdin []byte) (*ereserver.CostEstimation, []byte, error) {
+	cost, err := client.ExecuteEstimatedCost(ctx, stdin)
+	return cost, nil, err
+}
+
+// profileTest measures one test of a profile. Its test file is the gzipped
+// pprof profile, which go tool pprof reads.
+func profileTest(ctx context.Context, client *ereserver.Client, stdin []byte) (*ereserver.CostEstimation, []byte, error) {
+	profiled, err := client.Profile(ctx, stdin)
+	if err != nil {
+		return nil, nil, err
+	}
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	// A bytes.Buffer takes every write, so the compression cannot fail.
+	_, _ = writer.Write(profiled.Pprof)
+	_ = writer.Close()
+	// The record is a copy, so it holds no reference to the pprof profile.
+	cost := profiled.CostEstimation
+	return &cost, compressed.Bytes(), nil
 }
 
 // artifact holds the estimations of one estimate, keyed by test name. The
@@ -99,22 +175,37 @@ type outcome struct {
 // ereServerTags for every instance, and an elfURL replaces the ELF source of a
 // run directory.
 func Run(ctx context.Context, target, ereTag, elfURL string, concurrency int, output io.Writer) error {
+	return estimateKind.run(ctx, target, ereTag, elfURL, concurrency, output)
+}
+
+// Profile profiles every test as Run estimates it, with the tags of
+// profileEreServerTags, and writes the result to profiles/<id>/ of the
+// results directory. That directory also holds the gzipped pprof profile of
+// each profiled test in <test>/profile.pb.gz. The result also goes to
+// estimates/<id>/, unless that directory holds the estimations of another
+// image, ELF, or suite.
+func Profile(ctx context.Context, target, ereTag, elfURL string, concurrency int, output io.Writer) error {
+	return profileKind.run(ctx, target, ereTag, elfURL, concurrency, output)
+}
+
+// run measures the tests of the target, as Run describes for an estimate.
+func (k *kind) run(ctx context.Context, target, ereTag, elfURL string, concurrency int, output io.Writer) error {
 	info, err := os.Stat(target)
 	if err != nil {
 		return err
 	}
 	if info.IsDir() {
-		return estimateRun(ctx, target, ereTag, elfURL, concurrency, output)
+		return k.estimateRun(ctx, target, ereTag, elfURL, concurrency, output)
 	}
 	if elfURL != "" {
 		return errors.New("--elf applies only to a run directory, since a configuration names the ELF of each instance")
 	}
-	return estimateConfig(ctx, target, ereTag, concurrency, output)
+	return k.estimateConfig(ctx, target, ereTag, concurrency, output)
 }
 
 // estimateRun estimates the tests of a run. The header of the estimate comes
 // from the config.json of the run on every invocation.
-func estimateRun(ctx context.Context, runDir, ereTag, elfURL string, concurrency int, output io.Writer) error {
+func (k *kind) estimateRun(ctx context.Context, runDir, ereTag, elfURL string, concurrency int, output io.Writer) error {
 	runDir, err := filepath.Abs(runDir)
 	if err != nil {
 		return err
@@ -129,26 +220,26 @@ func estimateRun(ctx context.Context, runDir, ereTag, elfURL string, concurrency
 	}
 	// The results directory is the parent of runs/.
 	resultsDir, id := filepath.Dir(filepath.Dir(runDir)), filepath.Base(runDir)
-	path := artifactPath(resultsDir, id)
+	path := k.artifactPath(resultsDir, id)
 	result, err := readArtifact(path)
 	if err != nil {
 		return err
 	}
 	source := cmp.Or(elfURL, run.ELFSource)
-	tag, elf, elfSHA256, err := resolveGuest(ctx, run.Metadata.Labels, ereTag, source)
+	tag, elf, elfSHA256, err := k.resolveGuest(ctx, run.Metadata.Labels, ereTag, source)
 	if err != nil {
 		return err
 	}
 	image := ereserver.Image(run.Metadata.Labels["zkvm"], tag)
-	if err := checkResumable(path, result, image, elfSHA256); err != nil {
+	if err := k.checkResumable(path, result, image, elfSHA256); err != nil {
 		return err
 	}
 	result.Timestamp, result.SuiteHash = run.Timestamp, run.SuiteHash
 	result.Instance, result.Metadata = run.Instance, run.Metadata
 	result.Zkvm, result.Image = run.Metadata.Labels["zkvm"], image
 	result.ELFURL, result.ELFSHA256 = relativeToWorkingDir(source), elfSHA256
-	result.Command = append(invocation(runDir, tag), "--elf", result.ELFURL)
-	return complete(ctx, resultsDir, id, result, names, elf, func() (string, error) {
+	result.Command = append(k.invocation(runDir, tag), "--elf", result.ELFURL)
+	return k.complete(ctx, resultsDir, id, result, names, elf, func() (string, error) {
 		return prepareFixtures(ctx, runDir, run.SuiteHash)
 	}, concurrency, output)
 }
@@ -156,7 +247,7 @@ func estimateRun(ctx context.Context, runDir, ereTag, elfURL string, concurrency
 // estimateConfig estimates the tests of every instance of a benchmarkoor
 // configuration, one after another, under the results directory of the
 // configuration.
-func estimateConfig(ctx context.Context, path, ereTag string, concurrency int, output io.Writer) error {
+func (k *kind) estimateConfig(ctx context.Context, path, ereTag string, concurrency int, output io.Writer) error {
 	cfg, err := config.Load(path)
 	if err != nil {
 		return err
@@ -170,7 +261,7 @@ func estimateConfig(ctx context.Context, path, ereTag string, concurrency int, o
 	elfs := make([][]byte, len(cfg.Runner.Instances))
 	for i := range cfg.Runner.Instances {
 		clientInstance := &cfg.Runner.Instances[i]
-		if estimates[i], elfs[i], err = newEstimate(ctx, path, ereTag, cfg, clientInstance); err != nil {
+		if estimates[i], elfs[i], err = k.newEstimate(ctx, path, ereTag, cfg, clientInstance); err != nil {
 			return fmt.Errorf("instance %s: %w", clientInstance.ID, err)
 		}
 	}
@@ -181,7 +272,7 @@ func estimateConfig(ctx context.Context, path, ereTag string, concurrency int, o
 	resultsDir := cfg.Runner.Benchmark.ResultsDir
 	for i, started := range estimates {
 		started.SuiteHash = suite.hash
-		id, result, err := continuation(resultsDir, started)
+		id, result, err := k.continuation(resultsDir, started)
 		if err != nil {
 			return err
 		}
@@ -189,9 +280,9 @@ func estimateConfig(ctx context.Context, path, ereTag string, concurrency int, o
 			started.Timestamp = time.Now().Unix()
 			id, result = newEstimateID(started.Timestamp, started.Instance.ID), started
 		}
-		fmt.Fprintf(output, "estimate: %s\n", id)
+		fmt.Fprintf(output, "%s: %s\n", k.name, id)
 		result.Command = started.Command
-		err = complete(ctx, resultsDir, id, result, suite.names, elfs[i], func() (string, error) {
+		err = k.complete(ctx, resultsDir, id, result, suite.names, elfs[i], func() (string, error) {
 			return suite.fixtures, nil
 		}, concurrency, output)
 		if err != nil {
@@ -204,13 +295,13 @@ func estimateConfig(ctx context.Context, path, ereTag string, concurrency int, o
 // newEstimate maps the labels of a configuration instance to its image and
 // reads the guest ELF of its extra_args. It returns the artifact that a new
 // estimate of the instance starts from, and the ELF.
-func newEstimate(ctx context.Context, path, ereTag string, cfg *config.Config, clientInstance *config.ClientInstance) (*artifact, []byte, error) {
+func (k *kind) newEstimate(ctx context.Context, path, ereTag string, cfg *config.Config, clientInstance *config.ClientInstance) (*artifact, []byte, error) {
 	labels := cfg.GetMetadataLabels(clientInstance)
 	source, err := elfSource(clientInstance.ExtraArgs)
 	if err != nil {
 		return nil, nil, err
 	}
-	tag, elf, elfSHA256, err := resolveGuest(ctx, labels, ereTag, source)
+	tag, elf, elfSHA256, err := k.resolveGuest(ctx, labels, ereTag, source)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -219,7 +310,7 @@ func newEstimate(ctx context.Context, path, ereTag string, cfg *config.Config, c
 		Metadata:  config.MetadataConfig{Labels: labels},
 		Zkvm:      labels["zkvm"],
 		Image:     ereserver.Image(labels["zkvm"], tag),
-		Command:   invocation(path, tag),
+		Command:   k.invocation(path, tag),
 		ELFURL:    relativeToWorkingDir(source),
 		ELFSHA256: elfSHA256,
 		Tests:     map[string]*ereserver.CostEstimation{},
@@ -231,6 +322,20 @@ func newEstimate(ctx context.Context, path, ereTag string, cfg *config.Config, c
 // the UI links them. The estimate must sit in estimates/ beside runs/, and it
 // must hold estimations of the suite and the guest ELF of the run.
 func Link(ctx context.Context, runDir, estimateDir string, output io.Writer) error {
+	return estimateKind.link(ctx, runDir, estimateDir, output)
+}
+
+// LinkProfile renames the profile in profileDir to the id of the run in
+// runDir, as Link renames an estimate. The profile must sit in profiles/
+// beside runs/. It also renames the estimate that the profile wrote at its old
+// id, unless the run has an estimate already.
+func LinkProfile(ctx context.Context, runDir, profileDir string, output io.Writer) error {
+	return profileKind.link(ctx, runDir, profileDir, output)
+}
+
+// link renames the estimate in estimateDir to the id of the run in runDir, as
+// Link describes for an estimate.
+func (k *kind) link(ctx context.Context, runDir, estimateDir string, output io.Writer) error {
 	runDir, err := filepath.Abs(runDir)
 	if err != nil {
 		return err
@@ -244,7 +349,7 @@ func Link(ctx context.Context, runDir, estimateDir string, output io.Writer) err
 		return err
 	}
 	// readArtifact gives an empty artifact for a missing file.
-	path := filepath.Join(estimateDir, artifactName)
+	path := filepath.Join(estimateDir, k.artifactName)
 	if _, err := os.Stat(path); err != nil {
 		return err
 	}
@@ -253,12 +358,12 @@ func Link(ctx context.Context, runDir, estimateDir string, output io.Writer) err
 		return err
 	}
 	resultsDir, id := filepath.Dir(filepath.Dir(runDir)), filepath.Base(runDir)
-	estimates := filepath.Join(resultsDir, estimatesDir)
+	estimates := filepath.Join(resultsDir, k.dir)
 	if filepath.Dir(estimateDir) != estimates {
 		return fmt.Errorf("%s is not in %s of the run", estimateDir, estimates)
 	}
 	if filepath.Base(estimateDir) == id {
-		fmt.Fprintf(output, "estimate: %s already links to the run\n", id)
+		fmt.Fprintf(output, "%s: %s already links to the run\n", k.name, id)
 		return nil
 	}
 	destination := filepath.Join(estimates, id)
@@ -266,20 +371,25 @@ func Link(ctx context.Context, runDir, estimateDir string, output io.Writer) err
 		return fmt.Errorf("%s exists already", destination)
 	}
 	if result.SuiteHash != run.SuiteHash {
-		return fmt.Errorf("%s holds estimations of suite %s, not of suite %s of the run", estimateDir, result.SuiteHash, run.SuiteHash)
+		return fmt.Errorf("%s holds %s of suite %s, not of suite %s of the run", estimateDir, k.records, result.SuiteHash, run.SuiteHash)
 	}
 	_, elfSHA256, err := resolveELF(ctx, run.ELFSource)
 	if err != nil {
 		return err
 	}
 	if result.ELFSHA256 != elfSHA256 {
-		return fmt.Errorf("%s holds estimations of elf %s, not of elf %s of the run", estimateDir, result.ELFSHA256, elfSHA256)
+		return fmt.Errorf("%s holds %s of elf %s, not of elf %s of the run", estimateDir, k.records, result.ELFSHA256, elfSHA256)
 	}
 	if err := os.Rename(estimateDir, destination); err != nil {
 		return err
 	}
-	// The rename changes a directory name that the index holds.
-	if _, err := os.Stat(filepath.Join(estimates, "index.json")); err == nil {
+	linkedMirror, err := k.linkMirror(resultsDir, filepath.Base(estimateDir), id, result, output)
+	if err != nil {
+		return err
+	}
+	// The rename changes a directory name that the index holds. Only the
+	// estimates have an index.
+	if _, err := os.Stat(filepath.Join(resultsDir, estimatesDir, "index.json")); err == nil && (k == estimateKind || linkedMirror) {
 		index, err := executor.GenerateEstimateIndex(resultsDir)
 		if err != nil {
 			return err
@@ -288,14 +398,37 @@ func Link(ctx context.Context, runDir, estimateDir string, output io.Writer) err
 			return err
 		}
 	}
-	fmt.Fprintf(output, "estimate: linked %s to run %s\n", filepath.Base(estimateDir), id)
+	fmt.Fprintf(output, "%s: linked %s to run %s\n", k.name, filepath.Base(estimateDir), id)
 	return nil
+}
+
+// linkMirror renames the mirror of a profile at oldID to the id of the run, and
+// reports whether it renamed it. Only an estimate with the image, ELF, and
+// suite of the profile is its mirror. It does nothing for an estimate. An
+// estimate at the id of the run stays, beside the mirror.
+func (k *kind) linkMirror(resultsDir, oldID, id string, profiled *artifact, output io.Writer) (bool, error) {
+	if k != profileKind {
+		return false, nil
+	}
+	// readArtifact gives an empty artifact for a missing file, and its empty
+	// ELF digest matches no profile of a run.
+	mirror, err := readArtifact(estimateKind.artifactPath(resultsDir, oldID))
+	if err != nil || !sameEstimation(mirror, profiled) {
+		return false, err
+	}
+	source, destination := filepath.Join(resultsDir, estimatesDir, oldID), filepath.Join(resultsDir, estimatesDir, id)
+	if _, err := os.Stat(destination); err == nil {
+		fmt.Fprintf(output, "%s: keeps %s, since %s exists already\n", k.name, filepath.Join(estimatesDir, oldID), filepath.Join(estimatesDir, id))
+		return false, nil
+	}
+	err = os.Rename(source, destination)
+	return err == nil, err
 }
 
 // resolveGuest returns the ere-server image tag, and the guest ELF with its
 // SHA-256 digest.
-func resolveGuest(ctx context.Context, labels map[string]string, ereTag, source string) (tag string, elf []byte, elfSHA256 string, err error) {
-	tag, err = ereServerTag(labels["zkvm"], labels["zkvm_version"], ereTag)
+func (k *kind) resolveGuest(ctx context.Context, labels map[string]string, ereTag, source string) (tag string, elf []byte, elfSHA256 string, err error) {
+	tag, err = k.ereServerTag(labels["zkvm"], labels["zkvm_version"], ereTag)
 	if err != nil {
 		return "", nil, "", err
 	}
@@ -317,16 +450,16 @@ func resolveELF(ctx context.Context, source string) (elf []byte, elfSHA256 strin
 }
 
 // ereServerTag returns ereTag when it is set, and otherwise the ere-server image
-// tag that ereServerTags maps the zkvm and zkvm_version labels to. The zkvm
-// label names the image, so both cases require it.
-func ereServerTag(zkvm, zkvmVersion, ereTag string) (string, error) {
+// tag that the tags of the kind map the zkvm and zkvm_version labels to. The
+// zkvm label names the image, so both cases require it.
+func (k *kind) ereServerTag(zkvm, zkvmVersion, ereTag string) (string, error) {
 	if zkvm == "" {
 		return "", errors.New("metadata.labels holds no zkvm label")
 	}
 	if ereTag != "" {
 		return ereTag, nil
 	}
-	tag, ok := ereServerTags[zkvm][zkvmVersion]
+	tag, ok := k.tags[zkvm][zkvmVersion]
 	if !ok {
 		return "", fmt.Errorf("no ere-server image is mapped to zkvm %q version %q, so pass --ere-tag to select one", zkvm, zkvmVersion)
 	}
@@ -336,10 +469,10 @@ func ereServerTag(zkvm, zkvmVersion, ereTag string) (string, error) {
 // continuation returns the latest estimate with the instance, image, ELF, and
 // suite of the started artifact, the estimate of a run included. The artifact
 // is nil when no estimate matches.
-func continuation(resultsDir string, started *artifact) (string, *artifact, error) {
+func (k *kind) continuation(resultsDir string, started *artifact) (string, *artifact, error) {
 	var id string
 	var latest *artifact
-	err := scanEstimates(resultsDir, func(otherID string, other *artifact) {
+	err := k.scanEstimates(resultsDir, func(otherID string, other *artifact) {
 		if other.Instance.ID == started.Instance.ID && sameEstimation(other, started) &&
 			(latest == nil || other.Timestamp > latest.Timestamp) {
 			id, latest = otherID, other
@@ -358,8 +491,8 @@ func newEstimateID(timestamp int64, instanceID string) string {
 
 // invocation is the provoor command that estimates the target with the
 // ere-server image tag.
-func invocation(target, tag string) []string {
-	return []string{"provoor", "estimate", filepath.Clean(relativeToWorkingDir(target)), "--ere-tag", tag}
+func (k *kind) invocation(target, tag string) []string {
+	return []string{"provoor", k.name, filepath.Clean(relativeToWorkingDir(target)), "--ere-tag", tag}
 }
 
 // relativeToWorkingDir returns an absolute path relative to the working
@@ -377,24 +510,40 @@ func relativeToWorkingDir(path string) string {
 // complete copies the estimations of earlier estimates into the artifact of
 // the estimate id. Then it estimates every test that stays pending with an
 // ere-server of the image on the guest ELF. prepare returns the fixtures
-// directory, and it runs only when a test is pending.
-func complete(ctx context.Context, resultsDir, id string, result *artifact, names []string, elf []byte,
+// directory, and it runs only when a test is pending. The test files of the
+// copied estimations land right before the first save of the artifact, so a
+// failure of an earlier step leaves none.
+func (k *kind) complete(ctx context.Context, resultsDir, id string, result *artifact, names []string, elf []byte,
 	prepare func() (string, error), concurrency int, output io.Writer,
 ) error {
-	path := artifactPath(resultsDir, id)
-	reused, err := reuseEstimates(resultsDir, id, names, result)
+	// A test file must stay in the directory of the estimate.
+	if k.testFile != "" {
+		for _, name := range names {
+			if !filepath.IsLocal(sanitizeResultPath(name)) {
+				return fmt.Errorf("test name %q is not a local path", name)
+			}
+		}
+	}
+	mirror, err := k.readMirror(resultsDir, id, result, output)
+	if err != nil {
+		return err
+	}
+	reused, sources, err := k.reuseEstimates(resultsDir, id, names, result)
 	if err != nil {
 		return err
 	}
 	if reused > 0 {
-		fmt.Fprintf(output, "estimate: reused %d estimations of earlier estimates\n", reused)
+		fmt.Fprintf(output, "%s: reused %d %s of earlier %s\n", k.name, reused, k.records, k.dir)
 	}
 	pending := pendingTests(names, result)
 	if len(pending) == 0 {
-		if err := writeArtifact(path, result); err != nil {
+		if err := k.linkTestFiles(resultsDir, id, sources); err != nil {
 			return err
 		}
-		fmt.Fprintln(output, "estimate: nothing to do")
+		if err := k.save(resultsDir, id, result, mirror); err != nil {
+			return err
+		}
+		fmt.Fprintf(output, "%s: nothing to do\n", k.name)
 		return nil
 	}
 
@@ -421,16 +570,19 @@ func complete(ctx context.Context, resultsDir, id string, result *artifact, name
 		}
 	}()
 	result.ImageSHA256 = server.ImageSHA256
+	if err := k.linkTestFiles(resultsDir, id, sources); err != nil {
+		return err
+	}
 
-	out.Printf("estimating %d tests with %s", len(pending), result.Image)
-	return estimateAll(ctx, &server.Client, fixtures, pending, concurrency, result, path, out)
+	out.Printf("%s %d tests with %s", k.gerund, len(pending), result.Image)
+	return k.estimateAll(ctx, &server.Client, fixtures, pending, concurrency, resultsDir, id, result, mirror, out)
 }
 
 // estimateAll estimates every pending test against one server and saves the
 // artifact as it goes. A guest failure is recorded and the estimation
 // continues, while every other failure ends it.
-func estimateAll(ctx context.Context, client *ereserver.Client, fixtures string, pending map[string]struct{},
-	concurrency int, result *artifact, path string, output *cluster.Output,
+func (k *kind) estimateAll(ctx context.Context, client *ereserver.Client, fixtures string, pending map[string]struct{},
+	concurrency int, resultsDir, id string, result, mirror *artifact, output *cluster.Output,
 ) error {
 	total := len(pending)
 	jobs := make(chan job)
@@ -448,10 +600,16 @@ func estimateAll(ctx context.Context, client *ereserver.Client, fixtures string,
 		group.Go(func() error {
 			defer workers.Done()
 			for input := range jobs {
-				cost, err := client.ExecuteEstimatedCost(ctx, input.stdin)
+				cost, content, err := k.measure(ctx, client, input.stdin)
 				var guest *ereserver.GuestError
 				if err != nil && !errors.As(err, &guest) {
-					return fmt.Errorf("estimating %s: %w", input.name, err)
+					return fmt.Errorf("%s %s: %w", k.gerund, input.name, err)
+				}
+				// The test file lands before the record that names it.
+				if content != nil {
+					if err := writeFile(k.testFilePath(filepath.Join(resultsDir, k.dir, id), input.name), content); err != nil {
+						return err
+					}
 				}
 				outcomes <- outcome{name: input.name, cost: cost, guest: guest}
 			}
@@ -475,8 +633,8 @@ func estimateAll(ctx context.Context, client *ereserver.Client, fixtures string,
 		if saveErr != nil || estimated%progressInterval != 0 {
 			continue
 		}
-		output.Printf("estimated %d/%d", estimated, total)
-		if saveErr = writeArtifact(path, result); saveErr != nil {
+		output.Printf("%s %d/%d", k.past, estimated, total)
+		if saveErr = k.save(resultsDir, id, result, mirror); saveErr != nil {
 			cancel()
 		}
 	}
@@ -485,17 +643,17 @@ func estimateAll(ctx context.Context, client *ereserver.Client, fixtures string,
 		return saveErr
 	}
 	// Only a failure before the first outcome leaves the artifact without an
-	// estimation. Such an estimate saves nothing and creates no directory.
+	// estimation. Such an estimate saves nothing.
 	if len(result.Tests) == 0 && len(result.Failures) == 0 {
 		return err
 	}
-	if writeErr := writeArtifact(path, result); err == nil {
+	if writeErr := k.save(resultsDir, id, result, mirror); err == nil {
 		err = writeErr
 	}
 	if err != nil {
 		return err
 	}
-	output.Printf("estimated %d tests, %d failed", estimated, failed)
+	output.Printf("%s %d tests, %d failed", k.past, estimated, failed)
 	return nil
 }
 
@@ -525,16 +683,20 @@ func pendingTests(names []string, result *artifact) map[string]struct{} {
 // reuseEstimates copies into the artifact every estimation it lacks from the
 // other estimates of the results directory with the same image, ELF, and
 // suite. It copies from the estimates of runs and of configurations. A rerun
-// of a guest then starts from the estimations of the earlier estimate.
-func reuseEstimates(resultsDir, id string, names []string, result *artifact) (int, error) {
+// of a guest then starts from the estimations of the earlier estimate. It
+// returns the number of copied records, and the id of the estimate that each
+// copied cost comes from, keyed by test name.
+func (k *kind) reuseEstimates(resultsDir, id string, names []string, result *artifact) (int, map[string]string, error) {
 	reused := 0
-	err := scanEstimates(resultsDir, func(otherID string, other *artifact) {
+	sources := map[string]string{}
+	err := k.scanEstimates(resultsDir, func(otherID string, other *artifact) {
 		if otherID == id || !sameEstimation(other, result) {
 			return
 		}
 		for name := range pendingTests(names, result) {
 			if cost, ok := other.Tests[name]; ok {
 				result.Tests[name] = cost
+				sources[name] = otherID
 				reused++
 			} else if message, ok := other.Failures[name]; ok {
 				result.Failures[name] = message
@@ -542,13 +704,44 @@ func reuseEstimates(resultsDir, id string, names []string, result *artifact) (in
 			}
 		}
 	})
-	return reused, err
+	return reused, sources, err
+}
+
+// linkTestFiles hard links the test file of each test in sources into the
+// estimate id. sources maps a test name to the estimate that holds its file.
+// It does nothing when the records of the kind have no file.
+func (k *kind) linkTestFiles(resultsDir, id string, sources map[string]string) error {
+	if k.testFile == "" {
+		return nil
+	}
+	estimates := filepath.Join(resultsDir, k.dir)
+	for name, otherID := range sources {
+		destination := k.testFilePath(filepath.Join(estimates, id), name)
+		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+			return err
+		}
+		// An interrupted earlier invocation can leave a test file without its
+		// record.
+		if err := os.Remove(destination); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if err := os.Link(k.testFilePath(filepath.Join(estimates, otherID), name), destination); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// testFilePath is the test file of the test name in the directory of an
+// estimate. Its path is the one that benchmarkoor gives the results of the test.
+func (k *kind) testFilePath(estimateDir, name string) string {
+	return filepath.Join(estimateDir, sanitizeResultPath(name), k.testFile)
 }
 
 // scanEstimates passes the id and the artifact of every estimate of the
 // results directory to visit, in id order.
-func scanEstimates(resultsDir string, visit func(id string, estimated *artifact)) error {
-	entries, err := os.ReadDir(filepath.Join(resultsDir, estimatesDir))
+func (k *kind) scanEstimates(resultsDir string, visit func(id string, estimated *artifact)) error {
+	entries, err := os.ReadDir(filepath.Join(resultsDir, k.dir))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
@@ -559,7 +752,7 @@ func scanEstimates(resultsDir string, visit func(id string, estimated *artifact)
 		if !entry.IsDir() {
 			continue
 		}
-		estimated, err := readArtifact(artifactPath(resultsDir, entry.Name()))
+		estimated, err := readArtifact(k.artifactPath(resultsDir, entry.Name()))
 		if err != nil {
 			return err
 		}
@@ -575,21 +768,42 @@ func sameEstimation(a, b *artifact) bool {
 }
 
 // artifactPath is the artifact of the estimate id in the results directory.
-func artifactPath(resultsDir, id string) string {
-	return filepath.Join(resultsDir, estimatesDir, id, artifactName)
+func (k *kind) artifactPath(resultsDir, id string) string {
+	return filepath.Join(resultsDir, k.dir, id, k.artifactName)
 }
 
 // checkResumable rejects an artifact an earlier command filled under another
 // image or another ELF, since its costs belong to that guest program.
-func checkResumable(path string, result *artifact, image, elfSHA256 string) error {
+func (k *kind) checkResumable(path string, result *artifact, image, elfSHA256 string) error {
 	if len(result.Tests) == 0 && len(result.Failures) == 0 {
 		return nil
 	}
 	if result.Image == image && result.ELFSHA256 == elfSHA256 {
 		return nil
 	}
-	return fmt.Errorf("%s holds estimations of image %s and elf %s, not of image %s and elf %s, so remove it to estimate again",
-		path, result.Image, result.ELFSHA256, image, elfSHA256)
+	return fmt.Errorf("%s holds %s of image %s and elf %s, not of image %s and elf %s, so remove it to %s again",
+		path, k.records, result.Image, result.ELFSHA256, image, elfSHA256, k.name)
+}
+
+// readMirror reads the mirror of a profile, the estimate at its id that the
+// profile also writes. The mirror is nil for an estimate. It is also nil when
+// the estimate at the id holds the estimations of another image, ELF, or
+// suite, since that estimate stays as it is.
+func (k *kind) readMirror(resultsDir, id string, result *artifact, output io.Writer) (*artifact, error) {
+	if k != profileKind {
+		return nil, nil
+	}
+	path := estimateKind.artifactPath(resultsDir, id)
+	mirror, err := readArtifact(path)
+	if err != nil {
+		return nil, err
+	}
+	// readArtifact gives an empty artifact for a missing file.
+	if _, err := os.Stat(path); err == nil && !sameEstimation(mirror, result) {
+		fmt.Fprintf(output, "%s: keeps %s, which holds another image, ELF, or suite\n", k.name, filepath.Join(estimatesDir, id))
+		return nil, nil
+	}
+	return mirror, nil
 }
 
 // readArtifact reads the artifact of an earlier estimation, or an empty one.
@@ -611,6 +825,26 @@ func readArtifact(path string) (*artifact, error) {
 	return result, nil
 }
 
+// save writes the artifact of the estimate id. A profile with a mirror also
+// writes the artifact as the estimate of the same id, with the records of the
+// mirror that the artifact does not replace.
+func (k *kind) save(resultsDir, id string, result, mirror *artifact) error {
+	if err := writeArtifact(k.artifactPath(resultsDir, id), result); err != nil || mirror == nil {
+		return err
+	}
+	merged := *result
+	merged.Tests, merged.Failures = maps.Clone(mirror.Tests), maps.Clone(mirror.Failures)
+	for name := range result.Tests {
+		delete(merged.Failures, name)
+	}
+	for name := range result.Failures {
+		delete(merged.Tests, name)
+	}
+	maps.Copy(merged.Tests, result.Tests)
+	maps.Copy(merged.Failures, result.Failures)
+	return writeArtifact(estimateKind.artifactPath(resultsDir, id), &merged)
+}
+
 // writeArtifact replaces the artifact in one step, so an interrupted write
 // leaves the last complete one in place.
 func writeArtifact(path string, result *artifact) error {
@@ -618,6 +852,11 @@ func writeArtifact(path string, result *artifact) error {
 	if err != nil {
 		return err
 	}
+	return writeFile(path, append(data, '\n'))
+}
+
+// writeFile replaces the file at path with data in one step.
+func writeFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -625,7 +864,7 @@ func writeArtifact(path string, result *artifact) error {
 	if err != nil {
 		return err
 	}
-	if _, err := temp.Write(append(data, '\n')); err != nil {
+	if _, err := temp.Write(data); err != nil {
 		_ = temp.Close()
 		_ = os.Remove(temp.Name())
 		return err
@@ -634,11 +873,15 @@ func writeArtifact(path string, result *artifact) error {
 		_ = os.Remove(temp.Name())
 		return err
 	}
-	// A temporary file is private, while the artifact is published with the
+	// A temporary file is private, while the file is published with the
 	// results.
 	if err := os.Chmod(temp.Name(), 0o644); err != nil {
 		_ = os.Remove(temp.Name())
 		return err
 	}
-	return os.Rename(temp.Name(), path)
+	if err := os.Rename(temp.Name(), path); err != nil {
+		_ = os.Remove(temp.Name())
+		return err
+	}
+	return nil
 }

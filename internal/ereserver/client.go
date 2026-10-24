@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/pprof/profile"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/han0110/provoor/internal/ereserver/api"
@@ -18,6 +19,7 @@ import (
 
 const (
 	executeEstimatedCostPath = "/twirp/api.ZkvmService/ExecuteEstimatedCost"
+	profilePath              = "/twirp/api.ZkvmService/Profile"
 	healthPath               = "/health"
 	// protobufContentType selects the protobuf codec, since twirp answers any
 	// other content type in a JSON encoding of its own.
@@ -32,12 +34,23 @@ func Image(zkvm, version string) string {
 	return "ghcr.io/eth-act/ere/ere-server-" + zkvm + ":" + version
 }
 
-// CostEstimation is one execution's cost per component and peak heap use.
+// CostEstimation is one execution's cost per component and peak memory use.
 type CostEstimation struct {
 	// Cost is the cost per component. Each zkVM defines the unit.
 	Cost map[string]uint64 `json:"cost"`
 	// PeakHeapBytes is absent when the estimator cannot read the guest heap.
 	PeakHeapBytes *uint64 `json:"peak_heap_bytes,omitempty"`
+	// PeakStackBytes is the span of the guest stack pointer, which only a
+	// profile measures.
+	PeakStackBytes *uint64 `json:"peak_stack_bytes,omitempty"`
+}
+
+// CostProfile is a CostEstimation with the pprof profile that it sums.
+type CostProfile struct {
+	CostEstimation
+	// Pprof is the pprof protobuf with the cost per guest call stack. A pprof
+	// file holds it gzipped.
+	Pprof []byte
 }
 
 // GuestError is a deterministic failure reported by the zkVM for one input.
@@ -78,30 +91,10 @@ func (c *Client) Health(ctx context.Context) error {
 func (c *Client) ExecuteEstimatedCost(ctx context.Context, stdin []byte) (*CostEstimation, error) {
 	// input_proofs stays unset, since every backend refuses proof composition
 	// for an estimation.
-	payload, err := proto.Marshal(&api.ExecuteEstimatedCostRequest{InputStdin: stdin})
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url(executeEstimatedCostPath), bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", protobufContentType)
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("execute_estimated_cost status %d: %s", resp.StatusCode, readBody(resp.Body))
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
+	request := &api.ExecuteEstimatedCostRequest{InputStdin: stdin}
 	var response api.ExecuteEstimatedCostResponse
-	if err := proto.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("decoding the execute_estimated_cost response: %w", err)
+	if err := c.post(ctx, executeEstimatedCostPath, "execute_estimated_cost", request, &response); err != nil {
+		return nil, err
 	}
 	switch result := response.Result.(type) {
 	case *api.ExecuteEstimatedCostResponse_Ok:
@@ -115,6 +108,91 @@ func (c *Client) ExecuteEstimatedCost(ctx context.Context, stdin []byte) (*CostE
 	default:
 		return nil, errors.New("execute_estimated_cost returned no result")
 	}
+}
+
+// Profile executes the guest program on stdin as ExecuteEstimatedCost does,
+// and also returns the pprof profile of the execution.
+func (c *Client) Profile(ctx context.Context, stdin []byte) (*CostProfile, error) {
+	request := &api.ProfileRequest{InputStdin: stdin}
+	var response api.ProfileResponse
+	if err := c.post(ctx, profilePath, "profile", request, &response); err != nil {
+		return nil, err
+	}
+	switch result := response.Result.(type) {
+	case *api.ProfileResponse_Ok:
+		cost, err := profileCost(result.Ok.Pprof)
+		if err != nil {
+			return nil, err
+		}
+		// The peaks are copies, so the CostEstimation holds no reference to
+		// the response.
+		peakHeapBytes, peakStackBytes := result.Ok.PeakHeapBytes, result.Ok.PeakStackBytes
+		return &CostProfile{
+			CostEstimation: CostEstimation{Cost: cost, PeakHeapBytes: &peakHeapBytes, PeakStackBytes: &peakStackBytes},
+			Pprof:          result.Ok.Pprof,
+		}, nil
+	case *api.ProfileResponse_Err:
+		return nil, &GuestError{Message: result.Err}
+	default:
+		return nil, errors.New("profile returned no result")
+	}
+}
+
+// profileCost sums each cost.<component> sample type of a pprof profile over
+// all samples. It is a port of CostProfile::cost_estimation in
+// https://github.com/eth-act/ere/blob/v0.19.4/crates/prover/core/src/cost.rs#L188-L208.
+func profileCost(encoded []byte) (map[string]uint64, error) {
+	pprof, err := profile.ParseData(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("decoding the pprof profile: %w", err)
+	}
+	cost := map[string]uint64{}
+	for index, sampleType := range pprof.SampleType {
+		component, ok := strings.CutPrefix(sampleType.Type, "cost.")
+		if !ok {
+			continue
+		}
+		var sum uint64
+		for _, sample := range pprof.Sample {
+			sum += uint64(sample.Value[index])
+		}
+		cost[component] = sum
+	}
+	// A profile without a cost component has nothing to record.
+	if len(cost) == 0 {
+		return nil, errors.New("profile returned no cost")
+	}
+	return cost, nil
+}
+
+// post sends request to the Twirp method at path and decodes the answer into
+// response. method names the call in the errors.
+func (c *Client) post(ctx context.Context, path, method string, request, response proto.Message) error {
+	payload, err := proto.Marshal(request)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url(path), bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", protobufContentType)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("%s status %d: %s", method, resp.StatusCode, readBody(resp.Body))
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if err := proto.Unmarshal(body, response); err != nil {
+		return fmt.Errorf("decoding the %s response: %w", method, err)
+	}
+	return nil
 }
 
 func (c *Client) url(path string) string {

@@ -36,9 +36,11 @@ Results reach that checkout through `scripts/sync.sh` and
   view works.
 - An expanded execution row shows a perpetually loading request size chip
   because request payloads are pruned. Metrics render normally.
-- GitHub Pages enforces a 1 GB published site and a soft 100 GB monthly
-  bandwidth quota, and its deployment step times out after ten minutes. Pruned
-  result trees sit far below the size limit, so a growing tree reaches the
-  deployment timeout first.
+- GitHub Pages documents a 1 GB limit for a published site, a soft 100 GB
+  monthly bandwidth quota, and a ten-minute deployment timeout. The published
+  results already exceed 1 GB, and deployments still succeed.
+- Git keeps every committed run, also after a later commit removes it, so the
+  repository grows faster than the site. GitHub strongly recommends a
+  repository below 5 GB.
 - Test directory names contain `::`, `[`, and `]`. GitHub Pages and Linux
   handle them, but checking the published site out on Windows fails.

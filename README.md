@@ -7,6 +7,7 @@ zkVM proving clusters as [Benchmarkoor](https://github.com/ethpandaops/benchmark
 - `provoor up` deploys a proving cluster over SSH-reached Docker daemons, one coordinator plus GPU worker containers. The `zkvm` key selects one of the [zkVMs](#zkvms).
 - `provoor serve` is a JSON-RPC forwarder that `benchmarkoor`[^forked-benchmarkoor] starts as a client container. To answer `engine_proveStatelessValidator`, it submits the stateless input to the cluster.
 - `provoor estimate` executes the guest program of a finished run on the input of each test, in an [ere-server](https://github.com/eth-act/ere) container. It also executes the guest program of each instance of a benchmarkoor configuration. It records what one execution costs.
+- `provoor profile` executes the guest program as `provoor estimate` does. It also records what each guest call stack costs, in one pprof profile per test.
 - The forwarder verifies every proof with the ere verifier against the `.vk` published beside the guest ELF. A test passes only when the verified public values match the expected output.
 - Both `up` and `serve` check the key derived from the ELF against the configured one at startup. A mismatch stops both before the first measured proof.
 
@@ -56,6 +57,8 @@ scripts/provoor.sh down --config examples/<zkvm>-4x4.example.yaml
 - `up` is idempotent and leaves running containers alone. The first `up` is slow, because each zkVM prepares its proving keys and guest artifacts.
 - `up` and `serve` stop when the key derived from the ELF differs from the configured `.vk`.
 - `down` keeps the cache volumes and the journald logs, so the next `up` is fast.
+
+[docs/zkvm/zisk.md](docs/zkvm/zisk.md#up-and-down) and [docs/zkvm/openvm.md](docs/zkvm/openvm.md#up-and-down) list each step of `up` and `down`.
 
 ### Environment variables
 
@@ -137,14 +140,47 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `ereSer
 
 | `zkvm`   | `zkvm_version`   | Image                                          |
 | -------- | ---------------- | ---------------------------------------------- |
-| `openvm` | `v2.1.0-preview` | `ghcr.io/eth-act/ere/ere-server-openvm:0.19.0` |
+| `openvm` | `v2.1.0-preview` | `ghcr.io/eth-act/ere/ere-server-openvm:0.19.4` |
 | `zisk`   | `v1.2.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.18.0`   |
 | `zisk`   | `v1.3.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:77e2aae`  |
-| `zisk`   | `v1.3.1-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.0`   |
-| `zisk`   | `v1.3.2-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.3`   |
+| `zisk`   | `v1.3.1-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.2`   |
+| `zisk`   | `v1.3.2-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.4`   |
 
 - A rerun with the same image, ELF, and suite resumes where the last one stopped. Recorded guest failures are not retried.
 - A new estimate shows in the UI after `provoor-runs/scripts/build.sh` regenerates `estimates/index.json`.
+
+## Profile cost
+
+```sh
+./provoor profile provoor-runs/results/runs/<run_id>
+(cd provoor-runs && ../provoor profile ../benchmarkoor/examples/provoor/<file>.example.yaml)
+./provoor profile link provoor-runs/results/runs/<run_id> provoor-runs/results/profiles/<profile_id>
+```
+
+`profile` executes the guest program on the input of every test, as `estimate` does, and also records which guest functions spend the cost.
+
+- `profiles/<id>/result.profile.json` holds the cost per component, the peak heap use, and the peak stack use of each test.
+- `profiles/<id>/<test>/profile.pb.gz` holds the pprof profile of one test, which the Profile tab of a run and `go tool pprof` read.
+- `estimates/<id>/` gets the same results as an estimate, so a profiled target needs no separate `estimate`.
+
+`profile link` attaches the profile and its estimate to a run, as `estimate link` does.
+
+| Flag                  | Default          | Meaning                                 |
+| --------------------- | ---------------- | --------------------------------------- |
+| `--ere-tag`           | from the labels  | ere-server image tag for every instance |
+| `--elf`               | the run's ELF    | guest ELF, a local path or a URL        |
+| `-c`, `--concurrency` | `min(16, cores)` | concurrent profiled tests               |
+
+The `zkvm` and `zkvm_version` labels select the ere-server image through `profileEreServerTags` in `internal/estimate/estimate.go`. ere v0.19.1 is the first release with profiles, so a zkVM version that only earlier releases support has no image.
+
+| `zkvm`   | `zkvm_version`   | Image                                          |
+| -------- | ---------------- | ---------------------------------------------- |
+| `openvm` | `v2.1.0-preview` | `ghcr.io/eth-act/ere/ere-server-openvm:0.19.4` |
+| `zisk`   | `v1.3.1-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.2`   |
+| `zisk`   | `v1.3.2-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.4`   |
+
+- A rerun resumes and reuses earlier profiles, as `estimate` does.
+- An existing estimate in `estimates/<id>/` of another image, ELF, or suite stays as it is.
 
 ## Publish results
 

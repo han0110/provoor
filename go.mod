@@ -9,6 +9,7 @@ require (
 	github.com/docker/go-connections v0.8.1
 	github.com/docker/go-units v0.5.0
 	github.com/ethpandaops/benchmarkoor v0.0.0
+	github.com/google/pprof v0.0.0-20260709232956-b9395ee17fa0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2

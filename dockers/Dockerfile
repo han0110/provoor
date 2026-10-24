@@ -24,8 +24,8 @@ ARG VERSION=dev
 WORKDIR /src
 
 COPY go.mod go.sum ./
-# The estimate command builds against the benchmarkoor submodule, which the
-# replace directive of go.mod resolves to ./benchmarkoor.
+# The estimate and profile commands build against the benchmarkoor submodule,
+# which the replace directive of go.mod resolves to ./benchmarkoor.
 COPY benchmarkoor/go.mod benchmarkoor/
 RUN go mod download
 
