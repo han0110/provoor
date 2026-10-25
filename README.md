@@ -128,7 +128,7 @@ Run it on the coordinator host, so the stateless input reaches the cluster over 
 ./provoor estimate link provoor-runs/results/runs/<run_id> provoor-runs/results/estimates/<estimate_id>
 ```
 
-`estimate` executes the guest on the input of every test in an ere-server container on the local CPU, so it needs no cluster and no GPU. Each test gets its cost per component and its peak heap use in `estimates/<id>/result.estimate.json`. `estimate link` attaches an estimate of a configuration to a run with the same suite and ELF, so the UI links them.
+`estimate` executes the guest on the input of every test in an ere-server container on the local CPU, so it needs no cluster and no GPU. Each test gets its cost per component in `estimates/<id>/result.estimate.json`. An ere-server image before v0.19.1 also reports the peak heap use, which later images report only to `profile`. `estimate link` attaches an estimate of a configuration to a run with the same suite and ELF, so the UI links them.
 
 | Flag                  | Default          | Meaning                                 |
 | --------------------- | ---------------- | --------------------------------------- |
