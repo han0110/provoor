@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.12.0](https://github.com/han0110/provoor/compare/v0.11.0...v0.12.0) (2026-10-25)
+
+
+### Features
+
+* add provoor profile command ([#54](https://github.com/han0110/provoor/issues/54)) ([95f14e1](https://github.com/han0110/provoor/commit/95f14e193fd4385ec645c741b6c8007f8bc1b4e2))
+* rebuild zisk v1.3.1-alpha guests locally, add nimbus, move openvm to ere-guests v0.18.0 ([#50](https://github.com/han0110/provoor/issues/50)) ([7fc2b94](https://github.com/han0110/provoor/commit/7fc2b947123104b0d91dc4fa37b3f91e2a4995bb))
+* use ere verifier at v0.19.3 ([#53](https://github.com/han0110/provoor/issues/53)) ([b37e82d](https://github.com/han0110/provoor/commit/b37e82dfea108fb3814715c5672cfe658bb9da1f))
+* zisk v1.3.2-alpha cluster image ([#52](https://github.com/han0110/provoor/issues/52)) ([80f5d89](https://github.com/han0110/provoor/commit/80f5d89e16c670b05c3fd0b023d7818659b1e5ac))
+
+
+### Bug Fixes
+
+* profile page ([#56](https://github.com/han0110/provoor/issues/56)) ([491fa55](https://github.com/han0110/provoor/commit/491fa552b0c3be9f71fbee1512c1788ed23ffb72))
+
 ## [0.11.0](https://github.com/han0110/provoor/compare/v0.10.0...v0.11.0) (2026-10-05)
 
 
