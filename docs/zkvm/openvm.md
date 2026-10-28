@@ -25,7 +25,7 @@
 
 ## Image
 
-- `dockers/zkvm/Dockerfile.openvm` builds `edge-manager` and `edge-worker` from han0110/axiom-edge `82ce8b4e` and copies `convert_fixtures` from that build. The worker carries the features `cuda,jemalloc,parallel,rvr` for CUDA architecture 120.
+- `dockers/zkvm/Dockerfile.openvm` builds `edge-manager` and `edge-worker` from han0110/axiom-edge `40111cb5` and copies `convert_fixtures` from that build. The worker carries the features `cuda,jemalloc,parallel,rvr` for CUDA architecture 120.
 - The entrypoint runs `edge-manager`, `edge-worker`, or any other container command under `tini`.
 - The default `RUSTFLAGS` is `-Ctarget-cpu=native`. The `publish-zkvm-image` workflow passes `RUSTFLAGS=`, which overrides it.
 
