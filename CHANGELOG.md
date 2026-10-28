@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/han0110/provoor/compare/v0.12.0...v0.12.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* bump openvm to 40111cb51ac44e2a5fd8aefdaa4c5b19d7ada11d to have axiom-edge manager to release slot first before notifying ([#57](https://github.com/han0110/provoor/issues/57)) ([24e79f5](https://github.com/han0110/provoor/commit/24e79f54341638e629b1d1df05b5dcc8576e7ac2))
+
 ## [0.12.0](https://github.com/han0110/provoor/compare/v0.11.0...v0.12.0) (2026-10-25)
 
 
