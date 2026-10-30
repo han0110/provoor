@@ -22,6 +22,7 @@ const (
 	PhaseBase      = "base"
 	PhaseRecursion = "recursion"
 	PhaseWrap      = "wrap"
+	PhaseThread    = "thread"
 )
 
 // Pipeline is the task timeline of one proof, the same shape for every zkVM.
@@ -62,16 +63,25 @@ type Task struct {
 	DurationMs int64
 	// Breakdown pairs an index into Pipeline.Breakdown with milliseconds.
 	Breakdown [][2]int64
+	// Segments are the timed spans inside the task as [index into
+	// Pipeline.Breakdown, startUs, durationUs, depth], with the start in
+	// microseconds from the proof start.
+	Segments [][4]int64
 }
 
 // MarshalJSON encodes the task as the row [kind, worker, id, startMs,
 // durationMs, breakdown], which keeps a timeline of thousands of tasks small.
+// A task with segments adds them as a seventh cell.
 func (t Task) MarshalJSON() ([]byte, error) {
 	breakdown := t.Breakdown
 	if breakdown == nil {
 		breakdown = [][2]int64{}
 	}
-	return json.Marshal([]any{t.Kind, t.Worker, t.ID, t.StartMs, t.DurationMs, breakdown})
+	row := []any{t.Kind, t.Worker, t.ID, t.StartMs, t.DurationMs, breakdown}
+	if t.Segments != nil {
+		row = append(row, t.Segments)
+	}
+	return json.Marshal(row)
 }
 
 // Registration is one worker the coordinator knows. Key is what a task result
@@ -119,6 +129,11 @@ func NewPipelineBuilder[Key comparable](registrations []Registration[Key]) *Pipe
 // length or a negative length is left out and reports its end. A worker no
 // registration names fails Pipeline.
 func (builder *PipelineBuilder[Key]) Place(kind int, worker Key, id string, endMs, durationMs int64, breakdown [][2]int64) int64 {
+	return builder.PlaceSegments(kind, worker, id, endMs, durationMs, breakdown, nil)
+}
+
+// PlaceSegments places one task as Place does and attaches its segments.
+func (builder *PipelineBuilder[Key]) PlaceSegments(kind int, worker Key, id string, endMs, durationMs int64, breakdown [][2]int64, segments [][4]int64) int64 {
 	index, listed := builder.workerIndex[worker]
 	if !listed && builder.unlisted == nil {
 		builder.unlisted = fmt.Errorf("task of worker %v, which the coordinator does not list", worker)
@@ -134,6 +149,7 @@ func (builder *PipelineBuilder[Key]) Place(kind int, worker Key, id string, endM
 		StartMs:    startMs,
 		DurationMs: endMs - startMs,
 		Breakdown:  breakdown,
+		Segments:   segments,
 	})
 	return startMs
 }

@@ -1,6 +1,6 @@
-// Copied from https://github.com/0xPolygonHermez/zisk/blob/v1.3.2-alpha/distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto.
+// Copied from https://github.com/0xPolygonHermez/zisk/blob/v1.4.0-alpha/distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto.
 // TaskTiming and the proof_start and tasks fields of ExecutionStats come from
-// the branch patch/distributed/v1.3.2-alpha of han0110/zisk.
+// the branch patch/distributed/v1.4.0-alpha of han0110/zisk.
 //
 // Regenerate both *.pb.go from the repository root with protoc 3.21.12,
 // protoc-gen-go v1.36.11, and protoc-gen-go-grpc 1.5.1.
@@ -90,6 +90,56 @@ func (ProofKind) EnumDescriptor() ([]byte, []int) {
 	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{0}
 }
 
+// Protocol of the final SNARK (PROOF_KIND_PLONK), which the workers' SNARK proving key sets up.
+type SnarkProtocol int32
+
+const (
+	SnarkProtocol_SNARK_PROTOCOL_UNSPECIFIED SnarkProtocol = 0 // any: the workers'
+	SnarkProtocol_SNARK_PROTOCOL_PLONK       SnarkProtocol = 1
+	SnarkProtocol_SNARK_PROTOCOL_PILFFLONK   SnarkProtocol = 2
+)
+
+// Enum value maps for SnarkProtocol.
+var (
+	SnarkProtocol_name = map[int32]string{
+		0: "SNARK_PROTOCOL_UNSPECIFIED",
+		1: "SNARK_PROTOCOL_PLONK",
+		2: "SNARK_PROTOCOL_PILFFLONK",
+	}
+	SnarkProtocol_value = map[string]int32{
+		"SNARK_PROTOCOL_UNSPECIFIED": 0,
+		"SNARK_PROTOCOL_PLONK":       1,
+		"SNARK_PROTOCOL_PILFFLONK":   2,
+	}
+)
+
+func (x SnarkProtocol) Enum() *SnarkProtocol {
+	p := new(SnarkProtocol)
+	*p = x
+	return p
+}
+
+func (x SnarkProtocol) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SnarkProtocol) Descriptor() protoreflect.EnumDescriptor {
+	return file_zisk_coordinator_api_proto_enumTypes[1].Descriptor()
+}
+
+func (SnarkProtocol) Type() protoreflect.EnumType {
+	return &file_zisk_coordinator_api_proto_enumTypes[1]
+}
+
+func (x SnarkProtocol) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SnarkProtocol.Descriptor instead.
+func (SnarkProtocol) EnumDescriptor() ([]byte, []int) {
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{1}
+}
+
 type JobPhase int32
 
 const (
@@ -126,11 +176,11 @@ func (x JobPhase) String() string {
 }
 
 func (JobPhase) Descriptor() protoreflect.EnumDescriptor {
-	return file_zisk_coordinator_api_proto_enumTypes[1].Descriptor()
+	return file_zisk_coordinator_api_proto_enumTypes[2].Descriptor()
 }
 
 func (JobPhase) Type() protoreflect.EnumType {
-	return &file_zisk_coordinator_api_proto_enumTypes[1]
+	return &file_zisk_coordinator_api_proto_enumTypes[2]
 }
 
 func (x JobPhase) Number() protoreflect.EnumNumber {
@@ -139,7 +189,7 @@ func (x JobPhase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use JobPhase.Descriptor instead.
 func (JobPhase) EnumDescriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{1}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{2}
 }
 
 type CostPerType struct {
@@ -321,19 +371,19 @@ func (x *ExecutionStats) GetTasks() []*TaskTiming {
 // One worker task. The coordinator stamps the dispatch and the receipt, and the
 // worker stamps its receipt and its reply, all in Unix milliseconds.
 type TaskTiming struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	WorkerId          string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	Phase             JobPhase               `protobuf:"varint,2,opt,name=phase,proto3,enum=zisk.coordinator.v1.JobPhase" json:"phase,omitempty"`
-	CoordinatorEnd    uint64                 `protobuf:"varint,3,opt,name=coordinator_end,json=coordinatorEnd,proto3" json:"coordinator_end,omitempty"`
-	ComputeDurationMs uint64                 `protobuf:"varint,4,opt,name=compute_duration_ms,json=computeDurationMs,proto3" json:"compute_duration_ms,omitempty"` // wall time of the proofman phase call, excluding the input load
-	ExecutorTime      *ExecutorTime          `protobuf:"bytes,5,opt,name=executor_time,json=executorTime,proto3" json:"executor_time,omitempty"`                   // contributions phase only
-	Step              uint32                 `protobuf:"varint,6,opt,name=step,proto3" json:"step,omitempty"`                                                      // ordinal within the phase, from one for Recurse and zero elsewhere
-	ProofTimings      []*ProofTiming         `protobuf:"bytes,7,rep,name=proof_timings,json=proofTimings,proto3" json:"proof_timings,omitempty"`
-	CoordinatorStart  uint64                 `protobuf:"varint,8,opt,name=coordinator_start,json=coordinatorStart,proto3" json:"coordinator_start,omitempty"`
-	WorkerStart       uint64                 `protobuf:"varint,9,opt,name=worker_start,json=workerStart,proto3" json:"worker_start,omitempty"`
-	WorkerEnd         uint64                 `protobuf:"varint,10,opt,name=worker_end,json=workerEnd,proto3" json:"worker_end,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId         string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	Phase            JobPhase               `protobuf:"varint,2,opt,name=phase,proto3,enum=zisk.coordinator.v1.JobPhase" json:"phase,omitempty"`
+	CoordinatorEnd   uint64                 `protobuf:"varint,3,opt,name=coordinator_end,json=coordinatorEnd,proto3" json:"coordinator_end,omitempty"`
+	ExecutorTime     *ExecutorTime          `protobuf:"bytes,5,opt,name=executor_time,json=executorTime,proto3" json:"executor_time,omitempty"` // contributions phase only
+	ProofTimings     []*ProofTiming         `protobuf:"bytes,7,rep,name=proof_timings,json=proofTimings,proto3" json:"proof_timings,omitempty"`
+	CoordinatorStart uint64                 `protobuf:"varint,8,opt,name=coordinator_start,json=coordinatorStart,proto3" json:"coordinator_start,omitempty"`
+	WorkerStart      uint64                 `protobuf:"varint,9,opt,name=worker_start,json=workerStart,proto3" json:"worker_start,omitempty"`
+	WorkerEnd        uint64                 `protobuf:"varint,10,opt,name=worker_end,json=workerEnd,proto3" json:"worker_end,omitempty"`
+	Threads          []*ThreadSpans         `protobuf:"bytes,11,rep,name=threads,proto3" json:"threads,omitempty"`
+	Names            []string               `protobuf:"bytes,12,rep,name=names,proto3" json:"names,omitempty"` // span names, indexed by Span.name
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *TaskTiming) Reset() {
@@ -387,25 +437,11 @@ func (x *TaskTiming) GetCoordinatorEnd() uint64 {
 	return 0
 }
 
-func (x *TaskTiming) GetComputeDurationMs() uint64 {
-	if x != nil {
-		return x.ComputeDurationMs
-	}
-	return 0
-}
-
 func (x *TaskTiming) GetExecutorTime() *ExecutorTime {
 	if x != nil {
 		return x.ExecutorTime
 	}
 	return nil
-}
-
-func (x *TaskTiming) GetStep() uint32 {
-	if x != nil {
-		return x.Step
-	}
-	return 0
 }
 
 func (x *TaskTiming) GetProofTimings() []*ProofTiming {
@@ -436,6 +472,20 @@ func (x *TaskTiming) GetWorkerEnd() uint64 {
 	return 0
 }
 
+func (x *TaskTiming) GetThreads() []*ThreadSpans {
+	if x != nil {
+		return x.Threads
+	}
+	return nil
+}
+
+func (x *TaskTiming) GetNames() []string {
+	if x != nil {
+		return x.Names
+	}
+	return nil
+}
+
 // One proof proofman produced, stamped in Unix milliseconds on the worker clock.
 type ProofTiming struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -445,7 +495,8 @@ type ProofTiming struct {
 	AirName       string                 `protobuf:"bytes,4,opt,name=air_name,json=airName,proto3" json:"air_name,omitempty"` // empty for a root step of the contributions phase, a fold and the two final proofs
 	Start         uint64                 `protobuf:"varint,5,opt,name=start,proto3" json:"start,omitempty"`
 	End           uint64                 `protobuf:"varint,6,opt,name=end,proto3" json:"end,omitempty"`
-	BreakdownMs   map[string]uint32      `protobuf:"bytes,7,rep,name=breakdown_ms,json=breakdownMs,proto3" json:"breakdown_ms,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"` // the proof sections by name, only the nonzero ones
+	BreakdownMs   map[string]uint32      `protobuf:"bytes,7,rep,name=breakdown_ms,json=breakdownMs,proto3" json:"breakdown_ms,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"` // the proof sections by name, only the nonzero ones, v1.3.x only
+	Spans         []*Span                `protobuf:"bytes,8,rep,name=spans,proto3" json:"spans,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -529,6 +580,135 @@ func (x *ProofTiming) GetBreakdownMs() map[string]uint32 {
 	return nil
 }
 
+func (x *ProofTiming) GetSpans() []*Span {
+	if x != nil {
+		return x.Spans
+	}
+	return nil
+}
+
+// Host spans of one thread that runs no proof.
+type ThreadSpans struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Thread        string                 `protobuf:"bytes,1,opt,name=thread,proto3" json:"thread,omitempty"` // thread name or id
+	Spans         []*Span                `protobuf:"bytes,2,rep,name=spans,proto3" json:"spans,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ThreadSpans) Reset() {
+	*x = ThreadSpans{}
+	mi := &file_zisk_coordinator_api_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ThreadSpans) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ThreadSpans) ProtoMessage() {}
+
+func (x *ThreadSpans) ProtoReflect() protoreflect.Message {
+	mi := &file_zisk_coordinator_api_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ThreadSpans.ProtoReflect.Descriptor instead.
+func (*ThreadSpans) Descriptor() ([]byte, []int) {
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ThreadSpans) GetThread() string {
+	if x != nil {
+		return x.Thread
+	}
+	return ""
+}
+
+func (x *ThreadSpans) GetSpans() []*Span {
+	if x != nil {
+		return x.Spans
+	}
+	return nil
+}
+
+// One upstream timer span, in Unix microseconds on the worker clock.
+type Span struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          uint32                 `protobuf:"varint,1,opt,name=name,proto3" json:"name,omitempty"` // index into TaskTiming.names
+	StartUs       uint64                 `protobuf:"varint,2,opt,name=start_us,json=startUs,proto3" json:"start_us,omitempty"`
+	EndUs         uint64                 `protobuf:"varint,3,opt,name=end_us,json=endUs,proto3" json:"end_us,omitempty"`
+	Depth         uint32                 `protobuf:"varint,4,opt,name=depth,proto3" json:"depth,omitempty"` // nesting depth inside its proof or thread
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Span) Reset() {
+	*x = Span{}
+	mi := &file_zisk_coordinator_api_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Span) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Span) ProtoMessage() {}
+
+func (x *Span) ProtoReflect() protoreflect.Message {
+	mi := &file_zisk_coordinator_api_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Span.ProtoReflect.Descriptor instead.
+func (*Span) Descriptor() ([]byte, []int) {
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *Span) GetName() uint32 {
+	if x != nil {
+		return x.Name
+	}
+	return 0
+}
+
+func (x *Span) GetStartUs() uint64 {
+	if x != nil {
+		return x.StartUs
+	}
+	return 0
+}
+
+func (x *Span) GetEndUs() uint64 {
+	if x != nil {
+		return x.EndUs
+	}
+	return 0
+}
+
+func (x *Span) GetDepth() uint32 {
+	if x != nil {
+		return x.Depth
+	}
+	return 0
+}
+
 // Per-AIR planned instance count (the AIR name is derived from the ids by the consumer).
 type AirInstanceCount struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -541,7 +721,7 @@ type AirInstanceCount struct {
 
 func (x *AirInstanceCount) Reset() {
 	*x = AirInstanceCount{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[4]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -553,7 +733,7 @@ func (x *AirInstanceCount) String() string {
 func (*AirInstanceCount) ProtoMessage() {}
 
 func (x *AirInstanceCount) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[4]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -566,7 +746,7 @@ func (x *AirInstanceCount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AirInstanceCount.ProtoReflect.Descriptor instead.
 func (*AirInstanceCount) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{4}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *AirInstanceCount) GetAirgroupId() uint32 {
@@ -604,7 +784,7 @@ type ExecutorTime struct {
 
 func (x *ExecutorTime) Reset() {
 	*x = ExecutorTime{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[5]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -616,7 +796,7 @@ func (x *ExecutorTime) String() string {
 func (*ExecutorTime) ProtoMessage() {}
 
 func (x *ExecutorTime) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[5]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -629,7 +809,7 @@ func (x *ExecutorTime) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutorTime.ProtoReflect.Descriptor instead.
 func (*ExecutorTime) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{5}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ExecutorTime) GetTotalDuration() uint64 {
@@ -677,7 +857,7 @@ type AsmExecution struct {
 
 func (x *AsmExecution) Reset() {
 	*x = AsmExecution{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[6]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -689,7 +869,7 @@ func (x *AsmExecution) String() string {
 func (*AsmExecution) ProtoMessage() {}
 
 func (x *AsmExecution) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[6]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -702,7 +882,7 @@ func (x *AsmExecution) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AsmExecution.ProtoReflect.Descriptor instead.
 func (*AsmExecution) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{6}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *AsmExecution) GetTime() float32 {
@@ -728,7 +908,7 @@ type InputChunk struct {
 
 func (x *InputChunk) Reset() {
 	*x = InputChunk{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[7]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -740,7 +920,7 @@ func (x *InputChunk) String() string {
 func (*InputChunk) ProtoMessage() {}
 
 func (x *InputChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[7]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -753,7 +933,7 @@ func (x *InputChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InputChunk.ProtoReflect.Descriptor instead.
 func (*InputChunk) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{7}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *InputChunk) GetData() []byte {
@@ -776,7 +956,7 @@ type InputKind struct {
 
 func (x *InputKind) Reset() {
 	*x = InputKind{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[8]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -788,7 +968,7 @@ func (x *InputKind) String() string {
 func (*InputKind) ProtoMessage() {}
 
 func (x *InputKind) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[8]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -801,7 +981,7 @@ func (x *InputKind) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InputKind.ProtoReflect.Descriptor instead.
 func (*InputKind) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{8}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *InputKind) GetKind() isInputKind_Kind {
@@ -855,13 +1035,16 @@ type Proof struct {
 	PublicInputs    []byte                 `protobuf:"bytes,6,opt,name=public_inputs,json=publicInputs,proto3" json:"public_inputs,omitempty"`
 	StartedAt       *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	CompletedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 32-byte host randomness seed of the execution the proof attests to, also kept inside `data`.
+	// Set in responses (absent for aggregates); ignored in requests, but must be absent or 32 bytes.
+	RandomSeed    []byte `protobuf:"bytes,9,opt,name=random_seed,json=randomSeed,proto3,oneof" json:"random_seed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Proof) Reset() {
 	*x = Proof{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[9]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -873,7 +1056,7 @@ func (x *Proof) String() string {
 func (*Proof) ProtoMessage() {}
 
 func (x *Proof) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[9]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -886,7 +1069,7 @@ func (x *Proof) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Proof.ProtoReflect.Descriptor instead.
 func (*Proof) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{9}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Proof) GetProofId() string {
@@ -945,6 +1128,13 @@ func (x *Proof) GetCompletedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Proof) GetRandomSeed() []byte {
+	if x != nil {
+		return x.RandomSeed
+	}
+	return nil
+}
+
 // RPC-level error — returned in Status details for programmatic inspection.
 type ApiError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -957,7 +1147,7 @@ type ApiError struct {
 
 func (x *ApiError) Reset() {
 	*x = ApiError{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[10]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -969,7 +1159,7 @@ func (x *ApiError) String() string {
 func (*ApiError) ProtoMessage() {}
 
 func (x *ApiError) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[10]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -982,7 +1172,7 @@ func (x *ApiError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApiError.ProtoReflect.Descriptor instead.
 func (*ApiError) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{10}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ApiError) GetCode() uint32 {
@@ -1023,7 +1213,7 @@ type JobFailure struct {
 
 func (x *JobFailure) Reset() {
 	*x = JobFailure{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[11]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1035,7 +1225,7 @@ func (x *JobFailure) String() string {
 func (*JobFailure) ProtoMessage() {}
 
 func (x *JobFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[11]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1048,7 +1238,7 @@ func (x *JobFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobFailure.ProtoReflect.Descriptor instead.
 func (*JobFailure) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{11}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *JobFailure) GetKind() isJobFailure_Kind {
@@ -1147,7 +1337,7 @@ type JobFailureTimeout struct {
 
 func (x *JobFailureTimeout) Reset() {
 	*x = JobFailureTimeout{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[12]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1159,7 +1349,7 @@ func (x *JobFailureTimeout) String() string {
 func (*JobFailureTimeout) ProtoMessage() {}
 
 func (x *JobFailureTimeout) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[12]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1172,7 +1362,7 @@ func (x *JobFailureTimeout) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobFailureTimeout.ProtoReflect.Descriptor instead.
 func (*JobFailureTimeout) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{12}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *JobFailureTimeout) GetPhase() JobPhase {
@@ -1198,7 +1388,7 @@ type JobFailureInput struct {
 
 func (x *JobFailureInput) Reset() {
 	*x = JobFailureInput{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[13]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1210,7 +1400,7 @@ func (x *JobFailureInput) String() string {
 func (*JobFailureInput) ProtoMessage() {}
 
 func (x *JobFailureInput) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[13]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1223,7 +1413,7 @@ func (x *JobFailureInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobFailureInput.ProtoReflect.Descriptor instead.
 func (*JobFailureInput) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{13}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *JobFailureInput) GetReason() string {
@@ -1242,7 +1432,7 @@ type JobFailureExecution struct {
 
 func (x *JobFailureExecution) Reset() {
 	*x = JobFailureExecution{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[14]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1254,7 +1444,7 @@ func (x *JobFailureExecution) String() string {
 func (*JobFailureExecution) ProtoMessage() {}
 
 func (x *JobFailureExecution) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[14]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1267,7 +1457,7 @@ func (x *JobFailureExecution) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobFailureExecution.ProtoReflect.Descriptor instead.
 func (*JobFailureExecution) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{14}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *JobFailureExecution) GetReason() string {
@@ -1286,7 +1476,7 @@ type JobFailureInternal struct {
 
 func (x *JobFailureInternal) Reset() {
 	*x = JobFailureInternal{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[15]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1298,7 +1488,7 @@ func (x *JobFailureInternal) String() string {
 func (*JobFailureInternal) ProtoMessage() {}
 
 func (x *JobFailureInternal) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[15]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1311,7 +1501,7 @@ func (x *JobFailureInternal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobFailureInternal.ProtoReflect.Descriptor instead.
 func (*JobFailureInternal) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{15}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *JobFailureInternal) GetTraceId() string {
@@ -1329,7 +1519,7 @@ type JobFailureCancelled struct {
 
 func (x *JobFailureCancelled) Reset() {
 	*x = JobFailureCancelled{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[16]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1341,7 +1531,7 @@ func (x *JobFailureCancelled) String() string {
 func (*JobFailureCancelled) ProtoMessage() {}
 
 func (x *JobFailureCancelled) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[16]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1354,7 +1544,7 @@ func (x *JobFailureCancelled) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobFailureCancelled.ProtoReflect.Descriptor instead.
 func (*JobFailureCancelled) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{16}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{18}
 }
 
 type RegisterGuestProgramRequest struct {
@@ -1366,7 +1556,7 @@ type RegisterGuestProgramRequest struct {
 
 func (x *RegisterGuestProgramRequest) Reset() {
 	*x = RegisterGuestProgramRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[17]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1378,7 +1568,7 @@ func (x *RegisterGuestProgramRequest) String() string {
 func (*RegisterGuestProgramRequest) ProtoMessage() {}
 
 func (x *RegisterGuestProgramRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[17]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1391,7 +1581,7 @@ func (x *RegisterGuestProgramRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterGuestProgramRequest.ProtoReflect.Descriptor instead.
 func (*RegisterGuestProgramRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{17}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *RegisterGuestProgramRequest) GetZiskElf() []byte {
@@ -1410,7 +1600,7 @@ type RegisterGuestProgramResponse struct {
 
 func (x *RegisterGuestProgramResponse) Reset() {
 	*x = RegisterGuestProgramResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[18]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1422,7 +1612,7 @@ func (x *RegisterGuestProgramResponse) String() string {
 func (*RegisterGuestProgramResponse) ProtoMessage() {}
 
 func (x *RegisterGuestProgramResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[18]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1435,7 +1625,7 @@ func (x *RegisterGuestProgramResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterGuestProgramResponse.ProtoReflect.Descriptor instead.
 func (*RegisterGuestProgramResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{18}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *RegisterGuestProgramResponse) GetHashId() string {
@@ -1454,7 +1644,7 @@ type NormalizeCircuit struct {
 
 func (x *NormalizeCircuit) Reset() {
 	*x = NormalizeCircuit{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[19]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1466,7 +1656,7 @@ func (x *NormalizeCircuit) String() string {
 func (*NormalizeCircuit) ProtoMessage() {}
 
 func (x *NormalizeCircuit) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[19]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1479,7 +1669,7 @@ func (x *NormalizeCircuit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NormalizeCircuit.ProtoReflect.Descriptor instead.
 func (*NormalizeCircuit) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{19}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *NormalizeCircuit) GetBody() string {
@@ -1499,7 +1689,7 @@ type ProgramVk struct {
 
 func (x *ProgramVk) Reset() {
 	*x = ProgramVk{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[20]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1511,7 +1701,7 @@ func (x *ProgramVk) String() string {
 func (*ProgramVk) ProtoMessage() {}
 
 func (x *ProgramVk) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[20]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1524,7 +1714,7 @@ func (x *ProgramVk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProgramVk.ProtoReflect.Descriptor instead.
 func (*ProgramVk) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{20}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ProgramVk) GetLimbs() []string {
@@ -1549,7 +1739,7 @@ type AggregationProgramSpec struct {
 
 func (x *AggregationProgramSpec) Reset() {
 	*x = AggregationProgramSpec{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[21]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1561,7 +1751,7 @@ func (x *AggregationProgramSpec) String() string {
 func (*AggregationProgramSpec) ProtoMessage() {}
 
 func (x *AggregationProgramSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[21]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1574,7 +1764,7 @@ func (x *AggregationProgramSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregationProgramSpec.ProtoReflect.Descriptor instead.
 func (*AggregationProgramSpec) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{21}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *AggregationProgramSpec) GetNormalize() *NormalizeCircuit {
@@ -1627,7 +1817,7 @@ type RegisterAggregationProgramRequest struct {
 
 func (x *RegisterAggregationProgramRequest) Reset() {
 	*x = RegisterAggregationProgramRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[22]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1639,7 +1829,7 @@ func (x *RegisterAggregationProgramRequest) String() string {
 func (*RegisterAggregationProgramRequest) ProtoMessage() {}
 
 func (x *RegisterAggregationProgramRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[22]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1652,7 +1842,7 @@ func (x *RegisterAggregationProgramRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use RegisterAggregationProgramRequest.ProtoReflect.Descriptor instead.
 func (*RegisterAggregationProgramRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{22}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *RegisterAggregationProgramRequest) GetRecurserId() string {
@@ -1678,7 +1868,7 @@ type RegisterAggregationProgramResponse struct {
 
 func (x *RegisterAggregationProgramResponse) Reset() {
 	*x = RegisterAggregationProgramResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[23]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1690,7 +1880,7 @@ func (x *RegisterAggregationProgramResponse) String() string {
 func (*RegisterAggregationProgramResponse) ProtoMessage() {}
 
 func (x *RegisterAggregationProgramResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[23]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1703,7 +1893,7 @@ func (x *RegisterAggregationProgramResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use RegisterAggregationProgramResponse.ProtoReflect.Descriptor instead.
 func (*RegisterAggregationProgramResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{23}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *RegisterAggregationProgramResponse) GetRecurserId() string {
@@ -1714,15 +1904,21 @@ func (x *RegisterAggregationProgramResponse) GetRecurserId() string {
 }
 
 type JobRequestMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	JobKind       *JobKind               `protobuf:"bytes,1,opt,name=job_kind,json=jobKind,proto3" json:"job_kind,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	JobKind *JobKind               `protobuf:"bytes,1,opt,name=job_kind,json=jobKind,proto3" json:"job_kind,omitempty"`
+	// Caller-defined key/value labels for the job; empty means none. At most 32
+	// keys, each up to 128 bytes, with values up to 1024 bytes. Accepted for
+	// prove, execute, wrap and aggregate_proofs jobs; setup and
+	// setup_aggregation_program reject any with INVALID_ARGUMENT. A coordinator
+	// that does not allow job metadata rejects it with JOB_METADATA_NOT_ALLOWED.
+	Metadata      map[string]string `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *JobRequestMessage) Reset() {
 	*x = JobRequestMessage{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[24]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1734,7 +1930,7 @@ func (x *JobRequestMessage) String() string {
 func (*JobRequestMessage) ProtoMessage() {}
 
 func (x *JobRequestMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[24]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1747,12 +1943,19 @@ func (x *JobRequestMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobRequestMessage.ProtoReflect.Descriptor instead.
 func (*JobRequestMessage) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{24}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *JobRequestMessage) GetJobKind() *JobKind {
 	if x != nil {
 		return x.JobKind
+	}
+	return nil
+}
+
+func (x *JobRequestMessage) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
 	}
 	return nil
 }
@@ -1766,7 +1969,7 @@ type JobResponse struct {
 
 func (x *JobResponse) Reset() {
 	*x = JobResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[25]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1778,7 +1981,7 @@ func (x *JobResponse) String() string {
 func (*JobResponse) ProtoMessage() {}
 
 func (x *JobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[25]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1791,7 +1994,7 @@ func (x *JobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobResponse.ProtoReflect.Descriptor instead.
 func (*JobResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{25}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *JobResponse) GetJobId() string {
@@ -1818,7 +2021,7 @@ type JobKind struct {
 
 func (x *JobKind) Reset() {
 	*x = JobKind{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[26]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1830,7 +2033,7 @@ func (x *JobKind) String() string {
 func (*JobKind) ProtoMessage() {}
 
 func (x *JobKind) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[26]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1843,7 +2046,7 @@ func (x *JobKind) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobKind.ProtoReflect.Descriptor instead.
 func (*JobKind) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{26}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *JobKind) GetKind() isJobKind_Kind {
@@ -1959,7 +2162,7 @@ type SetupRequest struct {
 
 func (x *SetupRequest) Reset() {
 	*x = SetupRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[27]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1971,7 +2174,7 @@ func (x *SetupRequest) String() string {
 func (*SetupRequest) ProtoMessage() {}
 
 func (x *SetupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[27]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1984,7 +2187,7 @@ func (x *SetupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetupRequest.ProtoReflect.Descriptor instead.
 func (*SetupRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{27}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *SetupRequest) GetHashId() string {
@@ -2025,7 +2228,7 @@ type SetupResponse struct {
 
 func (x *SetupResponse) Reset() {
 	*x = SetupResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[28]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2037,7 +2240,7 @@ func (x *SetupResponse) String() string {
 func (*SetupResponse) ProtoMessage() {}
 
 func (x *SetupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[28]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2050,7 +2253,7 @@ func (x *SetupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetupResponse.ProtoReflect.Descriptor instead.
 func (*SetupResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{28}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *SetupResponse) GetVk() []byte {
@@ -2068,19 +2271,24 @@ func (x *SetupResponse) GetHashMode() string {
 }
 
 type ProveRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	HashId        string                 `protobuf:"bytes,1,opt,name=hash_id,json=hashId,proto3" json:"hash_id,omitempty"`
-	Input         *InputKind             `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
-	ProofTimeout  *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=proof_timeout,json=proofTimeout,proto3,oneof" json:"proof_timeout,omitempty"`
-	ProofDest     ProofKind              `protobuf:"varint,4,opt,name=proof_dest,json=proofDest,proto3,enum=zisk.coordinator.v1.ProofKind" json:"proof_dest,omitempty"`
-	Hints         *InputKind             `protobuf:"bytes,5,opt,name=hints,proto3,oneof" json:"hints,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	HashId       string                 `protobuf:"bytes,1,opt,name=hash_id,json=hashId,proto3" json:"hash_id,omitempty"`
+	Input        *InputKind             `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
+	ProofTimeout *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=proof_timeout,json=proofTimeout,proto3,oneof" json:"proof_timeout,omitempty"`
+	ProofDest    ProofKind              `protobuf:"varint,4,opt,name=proof_dest,json=proofDest,proto3,enum=zisk.coordinator.v1.ProofKind" json:"proof_dest,omitempty"`
+	Hints        *InputKind             `protobuf:"bytes,5,opt,name=hints,proto3,oneof" json:"hints,omitempty"`
+	// Uses this 32-byte host randomness seed instead of drawing a fresh one. Rejected unless the
+	// coordinator is configured to allow client random seeds.
+	RandomSeed []byte `protobuf:"bytes,6,opt,name=random_seed,json=randomSeed,proto3,oneof" json:"random_seed,omitempty"`
+	// For a PROOF_KIND_PLONK proof: the job is refused unless the workers' SNARK is of it.
+	SnarkProtocol *SnarkProtocol `protobuf:"varint,7,opt,name=snark_protocol,json=snarkProtocol,proto3,enum=zisk.coordinator.v1.SnarkProtocol,oneof" json:"snark_protocol,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ProveRequest) Reset() {
 	*x = ProveRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[29]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2092,7 +2300,7 @@ func (x *ProveRequest) String() string {
 func (*ProveRequest) ProtoMessage() {}
 
 func (x *ProveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[29]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2105,7 +2313,7 @@ func (x *ProveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProveRequest.ProtoReflect.Descriptor instead.
 func (*ProveRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{29}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ProveRequest) GetHashId() string {
@@ -2143,6 +2351,20 @@ func (x *ProveRequest) GetHints() *InputKind {
 	return nil
 }
 
+func (x *ProveRequest) GetRandomSeed() []byte {
+	if x != nil {
+		return x.RandomSeed
+	}
+	return nil
+}
+
+func (x *ProveRequest) GetSnarkProtocol() SnarkProtocol {
+	if x != nil && x.SnarkProtocol != nil {
+		return *x.SnarkProtocol
+	}
+	return SnarkProtocol_SNARK_PROTOCOL_UNSPECIFIED
+}
+
 type ProveResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Proof         *Proof                 `protobuf:"bytes,1,opt,name=proof,proto3" json:"proof,omitempty"`
@@ -2153,7 +2375,7 @@ type ProveResponse struct {
 
 func (x *ProveResponse) Reset() {
 	*x = ProveResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[30]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2165,7 +2387,7 @@ func (x *ProveResponse) String() string {
 func (*ProveResponse) ProtoMessage() {}
 
 func (x *ProveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[30]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2178,7 +2400,7 @@ func (x *ProveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProveResponse.ProtoReflect.Descriptor instead.
 func (*ProveResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{30}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ProveResponse) GetProof() *Proof {
@@ -2196,17 +2418,19 @@ func (x *ProveResponse) GetStats() *ExecutionStats {
 }
 
 type WrapRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Proof         *Proof                 `protobuf:"bytes,1,opt,name=proof,proto3" json:"proof,omitempty"`
-	ProofDest     ProofKind              `protobuf:"varint,2,opt,name=proof_dest,json=proofDest,proto3,enum=zisk.coordinator.v1.ProofKind" json:"proof_dest,omitempty"`
-	WrapTimeout   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=wrap_timeout,json=wrapTimeout,proto3,oneof" json:"wrap_timeout,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Proof       *Proof                 `protobuf:"bytes,1,opt,name=proof,proto3" json:"proof,omitempty"`
+	ProofDest   ProofKind              `protobuf:"varint,2,opt,name=proof_dest,json=proofDest,proto3,enum=zisk.coordinator.v1.ProofKind" json:"proof_dest,omitempty"`
+	WrapTimeout *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=wrap_timeout,json=wrapTimeout,proto3,oneof" json:"wrap_timeout,omitempty"`
+	// For a PROOF_KIND_PLONK proof_dest: the job is refused unless the workers' SNARK is of it.
+	SnarkProtocol *SnarkProtocol `protobuf:"varint,4,opt,name=snark_protocol,json=snarkProtocol,proto3,enum=zisk.coordinator.v1.SnarkProtocol,oneof" json:"snark_protocol,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WrapRequest) Reset() {
 	*x = WrapRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[31]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2218,7 +2442,7 @@ func (x *WrapRequest) String() string {
 func (*WrapRequest) ProtoMessage() {}
 
 func (x *WrapRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[31]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2231,7 +2455,7 @@ func (x *WrapRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WrapRequest.ProtoReflect.Descriptor instead.
 func (*WrapRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{31}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *WrapRequest) GetProof() *Proof {
@@ -2255,6 +2479,13 @@ func (x *WrapRequest) GetWrapTimeout() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *WrapRequest) GetSnarkProtocol() SnarkProtocol {
+	if x != nil && x.SnarkProtocol != nil {
+		return *x.SnarkProtocol
+	}
+	return SnarkProtocol_SNARK_PROTOCOL_UNSPECIFIED
+}
+
 type WrapResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Proof         *Proof                 `protobuf:"bytes,1,opt,name=proof,proto3" json:"proof,omitempty"`
@@ -2264,7 +2495,7 @@ type WrapResponse struct {
 
 func (x *WrapResponse) Reset() {
 	*x = WrapResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[32]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2276,7 +2507,7 @@ func (x *WrapResponse) String() string {
 func (*WrapResponse) ProtoMessage() {}
 
 func (x *WrapResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[32]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2289,7 +2520,7 @@ func (x *WrapResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WrapResponse.ProtoReflect.Descriptor instead.
 func (*WrapResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{32}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *WrapResponse) GetProof() *Proof {
@@ -2308,7 +2539,7 @@ type SetupAggregationProgramRequest struct {
 
 func (x *SetupAggregationProgramRequest) Reset() {
 	*x = SetupAggregationProgramRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[33]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2320,7 +2551,7 @@ func (x *SetupAggregationProgramRequest) String() string {
 func (*SetupAggregationProgramRequest) ProtoMessage() {}
 
 func (x *SetupAggregationProgramRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[33]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2333,7 +2564,7 @@ func (x *SetupAggregationProgramRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetupAggregationProgramRequest.ProtoReflect.Descriptor instead.
 func (*SetupAggregationProgramRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{33}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *SetupAggregationProgramRequest) GetRecurserId() string {
@@ -2353,7 +2584,7 @@ type SetupAggregationProgramResponse struct {
 
 func (x *SetupAggregationProgramResponse) Reset() {
 	*x = SetupAggregationProgramResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[34]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2365,7 +2596,7 @@ func (x *SetupAggregationProgramResponse) String() string {
 func (*SetupAggregationProgramResponse) ProtoMessage() {}
 
 func (x *SetupAggregationProgramResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[34]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2378,7 +2609,7 @@ func (x *SetupAggregationProgramResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetupAggregationProgramResponse.ProtoReflect.Descriptor instead.
 func (*SetupAggregationProgramResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{34}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *SetupAggregationProgramResponse) GetVk() []byte {
@@ -2409,7 +2640,7 @@ type AggregateProofsRequest struct {
 
 func (x *AggregateProofsRequest) Reset() {
 	*x = AggregateProofsRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[35]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2421,7 +2652,7 @@ func (x *AggregateProofsRequest) String() string {
 func (*AggregateProofsRequest) ProtoMessage() {}
 
 func (x *AggregateProofsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[35]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2434,7 +2665,7 @@ func (x *AggregateProofsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregateProofsRequest.ProtoReflect.Descriptor instead.
 func (*AggregateProofsRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{35}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *AggregateProofsRequest) GetRecurserId() string {
@@ -2488,7 +2719,7 @@ type AggregateProofsResponse struct {
 
 func (x *AggregateProofsResponse) Reset() {
 	*x = AggregateProofsResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[36]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2500,7 +2731,7 @@ func (x *AggregateProofsResponse) String() string {
 func (*AggregateProofsResponse) ProtoMessage() {}
 
 func (x *AggregateProofsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[36]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2513,7 +2744,7 @@ func (x *AggregateProofsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregateProofsResponse.ProtoReflect.Descriptor instead.
 func (*AggregateProofsResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{36}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AggregateProofsResponse) GetProof() *Proof {
@@ -2529,13 +2760,16 @@ type ExecuteRequest struct {
 	Input          *InputKind             `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
 	ExecuteTimeout *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=execute_timeout,json=executeTimeout,proto3,oneof" json:"execute_timeout,omitempty"`
 	Hints          *InputKind             `protobuf:"bytes,4,opt,name=hints,proto3,oneof" json:"hints,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Uses this 32-byte host randomness seed instead of drawing a fresh one. Rejected unless the
+	// coordinator is configured to allow client random seeds.
+	RandomSeed    []byte `protobuf:"bytes,5,opt,name=random_seed,json=randomSeed,proto3,oneof" json:"random_seed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExecuteRequest) Reset() {
 	*x = ExecuteRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[37]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2547,7 +2781,7 @@ func (x *ExecuteRequest) String() string {
 func (*ExecuteRequest) ProtoMessage() {}
 
 func (x *ExecuteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[37]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2560,7 +2794,7 @@ func (x *ExecuteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteRequest.ProtoReflect.Descriptor instead.
 func (*ExecuteRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{37}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ExecuteRequest) GetHashId() string {
@@ -2591,17 +2825,27 @@ func (x *ExecuteRequest) GetHints() *InputKind {
 	return nil
 }
 
+func (x *ExecuteRequest) GetRandomSeed() []byte {
+	if x != nil {
+		return x.RandomSeed
+	}
+	return nil
+}
+
 type ExecuteResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Stats         *ExecutionStats        `protobuf:"bytes,1,opt,name=stats,proto3" json:"stats,omitempty"`
 	PublicOutputs []byte                 `protobuf:"bytes,2,opt,name=public_outputs,json=publicOutputs,proto3" json:"public_outputs,omitempty"`
+	// 32-byte host randomness seed the execution ran with; passing it back as the request's
+	// `random_seed` reproduces the run.
+	RandomSeed    []byte `protobuf:"bytes,3,opt,name=random_seed,json=randomSeed,proto3,oneof" json:"random_seed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExecuteResponse) Reset() {
 	*x = ExecuteResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[38]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2613,7 +2857,7 @@ func (x *ExecuteResponse) String() string {
 func (*ExecuteResponse) ProtoMessage() {}
 
 func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[38]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2626,7 +2870,7 @@ func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteResponse.ProtoReflect.Descriptor instead.
 func (*ExecuteResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{38}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ExecuteResponse) GetStats() *ExecutionStats {
@@ -2639,6 +2883,13 @@ func (x *ExecuteResponse) GetStats() *ExecutionStats {
 func (x *ExecuteResponse) GetPublicOutputs() []byte {
 	if x != nil {
 		return x.PublicOutputs
+	}
+	return nil
+}
+
+func (x *ExecuteResponse) GetRandomSeed() []byte {
+	if x != nil {
+		return x.RandomSeed
 	}
 	return nil
 }
@@ -2660,7 +2911,7 @@ type JobKindResponse struct {
 
 func (x *JobKindResponse) Reset() {
 	*x = JobKindResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[39]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2672,7 +2923,7 @@ func (x *JobKindResponse) String() string {
 func (*JobKindResponse) ProtoMessage() {}
 
 func (x *JobKindResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[39]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2685,7 +2936,7 @@ func (x *JobKindResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobKindResponse.ProtoReflect.Descriptor instead.
 func (*JobKindResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{39}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *JobKindResponse) GetKind() isJobKindResponse_Kind {
@@ -2799,7 +3050,7 @@ type WaitJobResultRequest struct {
 
 func (x *WaitJobResultRequest) Reset() {
 	*x = WaitJobResultRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[40]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2811,7 +3062,7 @@ func (x *WaitJobResultRequest) String() string {
 func (*WaitJobResultRequest) ProtoMessage() {}
 
 func (x *WaitJobResultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[40]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2824,7 +3075,7 @@ func (x *WaitJobResultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WaitJobResultRequest.ProtoReflect.Descriptor instead.
 func (*WaitJobResultRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{40}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *WaitJobResultRequest) GetJobId() string {
@@ -2852,7 +3103,7 @@ type WaitJobResultResponse struct {
 
 func (x *WaitJobResultResponse) Reset() {
 	*x = WaitJobResultResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[41]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2864,7 +3115,7 @@ func (x *WaitJobResultResponse) String() string {
 func (*WaitJobResultResponse) ProtoMessage() {}
 
 func (x *WaitJobResultResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[41]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2877,7 +3128,7 @@ func (x *WaitJobResultResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WaitJobResultResponse.ProtoReflect.Descriptor instead.
 func (*WaitJobResultResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{41}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *WaitJobResultResponse) GetJobId() string {
@@ -2918,7 +3169,7 @@ type JobStatus struct {
 
 func (x *JobStatus) Reset() {
 	*x = JobStatus{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[42]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2930,7 +3181,7 @@ func (x *JobStatus) String() string {
 func (*JobStatus) ProtoMessage() {}
 
 func (x *JobStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[42]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2943,7 +3194,7 @@ func (x *JobStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStatus.ProtoReflect.Descriptor instead.
 func (*JobStatus) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{42}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *JobStatus) GetStatus() isJobStatus_Status {
@@ -3055,7 +3306,7 @@ type JobStatusQueued struct {
 
 func (x *JobStatusQueued) Reset() {
 	*x = JobStatusQueued{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[43]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3067,7 +3318,7 @@ func (x *JobStatusQueued) String() string {
 func (*JobStatusQueued) ProtoMessage() {}
 
 func (x *JobStatusQueued) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[43]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3080,7 +3331,7 @@ func (x *JobStatusQueued) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStatusQueued.ProtoReflect.Descriptor instead.
 func (*JobStatusQueued) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{43}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{45}
 }
 
 type JobStatusRunning struct {
@@ -3092,7 +3343,7 @@ type JobStatusRunning struct {
 
 func (x *JobStatusRunning) Reset() {
 	*x = JobStatusRunning{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[44]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3104,7 +3355,7 @@ func (x *JobStatusRunning) String() string {
 func (*JobStatusRunning) ProtoMessage() {}
 
 func (x *JobStatusRunning) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[44]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3117,7 +3368,7 @@ func (x *JobStatusRunning) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStatusRunning.ProtoReflect.Descriptor instead.
 func (*JobStatusRunning) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{44}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *JobStatusRunning) GetPhase() JobPhase {
@@ -3135,7 +3386,7 @@ type JobStatusWaitingForInput struct {
 
 func (x *JobStatusWaitingForInput) Reset() {
 	*x = JobStatusWaitingForInput{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[45]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3147,7 +3398,7 @@ func (x *JobStatusWaitingForInput) String() string {
 func (*JobStatusWaitingForInput) ProtoMessage() {}
 
 func (x *JobStatusWaitingForInput) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[45]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3160,7 +3411,7 @@ func (x *JobStatusWaitingForInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStatusWaitingForInput.ProtoReflect.Descriptor instead.
 func (*JobStatusWaitingForInput) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{45}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{47}
 }
 
 type JobStatusCompleted struct {
@@ -3171,7 +3422,7 @@ type JobStatusCompleted struct {
 
 func (x *JobStatusCompleted) Reset() {
 	*x = JobStatusCompleted{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[46]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3183,7 +3434,7 @@ func (x *JobStatusCompleted) String() string {
 func (*JobStatusCompleted) ProtoMessage() {}
 
 func (x *JobStatusCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[46]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3196,7 +3447,7 @@ func (x *JobStatusCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStatusCompleted.ProtoReflect.Descriptor instead.
 func (*JobStatusCompleted) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{46}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{48}
 }
 
 type JobStatusFailed struct {
@@ -3208,7 +3459,7 @@ type JobStatusFailed struct {
 
 func (x *JobStatusFailed) Reset() {
 	*x = JobStatusFailed{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[47]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3220,7 +3471,7 @@ func (x *JobStatusFailed) String() string {
 func (*JobStatusFailed) ProtoMessage() {}
 
 func (x *JobStatusFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[47]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3233,7 +3484,7 @@ func (x *JobStatusFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStatusFailed.ProtoReflect.Descriptor instead.
 func (*JobStatusFailed) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{47}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *JobStatusFailed) GetFailure() *JobFailure {
@@ -3251,7 +3502,7 @@ type JobStatusCancelled struct {
 
 func (x *JobStatusCancelled) Reset() {
 	*x = JobStatusCancelled{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[48]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3263,7 +3514,7 @@ func (x *JobStatusCancelled) String() string {
 func (*JobStatusCancelled) ProtoMessage() {}
 
 func (x *JobStatusCancelled) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[48]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3276,7 +3527,7 @@ func (x *JobStatusCancelled) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStatusCancelled.ProtoReflect.Descriptor instead.
 func (*JobStatusCancelled) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{48}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{50}
 }
 
 type WatchJobRequest struct {
@@ -3288,7 +3539,7 @@ type WatchJobRequest struct {
 
 func (x *WatchJobRequest) Reset() {
 	*x = WatchJobRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[49]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3300,7 +3551,7 @@ func (x *WatchJobRequest) String() string {
 func (*WatchJobRequest) ProtoMessage() {}
 
 func (x *WatchJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[49]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3313,7 +3564,7 @@ func (x *WatchJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchJobRequest.ProtoReflect.Descriptor instead.
 func (*WatchJobRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{49}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *WatchJobRequest) GetJobId() string {
@@ -3341,7 +3592,7 @@ type JobEvent struct {
 
 func (x *JobEvent) Reset() {
 	*x = JobEvent{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[50]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3353,7 +3604,7 @@ func (x *JobEvent) String() string {
 func (*JobEvent) ProtoMessage() {}
 
 func (x *JobEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[50]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3366,7 +3617,7 @@ func (x *JobEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobEvent.ProtoReflect.Descriptor instead.
 func (*JobEvent) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{50}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *JobEvent) GetEvent() isJobEvent_Event {
@@ -3495,7 +3746,7 @@ type JobEventQueued struct {
 
 func (x *JobEventQueued) Reset() {
 	*x = JobEventQueued{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[51]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3507,7 +3758,7 @@ func (x *JobEventQueued) String() string {
 func (*JobEventQueued) ProtoMessage() {}
 
 func (x *JobEventQueued) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[51]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3520,7 +3771,7 @@ func (x *JobEventQueued) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobEventQueued.ProtoReflect.Descriptor instead.
 func (*JobEventQueued) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{51}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *JobEventQueued) GetJobId() string {
@@ -3547,7 +3798,7 @@ type JobEventStarted struct {
 
 func (x *JobEventStarted) Reset() {
 	*x = JobEventStarted{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[52]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3559,7 +3810,7 @@ func (x *JobEventStarted) String() string {
 func (*JobEventStarted) ProtoMessage() {}
 
 func (x *JobEventStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[52]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3572,7 +3823,7 @@ func (x *JobEventStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobEventStarted.ProtoReflect.Descriptor instead.
 func (*JobEventStarted) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{52}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *JobEventStarted) GetJobId() string {
@@ -3600,7 +3851,7 @@ type JobEventProgress struct {
 
 func (x *JobEventProgress) Reset() {
 	*x = JobEventProgress{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[53]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3612,7 +3863,7 @@ func (x *JobEventProgress) String() string {
 func (*JobEventProgress) ProtoMessage() {}
 
 func (x *JobEventProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[53]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3625,7 +3876,7 @@ func (x *JobEventProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobEventProgress.ProtoReflect.Descriptor instead.
 func (*JobEventProgress) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{53}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *JobEventProgress) GetJobId() string {
@@ -3659,7 +3910,7 @@ type JobEventWaitingForInput struct {
 
 func (x *JobEventWaitingForInput) Reset() {
 	*x = JobEventWaitingForInput{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[54]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3671,7 +3922,7 @@ func (x *JobEventWaitingForInput) String() string {
 func (*JobEventWaitingForInput) ProtoMessage() {}
 
 func (x *JobEventWaitingForInput) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[54]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3684,7 +3935,7 @@ func (x *JobEventWaitingForInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobEventWaitingForInput.ProtoReflect.Descriptor instead.
 func (*JobEventWaitingForInput) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{54}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *JobEventWaitingForInput) GetJobId() string {
@@ -3712,7 +3963,7 @@ type JobEventCompleted struct {
 
 func (x *JobEventCompleted) Reset() {
 	*x = JobEventCompleted{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[55]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3724,7 +3975,7 @@ func (x *JobEventCompleted) String() string {
 func (*JobEventCompleted) ProtoMessage() {}
 
 func (x *JobEventCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[55]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3737,7 +3988,7 @@ func (x *JobEventCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobEventCompleted.ProtoReflect.Descriptor instead.
 func (*JobEventCompleted) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{55}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *JobEventCompleted) GetJobId() string {
@@ -3771,7 +4022,7 @@ type JobEventCancelled struct {
 
 func (x *JobEventCancelled) Reset() {
 	*x = JobEventCancelled{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[56]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3783,7 +4034,7 @@ func (x *JobEventCancelled) String() string {
 func (*JobEventCancelled) ProtoMessage() {}
 
 func (x *JobEventCancelled) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[56]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3796,7 +4047,7 @@ func (x *JobEventCancelled) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobEventCancelled.ProtoReflect.Descriptor instead.
 func (*JobEventCancelled) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{56}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *JobEventCancelled) GetJobId() string {
@@ -3824,7 +4075,7 @@ type JobEventFailed struct {
 
 func (x *JobEventFailed) Reset() {
 	*x = JobEventFailed{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[57]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3836,7 +4087,7 @@ func (x *JobEventFailed) String() string {
 func (*JobEventFailed) ProtoMessage() {}
 
 func (x *JobEventFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[57]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3849,7 +4100,7 @@ func (x *JobEventFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobEventFailed.ProtoReflect.Descriptor instead.
 func (*JobEventFailed) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{57}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *JobEventFailed) GetJobId() string {
@@ -3883,7 +4134,7 @@ type PushJobInputRequest struct {
 
 func (x *PushJobInputRequest) Reset() {
 	*x = PushJobInputRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[58]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3895,7 +4146,7 @@ func (x *PushJobInputRequest) String() string {
 func (*PushJobInputRequest) ProtoMessage() {}
 
 func (x *PushJobInputRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[58]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3908,7 +4159,7 @@ func (x *PushJobInputRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushJobInputRequest.ProtoReflect.Descriptor instead.
 func (*PushJobInputRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{58}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *PushJobInputRequest) GetJobId() string {
@@ -3935,7 +4186,7 @@ type PushJobHintsInputRequest struct {
 
 func (x *PushJobHintsInputRequest) Reset() {
 	*x = PushJobHintsInputRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[59]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3947,7 +4198,7 @@ func (x *PushJobHintsInputRequest) String() string {
 func (*PushJobHintsInputRequest) ProtoMessage() {}
 
 func (x *PushJobHintsInputRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[59]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3960,7 +4211,7 @@ func (x *PushJobHintsInputRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushJobHintsInputRequest.ProtoReflect.Descriptor instead.
 func (*PushJobHintsInputRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{59}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *PushJobHintsInputRequest) GetJobId() string {
@@ -3986,7 +4237,7 @@ type CancelJobRequest struct {
 
 func (x *CancelJobRequest) Reset() {
 	*x = CancelJobRequest{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[60]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3998,7 +4249,7 @@ func (x *CancelJobRequest) String() string {
 func (*CancelJobRequest) ProtoMessage() {}
 
 func (x *CancelJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[60]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4011,7 +4262,7 @@ func (x *CancelJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelJobRequest.ProtoReflect.Descriptor instead.
 func (*CancelJobRequest) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{60}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *CancelJobRequest) GetJobId() string {
@@ -4031,7 +4282,7 @@ type CancelJobResponse struct {
 
 func (x *CancelJobResponse) Reset() {
 	*x = CancelJobResponse{}
-	mi := &file_zisk_coordinator_api_proto_msgTypes[61]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4043,7 +4294,7 @@ func (x *CancelJobResponse) String() string {
 func (*CancelJobResponse) ProtoMessage() {}
 
 func (x *CancelJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_zisk_coordinator_api_proto_msgTypes[61]
+	mi := &file_zisk_coordinator_api_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4056,7 +4307,7 @@ func (x *CancelJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelJobResponse.ProtoReflect.Descriptor instead.
 func (*CancelJobResponse) Descriptor() ([]byte, []int) {
-	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{61}
+	return file_zisk_coordinator_api_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *CancelJobResponse) GetJobId() string {
@@ -4095,21 +4346,21 @@ const file_zisk_coordinator_api_proto_rawDesc = "" +
 	"\x04plan\x18\x05 \x03(\v2%.zisk.coordinator.v1.AirInstanceCountR\x04plan\x12;\n" +
 	"\vproof_start\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"proofStart\x125\n" +
-	"\x05tasks\x18\a \x03(\v2\x1f.zisk.coordinator.v1.TaskTimingR\x05tasks\"\xc9\x03\n" +
+	"\x05tasks\x18\a \x03(\v2\x1f.zisk.coordinator.v1.TaskTimingR\x05tasks\"\xd7\x03\n" +
 	"\n" +
 	"TaskTiming\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x123\n" +
 	"\x05phase\x18\x02 \x01(\x0e2\x1d.zisk.coordinator.v1.JobPhaseR\x05phase\x12'\n" +
-	"\x0fcoordinator_end\x18\x03 \x01(\x04R\x0ecoordinatorEnd\x12.\n" +
-	"\x13compute_duration_ms\x18\x04 \x01(\x04R\x11computeDurationMs\x12F\n" +
-	"\rexecutor_time\x18\x05 \x01(\v2!.zisk.coordinator.v1.ExecutorTimeR\fexecutorTime\x12\x12\n" +
-	"\x04step\x18\x06 \x01(\rR\x04step\x12E\n" +
+	"\x0fcoordinator_end\x18\x03 \x01(\x04R\x0ecoordinatorEnd\x12F\n" +
+	"\rexecutor_time\x18\x05 \x01(\v2!.zisk.coordinator.v1.ExecutorTimeR\fexecutorTime\x12E\n" +
 	"\rproof_timings\x18\a \x03(\v2 .zisk.coordinator.v1.ProofTimingR\fproofTimings\x12+\n" +
 	"\x11coordinator_start\x18\b \x01(\x04R\x10coordinatorStart\x12!\n" +
 	"\fworker_start\x18\t \x01(\x04R\vworkerStart\x12\x1d\n" +
 	"\n" +
 	"worker_end\x18\n" +
-	" \x01(\x04R\tworkerEnd\"\xb6\x02\n" +
+	" \x01(\x04R\tworkerEnd\x12:\n" +
+	"\athreads\x18\v \x03(\v2 .zisk.coordinator.v1.ThreadSpansR\athreads\x12\x14\n" +
+	"\x05names\x18\f \x03(\tR\x05names\"\xe7\x02\n" +
 	"\vProofTiming\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1d\n" +
 	"\n" +
@@ -4119,10 +4370,19 @@ const file_zisk_coordinator_api_proto_rawDesc = "" +
 	"\bair_name\x18\x04 \x01(\tR\aairName\x12\x14\n" +
 	"\x05start\x18\x05 \x01(\x04R\x05start\x12\x10\n" +
 	"\x03end\x18\x06 \x01(\x04R\x03end\x12T\n" +
-	"\fbreakdown_ms\x18\a \x03(\v21.zisk.coordinator.v1.ProofTiming.BreakdownMsEntryR\vbreakdownMs\x1a>\n" +
+	"\fbreakdown_ms\x18\a \x03(\v21.zisk.coordinator.v1.ProofTiming.BreakdownMsEntryR\vbreakdownMs\x12/\n" +
+	"\x05spans\x18\b \x03(\v2\x19.zisk.coordinator.v1.SpanR\x05spans\x1a>\n" +
 	"\x10BreakdownMsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01\"`\n" +
+	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01\"V\n" +
+	"\vThreadSpans\x12\x16\n" +
+	"\x06thread\x18\x01 \x01(\tR\x06thread\x12/\n" +
+	"\x05spans\x18\x02 \x03(\v2\x19.zisk.coordinator.v1.SpanR\x05spans\"b\n" +
+	"\x04Span\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\rR\x04name\x12\x19\n" +
+	"\bstart_us\x18\x02 \x01(\x04R\astartUs\x12\x15\n" +
+	"\x06end_us\x18\x03 \x01(\x04R\x05endUs\x12\x14\n" +
+	"\x05depth\x18\x04 \x01(\rR\x05depth\"`\n" +
 	"\x10AirInstanceCount\x12\x1f\n" +
 	"\vairgroup_id\x18\x01 \x01(\rR\n" +
 	"airgroupId\x12\x15\n" +
@@ -4144,7 +4404,7 @@ const file_zisk_coordinator_api_proto_rawDesc = "" +
 	"\x06inline\x18\x01 \x01(\v2\x1f.zisk.coordinator.v1.InputChunkH\x00R\x06inline\x12\x1f\n" +
 	"\n" +
 	"stream_uri\x18\x02 \x01(\tH\x00R\tstreamUriB\x06\n" +
-	"\x04kind\"\xd8\x02\n" +
+	"\x04kind\"\x8e\x03\n" +
 	"\x05Proof\x12\x19\n" +
 	"\bproof_id\x18\x01 \x01(\tR\aproofId\x12\x17\n" +
 	"\ahash_id\x18\x02 \x01(\tR\x06hashId\x12)\n" +
@@ -4155,7 +4415,10 @@ const file_zisk_coordinator_api_proto_rawDesc = "" +
 	"\rpublic_inputs\x18\x06 \x01(\fR\fpublicInputs\x129\n" +
 	"\n" +
 	"started_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12=\n" +
-	"\fcompleted_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"L\n" +
+	"\fcompleted_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x12$\n" +
+	"\vrandom_seed\x18\t \x01(\fH\x00R\n" +
+	"randomSeed\x88\x01\x01B\x0e\n" +
+	"\f_random_seed\"L\n" +
 	"\bApiError\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\rR\x04code\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
@@ -4200,9 +4463,13 @@ const file_zisk_coordinator_api_proto_rawDesc = "" +
 	"\x04spec\x18\x02 \x01(\v2+.zisk.coordinator.v1.AggregationProgramSpecR\x04spec\"E\n" +
 	"\"RegisterAggregationProgramResponse\x12\x1f\n" +
 	"\vrecurser_id\x18\x01 \x01(\tR\n" +
-	"recurserId\"L\n" +
+	"recurserId\"\xdb\x01\n" +
 	"\x11JobRequestMessage\x127\n" +
-	"\bjob_kind\x18\x01 \x01(\v2\x1c.zisk.coordinator.v1.JobKindR\ajobKind\"$\n" +
+	"\bjob_kind\x18\x01 \x01(\v2\x1c.zisk.coordinator.v1.JobKindR\ajobKind\x12P\n" +
+	"\bmetadata\x18\x02 \x03(\v24.zisk.coordinator.v1.JobRequestMessage.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"$\n" +
 	"\vJobResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"\xcd\x03\n" +
 	"\aJobKind\x129\n" +
@@ -4221,25 +4488,32 @@ const file_zisk_coordinator_api_proto_rawDesc = "" +
 	"\remulator_only\x18\x04 \x01(\bR\femulatorOnly\"<\n" +
 	"\rSetupResponse\x12\x0e\n" +
 	"\x02vk\x18\x01 \x01(\fR\x02vk\x12\x1b\n" +
-	"\thash_mode\x18\x02 \x01(\tR\bhashMode\"\xb9\x02\n" +
+	"\thash_mode\x18\x02 \x01(\tR\bhashMode\"\xd2\x03\n" +
 	"\fProveRequest\x12\x17\n" +
 	"\ahash_id\x18\x01 \x01(\tR\x06hashId\x124\n" +
 	"\x05input\x18\x02 \x01(\v2\x1e.zisk.coordinator.v1.InputKindR\x05input\x12D\n" +
 	"\rproof_timeout\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\fproofTimeout\x88\x01\x01\x12=\n" +
 	"\n" +
 	"proof_dest\x18\x04 \x01(\x0e2\x1e.zisk.coordinator.v1.ProofKindR\tproofDest\x129\n" +
-	"\x05hints\x18\x05 \x01(\v2\x1e.zisk.coordinator.v1.InputKindH\x01R\x05hints\x88\x01\x01B\x10\n" +
+	"\x05hints\x18\x05 \x01(\v2\x1e.zisk.coordinator.v1.InputKindH\x01R\x05hints\x88\x01\x01\x12$\n" +
+	"\vrandom_seed\x18\x06 \x01(\fH\x02R\n" +
+	"randomSeed\x88\x01\x01\x12N\n" +
+	"\x0esnark_protocol\x18\a \x01(\x0e2\".zisk.coordinator.v1.SnarkProtocolH\x03R\rsnarkProtocol\x88\x01\x01B\x10\n" +
 	"\x0e_proof_timeoutB\b\n" +
-	"\x06_hints\"|\n" +
+	"\x06_hintsB\x0e\n" +
+	"\f_random_seedB\x11\n" +
+	"\x0f_snark_protocol\"|\n" +
 	"\rProveResponse\x120\n" +
 	"\x05proof\x18\x01 \x01(\v2\x1a.zisk.coordinator.v1.ProofR\x05proof\x129\n" +
-	"\x05stats\x18\x02 \x01(\v2#.zisk.coordinator.v1.ExecutionStatsR\x05stats\"\xd3\x01\n" +
+	"\x05stats\x18\x02 \x01(\v2#.zisk.coordinator.v1.ExecutionStatsR\x05stats\"\xb6\x02\n" +
 	"\vWrapRequest\x120\n" +
 	"\x05proof\x18\x01 \x01(\v2\x1a.zisk.coordinator.v1.ProofR\x05proof\x12=\n" +
 	"\n" +
 	"proof_dest\x18\x02 \x01(\x0e2\x1e.zisk.coordinator.v1.ProofKindR\tproofDest\x12B\n" +
-	"\fwrap_timeout\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\vwrapTimeout\x88\x01\x01B\x0f\n" +
-	"\r_wrap_timeout\"@\n" +
+	"\fwrap_timeout\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\vwrapTimeout\x88\x01\x01\x12N\n" +
+	"\x0esnark_protocol\x18\x04 \x01(\x0e2\".zisk.coordinator.v1.SnarkProtocolH\x01R\rsnarkProtocol\x88\x01\x01B\x0f\n" +
+	"\r_wrap_timeoutB\x11\n" +
+	"\x0f_snark_protocol\"@\n" +
 	"\fWrapResponse\x120\n" +
 	"\x05proof\x18\x01 \x01(\v2\x1a.zisk.coordinator.v1.ProofR\x05proof\"A\n" +
 	"\x1eSetupAggregationProgramRequest\x12\x1f\n" +
@@ -4257,17 +4531,23 @@ const file_zisk_coordinator_api_proto_rawDesc = "" +
 	"\rfree_inputs_b\x18\x05 \x03(\x04R\vfreeInputsB\x12-\n" +
 	"\x13root_c_recurser_agg\x18\x06 \x03(\x04R\x10rootCRecurserAgg\"K\n" +
 	"\x17AggregateProofsResponse\x120\n" +
-	"\x05proof\x18\x01 \x01(\v2\x1a.zisk.coordinator.v1.ProofR\x05proof\"\x82\x02\n" +
+	"\x05proof\x18\x01 \x01(\v2\x1a.zisk.coordinator.v1.ProofR\x05proof\"\xb8\x02\n" +
 	"\x0eExecuteRequest\x12\x17\n" +
 	"\ahash_id\x18\x01 \x01(\tR\x06hashId\x124\n" +
 	"\x05input\x18\x02 \x01(\v2\x1e.zisk.coordinator.v1.InputKindR\x05input\x12H\n" +
 	"\x0fexecute_timeout\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\x0eexecuteTimeout\x88\x01\x01\x129\n" +
-	"\x05hints\x18\x04 \x01(\v2\x1e.zisk.coordinator.v1.InputKindH\x01R\x05hints\x88\x01\x01B\x12\n" +
+	"\x05hints\x18\x04 \x01(\v2\x1e.zisk.coordinator.v1.InputKindH\x01R\x05hints\x88\x01\x01\x12$\n" +
+	"\vrandom_seed\x18\x05 \x01(\fH\x02R\n" +
+	"randomSeed\x88\x01\x01B\x12\n" +
 	"\x10_execute_timeoutB\b\n" +
-	"\x06_hints\"s\n" +
+	"\x06_hintsB\x0e\n" +
+	"\f_random_seed\"\xa9\x01\n" +
 	"\x0fExecuteResponse\x129\n" +
 	"\x05stats\x18\x01 \x01(\v2#.zisk.coordinator.v1.ExecutionStatsR\x05stats\x12%\n" +
-	"\x0epublic_outputs\x18\x02 \x01(\fR\rpublicOutputs\"\xdb\x03\n" +
+	"\x0epublic_outputs\x18\x02 \x01(\fR\rpublicOutputs\x12$\n" +
+	"\vrandom_seed\x18\x03 \x01(\fH\x00R\n" +
+	"randomSeed\x88\x01\x01B\x0e\n" +
+	"\f_random_seed\"\xdb\x03\n" +
 	"\x0fJobKindResponse\x12:\n" +
 	"\x05setup\x18\x01 \x01(\v2\".zisk.coordinator.v1.SetupResponseH\x00R\x05setup\x12:\n" +
 	"\x05prove\x18\x02 \x01(\v2\".zisk.coordinator.v1.ProveResponseH\x00R\x05prove\x127\n" +
@@ -4353,7 +4633,11 @@ const file_zisk_coordinator_api_proto_rawDesc = "" +
 	"\x16PROOF_KIND_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10PROOF_KIND_STARK\x10\x01\x12\x1c\n" +
 	"\x18PROOF_KIND_STARK_MINIMAL\x10\x02\x12\x14\n" +
-	"\x10PROOF_KIND_PLONK\x10\x03*n\n" +
+	"\x10PROOF_KIND_PLONK\x10\x03*g\n" +
+	"\rSnarkProtocol\x12\x1e\n" +
+	"\x1aSNARK_PROTOCOL_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14SNARK_PROTOCOL_PLONK\x10\x01\x12\x1c\n" +
+	"\x18SNARK_PROTOCOL_PILFFLONK\x10\x02*n\n" +
 	"\bJobPhase\x12\x19\n" +
 	"\x15JOB_PHASE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17JOB_PHASE_CONTRIBUTIONS\x10\x01\x12\x13\n" +
@@ -4382,181 +4666,191 @@ func file_zisk_coordinator_api_proto_rawDescGZIP() []byte {
 	return file_zisk_coordinator_api_proto_rawDescData
 }
 
-var file_zisk_coordinator_api_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_zisk_coordinator_api_proto_msgTypes = make([]protoimpl.MessageInfo, 63)
+var file_zisk_coordinator_api_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_zisk_coordinator_api_proto_msgTypes = make([]protoimpl.MessageInfo, 66)
 var file_zisk_coordinator_api_proto_goTypes = []any{
 	(ProofKind)(0),                             // 0: zisk.coordinator.v1.ProofKind
-	(JobPhase)(0),                              // 1: zisk.coordinator.v1.JobPhase
-	(*CostPerType)(nil),                        // 2: zisk.coordinator.v1.CostPerType
-	(*ExecutionStats)(nil),                     // 3: zisk.coordinator.v1.ExecutionStats
-	(*TaskTiming)(nil),                         // 4: zisk.coordinator.v1.TaskTiming
-	(*ProofTiming)(nil),                        // 5: zisk.coordinator.v1.ProofTiming
-	(*AirInstanceCount)(nil),                   // 6: zisk.coordinator.v1.AirInstanceCount
-	(*ExecutorTime)(nil),                       // 7: zisk.coordinator.v1.ExecutorTime
-	(*AsmExecution)(nil),                       // 8: zisk.coordinator.v1.AsmExecution
-	(*InputChunk)(nil),                         // 9: zisk.coordinator.v1.InputChunk
-	(*InputKind)(nil),                          // 10: zisk.coordinator.v1.InputKind
-	(*Proof)(nil),                              // 11: zisk.coordinator.v1.Proof
-	(*ApiError)(nil),                           // 12: zisk.coordinator.v1.ApiError
-	(*JobFailure)(nil),                         // 13: zisk.coordinator.v1.JobFailure
-	(*JobFailureTimeout)(nil),                  // 14: zisk.coordinator.v1.JobFailureTimeout
-	(*JobFailureInput)(nil),                    // 15: zisk.coordinator.v1.JobFailureInput
-	(*JobFailureExecution)(nil),                // 16: zisk.coordinator.v1.JobFailureExecution
-	(*JobFailureInternal)(nil),                 // 17: zisk.coordinator.v1.JobFailureInternal
-	(*JobFailureCancelled)(nil),                // 18: zisk.coordinator.v1.JobFailureCancelled
-	(*RegisterGuestProgramRequest)(nil),        // 19: zisk.coordinator.v1.RegisterGuestProgramRequest
-	(*RegisterGuestProgramResponse)(nil),       // 20: zisk.coordinator.v1.RegisterGuestProgramResponse
-	(*NormalizeCircuit)(nil),                   // 21: zisk.coordinator.v1.NormalizeCircuit
-	(*ProgramVk)(nil),                          // 22: zisk.coordinator.v1.ProgramVk
-	(*AggregationProgramSpec)(nil),             // 23: zisk.coordinator.v1.AggregationProgramSpec
-	(*RegisterAggregationProgramRequest)(nil),  // 24: zisk.coordinator.v1.RegisterAggregationProgramRequest
-	(*RegisterAggregationProgramResponse)(nil), // 25: zisk.coordinator.v1.RegisterAggregationProgramResponse
-	(*JobRequestMessage)(nil),                  // 26: zisk.coordinator.v1.JobRequestMessage
-	(*JobResponse)(nil),                        // 27: zisk.coordinator.v1.JobResponse
-	(*JobKind)(nil),                            // 28: zisk.coordinator.v1.JobKind
-	(*SetupRequest)(nil),                       // 29: zisk.coordinator.v1.SetupRequest
-	(*SetupResponse)(nil),                      // 30: zisk.coordinator.v1.SetupResponse
-	(*ProveRequest)(nil),                       // 31: zisk.coordinator.v1.ProveRequest
-	(*ProveResponse)(nil),                      // 32: zisk.coordinator.v1.ProveResponse
-	(*WrapRequest)(nil),                        // 33: zisk.coordinator.v1.WrapRequest
-	(*WrapResponse)(nil),                       // 34: zisk.coordinator.v1.WrapResponse
-	(*SetupAggregationProgramRequest)(nil),     // 35: zisk.coordinator.v1.SetupAggregationProgramRequest
-	(*SetupAggregationProgramResponse)(nil),    // 36: zisk.coordinator.v1.SetupAggregationProgramResponse
-	(*AggregateProofsRequest)(nil),             // 37: zisk.coordinator.v1.AggregateProofsRequest
-	(*AggregateProofsResponse)(nil),            // 38: zisk.coordinator.v1.AggregateProofsResponse
-	(*ExecuteRequest)(nil),                     // 39: zisk.coordinator.v1.ExecuteRequest
-	(*ExecuteResponse)(nil),                    // 40: zisk.coordinator.v1.ExecuteResponse
-	(*JobKindResponse)(nil),                    // 41: zisk.coordinator.v1.JobKindResponse
-	(*WaitJobResultRequest)(nil),               // 42: zisk.coordinator.v1.WaitJobResultRequest
-	(*WaitJobResultResponse)(nil),              // 43: zisk.coordinator.v1.WaitJobResultResponse
-	(*JobStatus)(nil),                          // 44: zisk.coordinator.v1.JobStatus
-	(*JobStatusQueued)(nil),                    // 45: zisk.coordinator.v1.JobStatusQueued
-	(*JobStatusRunning)(nil),                   // 46: zisk.coordinator.v1.JobStatusRunning
-	(*JobStatusWaitingForInput)(nil),           // 47: zisk.coordinator.v1.JobStatusWaitingForInput
-	(*JobStatusCompleted)(nil),                 // 48: zisk.coordinator.v1.JobStatusCompleted
-	(*JobStatusFailed)(nil),                    // 49: zisk.coordinator.v1.JobStatusFailed
-	(*JobStatusCancelled)(nil),                 // 50: zisk.coordinator.v1.JobStatusCancelled
-	(*WatchJobRequest)(nil),                    // 51: zisk.coordinator.v1.WatchJobRequest
-	(*JobEvent)(nil),                           // 52: zisk.coordinator.v1.JobEvent
-	(*JobEventQueued)(nil),                     // 53: zisk.coordinator.v1.JobEventQueued
-	(*JobEventStarted)(nil),                    // 54: zisk.coordinator.v1.JobEventStarted
-	(*JobEventProgress)(nil),                   // 55: zisk.coordinator.v1.JobEventProgress
-	(*JobEventWaitingForInput)(nil),            // 56: zisk.coordinator.v1.JobEventWaitingForInput
-	(*JobEventCompleted)(nil),                  // 57: zisk.coordinator.v1.JobEventCompleted
-	(*JobEventCancelled)(nil),                  // 58: zisk.coordinator.v1.JobEventCancelled
-	(*JobEventFailed)(nil),                     // 59: zisk.coordinator.v1.JobEventFailed
-	(*PushJobInputRequest)(nil),                // 60: zisk.coordinator.v1.PushJobInputRequest
-	(*PushJobHintsInputRequest)(nil),           // 61: zisk.coordinator.v1.PushJobHintsInputRequest
-	(*CancelJobRequest)(nil),                   // 62: zisk.coordinator.v1.CancelJobRequest
-	(*CancelJobResponse)(nil),                  // 63: zisk.coordinator.v1.CancelJobResponse
-	nil,                                        // 64: zisk.coordinator.v1.ProofTiming.BreakdownMsEntry
-	(*timestamppb.Timestamp)(nil),              // 65: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),                // 66: google.protobuf.Duration
-	(*emptypb.Empty)(nil),                      // 67: google.protobuf.Empty
+	(SnarkProtocol)(0),                         // 1: zisk.coordinator.v1.SnarkProtocol
+	(JobPhase)(0),                              // 2: zisk.coordinator.v1.JobPhase
+	(*CostPerType)(nil),                        // 3: zisk.coordinator.v1.CostPerType
+	(*ExecutionStats)(nil),                     // 4: zisk.coordinator.v1.ExecutionStats
+	(*TaskTiming)(nil),                         // 5: zisk.coordinator.v1.TaskTiming
+	(*ProofTiming)(nil),                        // 6: zisk.coordinator.v1.ProofTiming
+	(*ThreadSpans)(nil),                        // 7: zisk.coordinator.v1.ThreadSpans
+	(*Span)(nil),                               // 8: zisk.coordinator.v1.Span
+	(*AirInstanceCount)(nil),                   // 9: zisk.coordinator.v1.AirInstanceCount
+	(*ExecutorTime)(nil),                       // 10: zisk.coordinator.v1.ExecutorTime
+	(*AsmExecution)(nil),                       // 11: zisk.coordinator.v1.AsmExecution
+	(*InputChunk)(nil),                         // 12: zisk.coordinator.v1.InputChunk
+	(*InputKind)(nil),                          // 13: zisk.coordinator.v1.InputKind
+	(*Proof)(nil),                              // 14: zisk.coordinator.v1.Proof
+	(*ApiError)(nil),                           // 15: zisk.coordinator.v1.ApiError
+	(*JobFailure)(nil),                         // 16: zisk.coordinator.v1.JobFailure
+	(*JobFailureTimeout)(nil),                  // 17: zisk.coordinator.v1.JobFailureTimeout
+	(*JobFailureInput)(nil),                    // 18: zisk.coordinator.v1.JobFailureInput
+	(*JobFailureExecution)(nil),                // 19: zisk.coordinator.v1.JobFailureExecution
+	(*JobFailureInternal)(nil),                 // 20: zisk.coordinator.v1.JobFailureInternal
+	(*JobFailureCancelled)(nil),                // 21: zisk.coordinator.v1.JobFailureCancelled
+	(*RegisterGuestProgramRequest)(nil),        // 22: zisk.coordinator.v1.RegisterGuestProgramRequest
+	(*RegisterGuestProgramResponse)(nil),       // 23: zisk.coordinator.v1.RegisterGuestProgramResponse
+	(*NormalizeCircuit)(nil),                   // 24: zisk.coordinator.v1.NormalizeCircuit
+	(*ProgramVk)(nil),                          // 25: zisk.coordinator.v1.ProgramVk
+	(*AggregationProgramSpec)(nil),             // 26: zisk.coordinator.v1.AggregationProgramSpec
+	(*RegisterAggregationProgramRequest)(nil),  // 27: zisk.coordinator.v1.RegisterAggregationProgramRequest
+	(*RegisterAggregationProgramResponse)(nil), // 28: zisk.coordinator.v1.RegisterAggregationProgramResponse
+	(*JobRequestMessage)(nil),                  // 29: zisk.coordinator.v1.JobRequestMessage
+	(*JobResponse)(nil),                        // 30: zisk.coordinator.v1.JobResponse
+	(*JobKind)(nil),                            // 31: zisk.coordinator.v1.JobKind
+	(*SetupRequest)(nil),                       // 32: zisk.coordinator.v1.SetupRequest
+	(*SetupResponse)(nil),                      // 33: zisk.coordinator.v1.SetupResponse
+	(*ProveRequest)(nil),                       // 34: zisk.coordinator.v1.ProveRequest
+	(*ProveResponse)(nil),                      // 35: zisk.coordinator.v1.ProveResponse
+	(*WrapRequest)(nil),                        // 36: zisk.coordinator.v1.WrapRequest
+	(*WrapResponse)(nil),                       // 37: zisk.coordinator.v1.WrapResponse
+	(*SetupAggregationProgramRequest)(nil),     // 38: zisk.coordinator.v1.SetupAggregationProgramRequest
+	(*SetupAggregationProgramResponse)(nil),    // 39: zisk.coordinator.v1.SetupAggregationProgramResponse
+	(*AggregateProofsRequest)(nil),             // 40: zisk.coordinator.v1.AggregateProofsRequest
+	(*AggregateProofsResponse)(nil),            // 41: zisk.coordinator.v1.AggregateProofsResponse
+	(*ExecuteRequest)(nil),                     // 42: zisk.coordinator.v1.ExecuteRequest
+	(*ExecuteResponse)(nil),                    // 43: zisk.coordinator.v1.ExecuteResponse
+	(*JobKindResponse)(nil),                    // 44: zisk.coordinator.v1.JobKindResponse
+	(*WaitJobResultRequest)(nil),               // 45: zisk.coordinator.v1.WaitJobResultRequest
+	(*WaitJobResultResponse)(nil),              // 46: zisk.coordinator.v1.WaitJobResultResponse
+	(*JobStatus)(nil),                          // 47: zisk.coordinator.v1.JobStatus
+	(*JobStatusQueued)(nil),                    // 48: zisk.coordinator.v1.JobStatusQueued
+	(*JobStatusRunning)(nil),                   // 49: zisk.coordinator.v1.JobStatusRunning
+	(*JobStatusWaitingForInput)(nil),           // 50: zisk.coordinator.v1.JobStatusWaitingForInput
+	(*JobStatusCompleted)(nil),                 // 51: zisk.coordinator.v1.JobStatusCompleted
+	(*JobStatusFailed)(nil),                    // 52: zisk.coordinator.v1.JobStatusFailed
+	(*JobStatusCancelled)(nil),                 // 53: zisk.coordinator.v1.JobStatusCancelled
+	(*WatchJobRequest)(nil),                    // 54: zisk.coordinator.v1.WatchJobRequest
+	(*JobEvent)(nil),                           // 55: zisk.coordinator.v1.JobEvent
+	(*JobEventQueued)(nil),                     // 56: zisk.coordinator.v1.JobEventQueued
+	(*JobEventStarted)(nil),                    // 57: zisk.coordinator.v1.JobEventStarted
+	(*JobEventProgress)(nil),                   // 58: zisk.coordinator.v1.JobEventProgress
+	(*JobEventWaitingForInput)(nil),            // 59: zisk.coordinator.v1.JobEventWaitingForInput
+	(*JobEventCompleted)(nil),                  // 60: zisk.coordinator.v1.JobEventCompleted
+	(*JobEventCancelled)(nil),                  // 61: zisk.coordinator.v1.JobEventCancelled
+	(*JobEventFailed)(nil),                     // 62: zisk.coordinator.v1.JobEventFailed
+	(*PushJobInputRequest)(nil),                // 63: zisk.coordinator.v1.PushJobInputRequest
+	(*PushJobHintsInputRequest)(nil),           // 64: zisk.coordinator.v1.PushJobHintsInputRequest
+	(*CancelJobRequest)(nil),                   // 65: zisk.coordinator.v1.CancelJobRequest
+	(*CancelJobResponse)(nil),                  // 66: zisk.coordinator.v1.CancelJobResponse
+	nil,                                        // 67: zisk.coordinator.v1.ProofTiming.BreakdownMsEntry
+	nil,                                        // 68: zisk.coordinator.v1.JobRequestMessage.MetadataEntry
+	(*timestamppb.Timestamp)(nil),              // 69: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),                // 70: google.protobuf.Duration
+	(*emptypb.Empty)(nil),                      // 71: google.protobuf.Empty
 }
 var file_zisk_coordinator_api_proto_depIdxs = []int32{
-	2,  // 0: zisk.coordinator.v1.ExecutionStats.cost_per_type:type_name -> zisk.coordinator.v1.CostPerType
-	7,  // 1: zisk.coordinator.v1.ExecutionStats.executor_time:type_name -> zisk.coordinator.v1.ExecutorTime
-	6,  // 2: zisk.coordinator.v1.ExecutionStats.plan:type_name -> zisk.coordinator.v1.AirInstanceCount
-	65, // 3: zisk.coordinator.v1.ExecutionStats.proof_start:type_name -> google.protobuf.Timestamp
-	4,  // 4: zisk.coordinator.v1.ExecutionStats.tasks:type_name -> zisk.coordinator.v1.TaskTiming
-	1,  // 5: zisk.coordinator.v1.TaskTiming.phase:type_name -> zisk.coordinator.v1.JobPhase
-	7,  // 6: zisk.coordinator.v1.TaskTiming.executor_time:type_name -> zisk.coordinator.v1.ExecutorTime
-	5,  // 7: zisk.coordinator.v1.TaskTiming.proof_timings:type_name -> zisk.coordinator.v1.ProofTiming
-	64, // 8: zisk.coordinator.v1.ProofTiming.breakdown_ms:type_name -> zisk.coordinator.v1.ProofTiming.BreakdownMsEntry
-	8,  // 9: zisk.coordinator.v1.ExecutorTime.asm:type_name -> zisk.coordinator.v1.AsmExecution
-	9,  // 10: zisk.coordinator.v1.InputKind.inline:type_name -> zisk.coordinator.v1.InputChunk
-	0,  // 11: zisk.coordinator.v1.Proof.proof_kind:type_name -> zisk.coordinator.v1.ProofKind
-	65, // 12: zisk.coordinator.v1.Proof.started_at:type_name -> google.protobuf.Timestamp
-	65, // 13: zisk.coordinator.v1.Proof.completed_at:type_name -> google.protobuf.Timestamp
-	14, // 14: zisk.coordinator.v1.JobFailure.timeout:type_name -> zisk.coordinator.v1.JobFailureTimeout
-	15, // 15: zisk.coordinator.v1.JobFailure.input:type_name -> zisk.coordinator.v1.JobFailureInput
-	16, // 16: zisk.coordinator.v1.JobFailure.execution:type_name -> zisk.coordinator.v1.JobFailureExecution
-	17, // 17: zisk.coordinator.v1.JobFailure.internal:type_name -> zisk.coordinator.v1.JobFailureInternal
-	18, // 18: zisk.coordinator.v1.JobFailure.cancelled:type_name -> zisk.coordinator.v1.JobFailureCancelled
-	1,  // 19: zisk.coordinator.v1.JobFailureTimeout.phase:type_name -> zisk.coordinator.v1.JobPhase
-	66, // 20: zisk.coordinator.v1.JobFailureTimeout.limit:type_name -> google.protobuf.Duration
-	21, // 21: zisk.coordinator.v1.AggregationProgramSpec.normalize:type_name -> zisk.coordinator.v1.NormalizeCircuit
-	22, // 22: zisk.coordinator.v1.AggregationProgramSpec.program_vks:type_name -> zisk.coordinator.v1.ProgramVk
-	23, // 23: zisk.coordinator.v1.RegisterAggregationProgramRequest.spec:type_name -> zisk.coordinator.v1.AggregationProgramSpec
-	28, // 24: zisk.coordinator.v1.JobRequestMessage.job_kind:type_name -> zisk.coordinator.v1.JobKind
-	29, // 25: zisk.coordinator.v1.JobKind.setup:type_name -> zisk.coordinator.v1.SetupRequest
-	31, // 26: zisk.coordinator.v1.JobKind.prove:type_name -> zisk.coordinator.v1.ProveRequest
-	33, // 27: zisk.coordinator.v1.JobKind.wrap:type_name -> zisk.coordinator.v1.WrapRequest
-	37, // 28: zisk.coordinator.v1.JobKind.aggregate_proofs:type_name -> zisk.coordinator.v1.AggregateProofsRequest
-	39, // 29: zisk.coordinator.v1.JobKind.execute:type_name -> zisk.coordinator.v1.ExecuteRequest
-	35, // 30: zisk.coordinator.v1.JobKind.setup_aggregation_program:type_name -> zisk.coordinator.v1.SetupAggregationProgramRequest
-	10, // 31: zisk.coordinator.v1.ProveRequest.input:type_name -> zisk.coordinator.v1.InputKind
-	65, // 32: zisk.coordinator.v1.ProveRequest.proof_timeout:type_name -> google.protobuf.Timestamp
-	0,  // 33: zisk.coordinator.v1.ProveRequest.proof_dest:type_name -> zisk.coordinator.v1.ProofKind
-	10, // 34: zisk.coordinator.v1.ProveRequest.hints:type_name -> zisk.coordinator.v1.InputKind
-	11, // 35: zisk.coordinator.v1.ProveResponse.proof:type_name -> zisk.coordinator.v1.Proof
-	3,  // 36: zisk.coordinator.v1.ProveResponse.stats:type_name -> zisk.coordinator.v1.ExecutionStats
-	11, // 37: zisk.coordinator.v1.WrapRequest.proof:type_name -> zisk.coordinator.v1.Proof
-	0,  // 38: zisk.coordinator.v1.WrapRequest.proof_dest:type_name -> zisk.coordinator.v1.ProofKind
-	65, // 39: zisk.coordinator.v1.WrapRequest.wrap_timeout:type_name -> google.protobuf.Timestamp
-	11, // 40: zisk.coordinator.v1.WrapResponse.proof:type_name -> zisk.coordinator.v1.Proof
-	11, // 41: zisk.coordinator.v1.AggregateProofsResponse.proof:type_name -> zisk.coordinator.v1.Proof
-	10, // 42: zisk.coordinator.v1.ExecuteRequest.input:type_name -> zisk.coordinator.v1.InputKind
-	65, // 43: zisk.coordinator.v1.ExecuteRequest.execute_timeout:type_name -> google.protobuf.Timestamp
-	10, // 44: zisk.coordinator.v1.ExecuteRequest.hints:type_name -> zisk.coordinator.v1.InputKind
-	3,  // 45: zisk.coordinator.v1.ExecuteResponse.stats:type_name -> zisk.coordinator.v1.ExecutionStats
-	30, // 46: zisk.coordinator.v1.JobKindResponse.setup:type_name -> zisk.coordinator.v1.SetupResponse
-	32, // 47: zisk.coordinator.v1.JobKindResponse.prove:type_name -> zisk.coordinator.v1.ProveResponse
-	34, // 48: zisk.coordinator.v1.JobKindResponse.wrap:type_name -> zisk.coordinator.v1.WrapResponse
-	38, // 49: zisk.coordinator.v1.JobKindResponse.aggregate_proofs:type_name -> zisk.coordinator.v1.AggregateProofsResponse
-	40, // 50: zisk.coordinator.v1.JobKindResponse.execute:type_name -> zisk.coordinator.v1.ExecuteResponse
-	36, // 51: zisk.coordinator.v1.JobKindResponse.setup_aggregation_program:type_name -> zisk.coordinator.v1.SetupAggregationProgramResponse
-	44, // 52: zisk.coordinator.v1.WaitJobResultResponse.job_status:type_name -> zisk.coordinator.v1.JobStatus
-	41, // 53: zisk.coordinator.v1.WaitJobResultResponse.result:type_name -> zisk.coordinator.v1.JobKindResponse
-	45, // 54: zisk.coordinator.v1.JobStatus.queued:type_name -> zisk.coordinator.v1.JobStatusQueued
-	46, // 55: zisk.coordinator.v1.JobStatus.running:type_name -> zisk.coordinator.v1.JobStatusRunning
-	47, // 56: zisk.coordinator.v1.JobStatus.waiting_for_input:type_name -> zisk.coordinator.v1.JobStatusWaitingForInput
-	48, // 57: zisk.coordinator.v1.JobStatus.completed:type_name -> zisk.coordinator.v1.JobStatusCompleted
-	49, // 58: zisk.coordinator.v1.JobStatus.failed:type_name -> zisk.coordinator.v1.JobStatusFailed
-	50, // 59: zisk.coordinator.v1.JobStatus.cancelled:type_name -> zisk.coordinator.v1.JobStatusCancelled
-	1,  // 60: zisk.coordinator.v1.JobStatusRunning.phase:type_name -> zisk.coordinator.v1.JobPhase
-	13, // 61: zisk.coordinator.v1.JobStatusFailed.failure:type_name -> zisk.coordinator.v1.JobFailure
-	53, // 62: zisk.coordinator.v1.JobEvent.queued:type_name -> zisk.coordinator.v1.JobEventQueued
-	54, // 63: zisk.coordinator.v1.JobEvent.started:type_name -> zisk.coordinator.v1.JobEventStarted
-	55, // 64: zisk.coordinator.v1.JobEvent.progress:type_name -> zisk.coordinator.v1.JobEventProgress
-	56, // 65: zisk.coordinator.v1.JobEvent.waiting_for_input:type_name -> zisk.coordinator.v1.JobEventWaitingForInput
-	57, // 66: zisk.coordinator.v1.JobEvent.completed:type_name -> zisk.coordinator.v1.JobEventCompleted
-	58, // 67: zisk.coordinator.v1.JobEvent.cancelled:type_name -> zisk.coordinator.v1.JobEventCancelled
-	59, // 68: zisk.coordinator.v1.JobEvent.failed:type_name -> zisk.coordinator.v1.JobEventFailed
-	65, // 69: zisk.coordinator.v1.JobEventQueued.timestamp:type_name -> google.protobuf.Timestamp
-	65, // 70: zisk.coordinator.v1.JobEventStarted.timestamp:type_name -> google.protobuf.Timestamp
-	1,  // 71: zisk.coordinator.v1.JobEventProgress.phase:type_name -> zisk.coordinator.v1.JobPhase
-	65, // 72: zisk.coordinator.v1.JobEventProgress.timestamp:type_name -> google.protobuf.Timestamp
-	65, // 73: zisk.coordinator.v1.JobEventWaitingForInput.timestamp:type_name -> google.protobuf.Timestamp
-	41, // 74: zisk.coordinator.v1.JobEventCompleted.result:type_name -> zisk.coordinator.v1.JobKindResponse
-	65, // 75: zisk.coordinator.v1.JobEventCompleted.timestamp:type_name -> google.protobuf.Timestamp
-	65, // 76: zisk.coordinator.v1.JobEventCancelled.timestamp:type_name -> google.protobuf.Timestamp
-	13, // 77: zisk.coordinator.v1.JobEventFailed.failure:type_name -> zisk.coordinator.v1.JobFailure
-	65, // 78: zisk.coordinator.v1.JobEventFailed.timestamp:type_name -> google.protobuf.Timestamp
-	9,  // 79: zisk.coordinator.v1.PushJobInputRequest.chunk:type_name -> zisk.coordinator.v1.InputChunk
-	9,  // 80: zisk.coordinator.v1.PushJobHintsInputRequest.chunk:type_name -> zisk.coordinator.v1.InputChunk
-	19, // 81: zisk.coordinator.v1.ZiskCoordinatorApi.RegisterGuestProgram:input_type -> zisk.coordinator.v1.RegisterGuestProgramRequest
-	24, // 82: zisk.coordinator.v1.ZiskCoordinatorApi.RegisterAggregationProgram:input_type -> zisk.coordinator.v1.RegisterAggregationProgramRequest
-	26, // 83: zisk.coordinator.v1.ZiskCoordinatorApi.JobRequest:input_type -> zisk.coordinator.v1.JobRequestMessage
-	42, // 84: zisk.coordinator.v1.ZiskCoordinatorApi.WaitJobResult:input_type -> zisk.coordinator.v1.WaitJobResultRequest
-	51, // 85: zisk.coordinator.v1.ZiskCoordinatorApi.WatchJob:input_type -> zisk.coordinator.v1.WatchJobRequest
-	60, // 86: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobInput:input_type -> zisk.coordinator.v1.PushJobInputRequest
-	61, // 87: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobHintsInput:input_type -> zisk.coordinator.v1.PushJobHintsInputRequest
-	62, // 88: zisk.coordinator.v1.ZiskCoordinatorApi.CancelJob:input_type -> zisk.coordinator.v1.CancelJobRequest
-	20, // 89: zisk.coordinator.v1.ZiskCoordinatorApi.RegisterGuestProgram:output_type -> zisk.coordinator.v1.RegisterGuestProgramResponse
-	25, // 90: zisk.coordinator.v1.ZiskCoordinatorApi.RegisterAggregationProgram:output_type -> zisk.coordinator.v1.RegisterAggregationProgramResponse
-	27, // 91: zisk.coordinator.v1.ZiskCoordinatorApi.JobRequest:output_type -> zisk.coordinator.v1.JobResponse
-	43, // 92: zisk.coordinator.v1.ZiskCoordinatorApi.WaitJobResult:output_type -> zisk.coordinator.v1.WaitJobResultResponse
-	52, // 93: zisk.coordinator.v1.ZiskCoordinatorApi.WatchJob:output_type -> zisk.coordinator.v1.JobEvent
-	67, // 94: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobInput:output_type -> google.protobuf.Empty
-	67, // 95: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobHintsInput:output_type -> google.protobuf.Empty
-	63, // 96: zisk.coordinator.v1.ZiskCoordinatorApi.CancelJob:output_type -> zisk.coordinator.v1.CancelJobResponse
-	89, // [89:97] is the sub-list for method output_type
-	81, // [81:89] is the sub-list for method input_type
-	81, // [81:81] is the sub-list for extension type_name
-	81, // [81:81] is the sub-list for extension extendee
-	0,  // [0:81] is the sub-list for field type_name
+	3,  // 0: zisk.coordinator.v1.ExecutionStats.cost_per_type:type_name -> zisk.coordinator.v1.CostPerType
+	10, // 1: zisk.coordinator.v1.ExecutionStats.executor_time:type_name -> zisk.coordinator.v1.ExecutorTime
+	9,  // 2: zisk.coordinator.v1.ExecutionStats.plan:type_name -> zisk.coordinator.v1.AirInstanceCount
+	69, // 3: zisk.coordinator.v1.ExecutionStats.proof_start:type_name -> google.protobuf.Timestamp
+	5,  // 4: zisk.coordinator.v1.ExecutionStats.tasks:type_name -> zisk.coordinator.v1.TaskTiming
+	2,  // 5: zisk.coordinator.v1.TaskTiming.phase:type_name -> zisk.coordinator.v1.JobPhase
+	10, // 6: zisk.coordinator.v1.TaskTiming.executor_time:type_name -> zisk.coordinator.v1.ExecutorTime
+	6,  // 7: zisk.coordinator.v1.TaskTiming.proof_timings:type_name -> zisk.coordinator.v1.ProofTiming
+	7,  // 8: zisk.coordinator.v1.TaskTiming.threads:type_name -> zisk.coordinator.v1.ThreadSpans
+	67, // 9: zisk.coordinator.v1.ProofTiming.breakdown_ms:type_name -> zisk.coordinator.v1.ProofTiming.BreakdownMsEntry
+	8,  // 10: zisk.coordinator.v1.ProofTiming.spans:type_name -> zisk.coordinator.v1.Span
+	8,  // 11: zisk.coordinator.v1.ThreadSpans.spans:type_name -> zisk.coordinator.v1.Span
+	11, // 12: zisk.coordinator.v1.ExecutorTime.asm:type_name -> zisk.coordinator.v1.AsmExecution
+	12, // 13: zisk.coordinator.v1.InputKind.inline:type_name -> zisk.coordinator.v1.InputChunk
+	0,  // 14: zisk.coordinator.v1.Proof.proof_kind:type_name -> zisk.coordinator.v1.ProofKind
+	69, // 15: zisk.coordinator.v1.Proof.started_at:type_name -> google.protobuf.Timestamp
+	69, // 16: zisk.coordinator.v1.Proof.completed_at:type_name -> google.protobuf.Timestamp
+	17, // 17: zisk.coordinator.v1.JobFailure.timeout:type_name -> zisk.coordinator.v1.JobFailureTimeout
+	18, // 18: zisk.coordinator.v1.JobFailure.input:type_name -> zisk.coordinator.v1.JobFailureInput
+	19, // 19: zisk.coordinator.v1.JobFailure.execution:type_name -> zisk.coordinator.v1.JobFailureExecution
+	20, // 20: zisk.coordinator.v1.JobFailure.internal:type_name -> zisk.coordinator.v1.JobFailureInternal
+	21, // 21: zisk.coordinator.v1.JobFailure.cancelled:type_name -> zisk.coordinator.v1.JobFailureCancelled
+	2,  // 22: zisk.coordinator.v1.JobFailureTimeout.phase:type_name -> zisk.coordinator.v1.JobPhase
+	70, // 23: zisk.coordinator.v1.JobFailureTimeout.limit:type_name -> google.protobuf.Duration
+	24, // 24: zisk.coordinator.v1.AggregationProgramSpec.normalize:type_name -> zisk.coordinator.v1.NormalizeCircuit
+	25, // 25: zisk.coordinator.v1.AggregationProgramSpec.program_vks:type_name -> zisk.coordinator.v1.ProgramVk
+	26, // 26: zisk.coordinator.v1.RegisterAggregationProgramRequest.spec:type_name -> zisk.coordinator.v1.AggregationProgramSpec
+	31, // 27: zisk.coordinator.v1.JobRequestMessage.job_kind:type_name -> zisk.coordinator.v1.JobKind
+	68, // 28: zisk.coordinator.v1.JobRequestMessage.metadata:type_name -> zisk.coordinator.v1.JobRequestMessage.MetadataEntry
+	32, // 29: zisk.coordinator.v1.JobKind.setup:type_name -> zisk.coordinator.v1.SetupRequest
+	34, // 30: zisk.coordinator.v1.JobKind.prove:type_name -> zisk.coordinator.v1.ProveRequest
+	36, // 31: zisk.coordinator.v1.JobKind.wrap:type_name -> zisk.coordinator.v1.WrapRequest
+	40, // 32: zisk.coordinator.v1.JobKind.aggregate_proofs:type_name -> zisk.coordinator.v1.AggregateProofsRequest
+	42, // 33: zisk.coordinator.v1.JobKind.execute:type_name -> zisk.coordinator.v1.ExecuteRequest
+	38, // 34: zisk.coordinator.v1.JobKind.setup_aggregation_program:type_name -> zisk.coordinator.v1.SetupAggregationProgramRequest
+	13, // 35: zisk.coordinator.v1.ProveRequest.input:type_name -> zisk.coordinator.v1.InputKind
+	69, // 36: zisk.coordinator.v1.ProveRequest.proof_timeout:type_name -> google.protobuf.Timestamp
+	0,  // 37: zisk.coordinator.v1.ProveRequest.proof_dest:type_name -> zisk.coordinator.v1.ProofKind
+	13, // 38: zisk.coordinator.v1.ProveRequest.hints:type_name -> zisk.coordinator.v1.InputKind
+	1,  // 39: zisk.coordinator.v1.ProveRequest.snark_protocol:type_name -> zisk.coordinator.v1.SnarkProtocol
+	14, // 40: zisk.coordinator.v1.ProveResponse.proof:type_name -> zisk.coordinator.v1.Proof
+	4,  // 41: zisk.coordinator.v1.ProveResponse.stats:type_name -> zisk.coordinator.v1.ExecutionStats
+	14, // 42: zisk.coordinator.v1.WrapRequest.proof:type_name -> zisk.coordinator.v1.Proof
+	0,  // 43: zisk.coordinator.v1.WrapRequest.proof_dest:type_name -> zisk.coordinator.v1.ProofKind
+	69, // 44: zisk.coordinator.v1.WrapRequest.wrap_timeout:type_name -> google.protobuf.Timestamp
+	1,  // 45: zisk.coordinator.v1.WrapRequest.snark_protocol:type_name -> zisk.coordinator.v1.SnarkProtocol
+	14, // 46: zisk.coordinator.v1.WrapResponse.proof:type_name -> zisk.coordinator.v1.Proof
+	14, // 47: zisk.coordinator.v1.AggregateProofsResponse.proof:type_name -> zisk.coordinator.v1.Proof
+	13, // 48: zisk.coordinator.v1.ExecuteRequest.input:type_name -> zisk.coordinator.v1.InputKind
+	69, // 49: zisk.coordinator.v1.ExecuteRequest.execute_timeout:type_name -> google.protobuf.Timestamp
+	13, // 50: zisk.coordinator.v1.ExecuteRequest.hints:type_name -> zisk.coordinator.v1.InputKind
+	4,  // 51: zisk.coordinator.v1.ExecuteResponse.stats:type_name -> zisk.coordinator.v1.ExecutionStats
+	33, // 52: zisk.coordinator.v1.JobKindResponse.setup:type_name -> zisk.coordinator.v1.SetupResponse
+	35, // 53: zisk.coordinator.v1.JobKindResponse.prove:type_name -> zisk.coordinator.v1.ProveResponse
+	37, // 54: zisk.coordinator.v1.JobKindResponse.wrap:type_name -> zisk.coordinator.v1.WrapResponse
+	41, // 55: zisk.coordinator.v1.JobKindResponse.aggregate_proofs:type_name -> zisk.coordinator.v1.AggregateProofsResponse
+	43, // 56: zisk.coordinator.v1.JobKindResponse.execute:type_name -> zisk.coordinator.v1.ExecuteResponse
+	39, // 57: zisk.coordinator.v1.JobKindResponse.setup_aggregation_program:type_name -> zisk.coordinator.v1.SetupAggregationProgramResponse
+	47, // 58: zisk.coordinator.v1.WaitJobResultResponse.job_status:type_name -> zisk.coordinator.v1.JobStatus
+	44, // 59: zisk.coordinator.v1.WaitJobResultResponse.result:type_name -> zisk.coordinator.v1.JobKindResponse
+	48, // 60: zisk.coordinator.v1.JobStatus.queued:type_name -> zisk.coordinator.v1.JobStatusQueued
+	49, // 61: zisk.coordinator.v1.JobStatus.running:type_name -> zisk.coordinator.v1.JobStatusRunning
+	50, // 62: zisk.coordinator.v1.JobStatus.waiting_for_input:type_name -> zisk.coordinator.v1.JobStatusWaitingForInput
+	51, // 63: zisk.coordinator.v1.JobStatus.completed:type_name -> zisk.coordinator.v1.JobStatusCompleted
+	52, // 64: zisk.coordinator.v1.JobStatus.failed:type_name -> zisk.coordinator.v1.JobStatusFailed
+	53, // 65: zisk.coordinator.v1.JobStatus.cancelled:type_name -> zisk.coordinator.v1.JobStatusCancelled
+	2,  // 66: zisk.coordinator.v1.JobStatusRunning.phase:type_name -> zisk.coordinator.v1.JobPhase
+	16, // 67: zisk.coordinator.v1.JobStatusFailed.failure:type_name -> zisk.coordinator.v1.JobFailure
+	56, // 68: zisk.coordinator.v1.JobEvent.queued:type_name -> zisk.coordinator.v1.JobEventQueued
+	57, // 69: zisk.coordinator.v1.JobEvent.started:type_name -> zisk.coordinator.v1.JobEventStarted
+	58, // 70: zisk.coordinator.v1.JobEvent.progress:type_name -> zisk.coordinator.v1.JobEventProgress
+	59, // 71: zisk.coordinator.v1.JobEvent.waiting_for_input:type_name -> zisk.coordinator.v1.JobEventWaitingForInput
+	60, // 72: zisk.coordinator.v1.JobEvent.completed:type_name -> zisk.coordinator.v1.JobEventCompleted
+	61, // 73: zisk.coordinator.v1.JobEvent.cancelled:type_name -> zisk.coordinator.v1.JobEventCancelled
+	62, // 74: zisk.coordinator.v1.JobEvent.failed:type_name -> zisk.coordinator.v1.JobEventFailed
+	69, // 75: zisk.coordinator.v1.JobEventQueued.timestamp:type_name -> google.protobuf.Timestamp
+	69, // 76: zisk.coordinator.v1.JobEventStarted.timestamp:type_name -> google.protobuf.Timestamp
+	2,  // 77: zisk.coordinator.v1.JobEventProgress.phase:type_name -> zisk.coordinator.v1.JobPhase
+	69, // 78: zisk.coordinator.v1.JobEventProgress.timestamp:type_name -> google.protobuf.Timestamp
+	69, // 79: zisk.coordinator.v1.JobEventWaitingForInput.timestamp:type_name -> google.protobuf.Timestamp
+	44, // 80: zisk.coordinator.v1.JobEventCompleted.result:type_name -> zisk.coordinator.v1.JobKindResponse
+	69, // 81: zisk.coordinator.v1.JobEventCompleted.timestamp:type_name -> google.protobuf.Timestamp
+	69, // 82: zisk.coordinator.v1.JobEventCancelled.timestamp:type_name -> google.protobuf.Timestamp
+	16, // 83: zisk.coordinator.v1.JobEventFailed.failure:type_name -> zisk.coordinator.v1.JobFailure
+	69, // 84: zisk.coordinator.v1.JobEventFailed.timestamp:type_name -> google.protobuf.Timestamp
+	12, // 85: zisk.coordinator.v1.PushJobInputRequest.chunk:type_name -> zisk.coordinator.v1.InputChunk
+	12, // 86: zisk.coordinator.v1.PushJobHintsInputRequest.chunk:type_name -> zisk.coordinator.v1.InputChunk
+	22, // 87: zisk.coordinator.v1.ZiskCoordinatorApi.RegisterGuestProgram:input_type -> zisk.coordinator.v1.RegisterGuestProgramRequest
+	27, // 88: zisk.coordinator.v1.ZiskCoordinatorApi.RegisterAggregationProgram:input_type -> zisk.coordinator.v1.RegisterAggregationProgramRequest
+	29, // 89: zisk.coordinator.v1.ZiskCoordinatorApi.JobRequest:input_type -> zisk.coordinator.v1.JobRequestMessage
+	45, // 90: zisk.coordinator.v1.ZiskCoordinatorApi.WaitJobResult:input_type -> zisk.coordinator.v1.WaitJobResultRequest
+	54, // 91: zisk.coordinator.v1.ZiskCoordinatorApi.WatchJob:input_type -> zisk.coordinator.v1.WatchJobRequest
+	63, // 92: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobInput:input_type -> zisk.coordinator.v1.PushJobInputRequest
+	64, // 93: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobHintsInput:input_type -> zisk.coordinator.v1.PushJobHintsInputRequest
+	65, // 94: zisk.coordinator.v1.ZiskCoordinatorApi.CancelJob:input_type -> zisk.coordinator.v1.CancelJobRequest
+	23, // 95: zisk.coordinator.v1.ZiskCoordinatorApi.RegisterGuestProgram:output_type -> zisk.coordinator.v1.RegisterGuestProgramResponse
+	28, // 96: zisk.coordinator.v1.ZiskCoordinatorApi.RegisterAggregationProgram:output_type -> zisk.coordinator.v1.RegisterAggregationProgramResponse
+	30, // 97: zisk.coordinator.v1.ZiskCoordinatorApi.JobRequest:output_type -> zisk.coordinator.v1.JobResponse
+	46, // 98: zisk.coordinator.v1.ZiskCoordinatorApi.WaitJobResult:output_type -> zisk.coordinator.v1.WaitJobResultResponse
+	55, // 99: zisk.coordinator.v1.ZiskCoordinatorApi.WatchJob:output_type -> zisk.coordinator.v1.JobEvent
+	71, // 100: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobInput:output_type -> google.protobuf.Empty
+	71, // 101: zisk.coordinator.v1.ZiskCoordinatorApi.PushJobHintsInput:output_type -> google.protobuf.Empty
+	66, // 102: zisk.coordinator.v1.ZiskCoordinatorApi.CancelJob:output_type -> zisk.coordinator.v1.CancelJobResponse
+	95, // [95:103] is the sub-list for method output_type
+	87, // [87:95] is the sub-list for method input_type
+	87, // [87:87] is the sub-list for extension type_name
+	87, // [87:87] is the sub-list for extension extendee
+	0,  // [0:87] is the sub-list for field type_name
 }
 
 func init() { file_zisk_coordinator_api_proto_init() }
@@ -4564,19 +4858,20 @@ func file_zisk_coordinator_api_proto_init() {
 	if File_zisk_coordinator_api_proto != nil {
 		return
 	}
-	file_zisk_coordinator_api_proto_msgTypes[8].OneofWrappers = []any{
+	file_zisk_coordinator_api_proto_msgTypes[10].OneofWrappers = []any{
 		(*InputKind_Inline)(nil),
 		(*InputKind_StreamUri)(nil),
 	}
-	file_zisk_coordinator_api_proto_msgTypes[11].OneofWrappers = []any{
+	file_zisk_coordinator_api_proto_msgTypes[11].OneofWrappers = []any{}
+	file_zisk_coordinator_api_proto_msgTypes[13].OneofWrappers = []any{
 		(*JobFailure_Timeout)(nil),
 		(*JobFailure_Input)(nil),
 		(*JobFailure_Execution)(nil),
 		(*JobFailure_Internal)(nil),
 		(*JobFailure_Cancelled)(nil),
 	}
-	file_zisk_coordinator_api_proto_msgTypes[12].OneofWrappers = []any{}
-	file_zisk_coordinator_api_proto_msgTypes[26].OneofWrappers = []any{
+	file_zisk_coordinator_api_proto_msgTypes[14].OneofWrappers = []any{}
+	file_zisk_coordinator_api_proto_msgTypes[28].OneofWrappers = []any{
 		(*JobKind_Setup)(nil),
 		(*JobKind_Prove)(nil),
 		(*JobKind_Wrap)(nil),
@@ -4584,10 +4879,11 @@ func file_zisk_coordinator_api_proto_init() {
 		(*JobKind_Execute)(nil),
 		(*JobKind_SetupAggregationProgram)(nil),
 	}
-	file_zisk_coordinator_api_proto_msgTypes[29].OneofWrappers = []any{}
 	file_zisk_coordinator_api_proto_msgTypes[31].OneofWrappers = []any{}
-	file_zisk_coordinator_api_proto_msgTypes[37].OneofWrappers = []any{}
-	file_zisk_coordinator_api_proto_msgTypes[39].OneofWrappers = []any{
+	file_zisk_coordinator_api_proto_msgTypes[33].OneofWrappers = []any{}
+	file_zisk_coordinator_api_proto_msgTypes[39].OneofWrappers = []any{}
+	file_zisk_coordinator_api_proto_msgTypes[40].OneofWrappers = []any{}
+	file_zisk_coordinator_api_proto_msgTypes[41].OneofWrappers = []any{
 		(*JobKindResponse_Setup)(nil),
 		(*JobKindResponse_Prove)(nil),
 		(*JobKindResponse_Wrap)(nil),
@@ -4595,9 +4891,9 @@ func file_zisk_coordinator_api_proto_init() {
 		(*JobKindResponse_Execute)(nil),
 		(*JobKindResponse_SetupAggregationProgram)(nil),
 	}
-	file_zisk_coordinator_api_proto_msgTypes[40].OneofWrappers = []any{}
-	file_zisk_coordinator_api_proto_msgTypes[41].OneofWrappers = []any{}
-	file_zisk_coordinator_api_proto_msgTypes[42].OneofWrappers = []any{
+	file_zisk_coordinator_api_proto_msgTypes[42].OneofWrappers = []any{}
+	file_zisk_coordinator_api_proto_msgTypes[43].OneofWrappers = []any{}
+	file_zisk_coordinator_api_proto_msgTypes[44].OneofWrappers = []any{
 		(*JobStatus_Queued)(nil),
 		(*JobStatus_Running)(nil),
 		(*JobStatus_WaitingForInput)(nil),
@@ -4605,8 +4901,8 @@ func file_zisk_coordinator_api_proto_init() {
 		(*JobStatus_Failed)(nil),
 		(*JobStatus_Cancelled)(nil),
 	}
-	file_zisk_coordinator_api_proto_msgTypes[44].OneofWrappers = []any{}
-	file_zisk_coordinator_api_proto_msgTypes[50].OneofWrappers = []any{
+	file_zisk_coordinator_api_proto_msgTypes[46].OneofWrappers = []any{}
+	file_zisk_coordinator_api_proto_msgTypes[52].OneofWrappers = []any{
 		(*JobEvent_Queued)(nil),
 		(*JobEvent_Started)(nil),
 		(*JobEvent_Progress)(nil),
@@ -4620,8 +4916,8 @@ func file_zisk_coordinator_api_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_zisk_coordinator_api_proto_rawDesc), len(file_zisk_coordinator_api_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   63,
+			NumEnums:      3,
+			NumMessages:   66,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

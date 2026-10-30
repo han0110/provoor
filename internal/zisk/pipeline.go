@@ -6,6 +6,7 @@ import (
 	"maps"
 	"math"
 	"slices"
+	"strings"
 
 	"github.com/han0110/provoor/internal/cluster"
 	"github.com/han0110/provoor/internal/zisk/api"
@@ -27,6 +28,7 @@ const (
 	kindRecursive2
 	kindVadcopFinal
 	kindCompressed
+	kindThread
 )
 
 // kindUnmapped marks a record kind the timeline does not draw.
@@ -53,6 +55,7 @@ var pipelineKinds = []cluster.TaskKind{
 	{Name: "recursive2", Label: "Recursive2 Proof", Legend: "Recursive2 Proof", Row: "Fold", Phase: cluster.PhaseRecursion},
 	{Name: "vadcopfinal", Label: "Vadcop Final Proof", Legend: "Wrap", Row: "Vadcop Final Proof", Phase: cluster.PhaseWrap},
 	{Name: "compressed", Label: "Vadcop Final Compressed Proof", Legend: "Wrap", Row: "Vadcop Final Compressed Proof", Phase: cluster.PhaseWrap},
+	{Name: "thread", Label: "Thread", Legend: "Thread", Row: "Thread", Phase: cluster.PhaseThread},
 }
 
 // proofTypeKinds is the kind of each proofman record kind, in record kind
@@ -122,9 +125,20 @@ var breakdownLabels = func() []string {
 	return append(append(labels, proofBreakdownLabels...), cluster.NetworkTransportLabel)
 }()
 
+// unattributedLabel labels the time of a record that no span covers.
+const unattributedLabel = "Unattributed"
+
+// formattedTimerNames are the upstream timers that format ids after their
+// name and an underscore. Their spans share the timer name as label, and any
+// other span keeps its own name.
+var formattedTimerNames = []string{
+	"CIRCOM_WITNESS", "COMPUTING_WC", "GENERATING_WC", "GEN_PROOF", "GET_CONTRIBUTION_AIR", "POOL_WAIT_WITNESS", "PREPARING_WC",
+}
+
 // mapPipeline places every record the stats carry on the proof clock, which
 // starts at the proof start. A coordinator that reports no proof start, no
-// task, or no record reports no timeline.
+// task, or no record reports no timeline. Stats that name spans come from
+// ZisK 1.4 and later, and their records draw their spans as segments.
 func mapPipeline(stats *api.ExecutionStats) (*cluster.Pipeline, error) {
 	if stats.GetProofStart() == nil || len(stats.GetTasks()) == 0 {
 		return nil, nil
@@ -133,17 +147,21 @@ func mapPipeline(stats *api.ExecutionStats) (*cluster.Pipeline, error) {
 	builder := cluster.NewPipelineBuilder(mapRegistrations(stats.GetTasks()))
 	proofStartMs := stats.GetProofStart().AsTime().UnixMilli()
 	withAirgroup := foldsManyAirgroups(stats.GetTasks())
+	labels, labelIndex := spanLabels(stats.GetTasks())
 	for _, task := range stats.GetTasks() {
 		switch task.GetPhase() {
 		case api.JobPhase_JOB_PHASE_CONTRIBUTIONS, api.JobPhase_JOB_PHASE_PROVE, api.JobPhase_JOB_PHASE_RECURSE:
 		default:
 			return nil, fmt.Errorf("task of phase %s, which the timeline does not map", task.GetPhase())
 		}
-		if err := placeProofs(builder, task, proofStartMs, withAirgroup); err != nil {
+		if err := placeProofs(builder, task, proofStartMs, withAirgroup, labelIndex); err != nil {
+			return nil, err
+		}
+		if err := placeThreads(builder, task, proofStartMs, labelIndex); err != nil {
 			return nil, err
 		}
 	}
-	pipeline, err := builder.Pipeline(pipelineKinds, breakdownLabels)
+	pipeline, err := builder.Pipeline(pipelineKinds, labels)
 	if err != nil || len(pipeline.Tasks) == 0 {
 		return nil, err
 	}
@@ -155,8 +173,9 @@ func mapPipeline(stats *api.ExecutionStats) (*cluster.Pipeline, error) {
 // coordinator clock and adds the network transport to its sections. Any other
 // task draws each bar over the worker stamps of its record. The Execute bar
 // also carries the executor durations, which the record does not measure as
-// sections.
-func placeProofs(builder *cluster.PipelineBuilder[string], task *api.TaskTiming, proofStartMs int64, withAirgroup bool) error {
+// sections. With span labels, every bar also carries the spans of its record
+// and the time of the record they leave uncovered.
+func placeProofs(builder *cluster.PipelineBuilder[string], task *api.TaskTiming, proofStartMs int64, withAirgroup bool, labelIndex map[string]int64) error {
 	roundTrip := len(task.GetProofTimings()) == 1 && task.GetCoordinatorStart() != 0
 	for _, proof := range task.GetProofTimings() {
 		kind, err := proofKind(proof.GetProofType())
@@ -175,10 +194,104 @@ func placeProofs(builder *cluster.PipelineBuilder[string], task *api.TaskTiming,
 				breakdown = append(breakdown, [2]int64{int64(len(breakdownLabels) - 1), transportMs})
 			}
 		}
+		var segments [][4]int64
+		if labelIndex != nil {
+			fromUs, toUs := max(int64(proof.GetStart())-proofStartMs, 0)*1000, (int64(proof.GetEnd())-proofStartMs)*1000
+			if segments, err = mapSpans(proof.GetSpans(), task.GetNames(), labelIndex, proofStartMs*1000, fromUs, toUs); err != nil {
+				return err
+			}
+			segments = append(segments, unattributedSegments(segments, labelIndex[unattributedLabel], fromUs, toUs)...)
+		}
 		id := proofID(kind, proof, withAirgroup)
-		builder.Place(kind, task.GetWorkerId(), id, endMs-proofStartMs, endMs-startMs, breakdown)
+		builder.PlaceSegments(kind, task.GetWorkerId(), id, endMs-proofStartMs, endMs-startMs, breakdown, segments)
 	}
 	return nil
+}
+
+// placeThreads places one bar per thread of the task that runs no record,
+// over the extent of its spans. The bars of one thread name share a row.
+func placeThreads(builder *cluster.PipelineBuilder[string], task *api.TaskTiming, proofStartMs int64, labelIndex map[string]int64) error {
+	for _, thread := range task.GetThreads() {
+		segments, err := mapSpans(thread.GetSpans(), task.GetNames(), labelIndex, proofStartMs*1000, 0, math.MaxInt64)
+		if err != nil {
+			return err
+		}
+		if len(segments) == 0 {
+			continue
+		}
+		fromUs, toUs := int64(math.MaxInt64), int64(0)
+		for _, segment := range segments {
+			fromUs, toUs = min(fromUs, segment[1]), max(toUs, segment[1]+segment[2])
+		}
+		endMs := (toUs + 999) / 1000
+		builder.PlaceSegments(kindThread, task.GetWorkerId(), thread.GetThread(), endMs, endMs-fromUs/1000, nil, segments)
+	}
+	return nil
+}
+
+// spanLabels extends breakdownLabels with the Unattributed label and the label
+// of every span name the tasks carry, in first sight order, and indexes them by
+// label. Stats that name no span keep breakdownLabels and a nil index.
+func spanLabels(tasks []*api.TaskTiming) ([]string, map[string]int64) {
+	if !slices.ContainsFunc(tasks, func(task *api.TaskTiming) bool { return len(task.GetNames()) > 0 }) {
+		return breakdownLabels, nil
+	}
+	labels := append(slices.Clone(breakdownLabels), unattributedLabel)
+	labelIndex := map[string]int64{unattributedLabel: int64(len(labels) - 1)}
+	for _, task := range tasks {
+		for _, name := range task.GetNames() {
+			label := spanLabel(name)
+			if _, seen := labelIndex[label]; !seen {
+				labelIndex[label] = int64(len(labels))
+				labels = append(labels, label)
+			}
+		}
+	}
+	return labels, labelIndex
+}
+
+// spanLabel is the timer name of a formatted span name, and the name itself
+// otherwise.
+func spanLabel(name string) string {
+	for _, timer := range formattedTimerNames {
+		if strings.HasPrefix(name, timer+"_") {
+			return timer
+		}
+	}
+	return name
+}
+
+// mapSpans places spans as segments in microseconds from the proof start,
+// each clipped to the window from fromUs to toUs. A span the window leaves
+// out is dropped, and a span of a name the table does not hold fails.
+func mapSpans(spans []*api.Span, names []string, labelIndex map[string]int64, proofStartUs, fromUs, toUs int64) ([][4]int64, error) {
+	segments := [][4]int64{}
+	for _, span := range spans {
+		if int(span.GetName()) >= len(names) {
+			return nil, fmt.Errorf("span of name %d, which a table of %d names does not hold", span.GetName(), len(names))
+		}
+		startUs := max(int64(span.GetStartUs())-proofStartUs, fromUs)
+		endUs := min(int64(span.GetEndUs())-proofStartUs, toUs)
+		if startUs < endUs {
+			segments = append(segments, [4]int64{labelIndex[spanLabel(names[span.GetName()])], startUs, endUs - startUs, int64(span.GetDepth())})
+		}
+	}
+	return segments, nil
+}
+
+// unattributedSegments are the gaps the segments leave in the window from
+// fromUs to toUs, one segment of the label at depth zero per gap.
+func unattributedSegments(segments [][4]int64, label, fromUs, toUs int64) [][4]int64 {
+	byStart := slices.SortedFunc(slices.Values(segments), func(a, b [4]int64) int { return cmp.Compare(a[1], b[1]) })
+	var gaps [][4]int64
+	coveredUs := fromUs
+	for _, segment := range append(byStart, [4]int64{label, toUs, 0, 0}) {
+		if segment[1] > coveredUs {
+			gaps = append(gaps, [4]int64{label, coveredUs, segment[1] - coveredUs, 0})
+		}
+		coveredUs = max(coveredUs, segment[1]+segment[2])
+	}
+	return gaps
 }
 
 // foldsManyAirgroups reports whether the recursive2 proofs of the job name more

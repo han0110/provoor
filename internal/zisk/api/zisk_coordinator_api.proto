@@ -1,6 +1,6 @@
-// Copied from https://github.com/0xPolygonHermez/zisk/blob/v1.3.2-alpha/distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto.
+// Copied from https://github.com/0xPolygonHermez/zisk/blob/v1.4.0-alpha/distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto.
 // TaskTiming and the proof_start and tasks fields of ExecutionStats come from
-// the branch patch/distributed/v1.3.2-alpha of han0110/zisk.
+// the branch patch/distributed/v1.4.0-alpha of han0110/zisk.
 //
 // Regenerate both *.pb.go from the repository root with protoc 3.21.12,
 // protoc-gen-go v1.36.11, and protoc-gen-go-grpc 1.5.1.
@@ -99,13 +99,13 @@ message TaskTiming {
   string                    worker_id             = 1;
   JobPhase                  phase                 = 2;
   uint64                    coordinator_end       = 3;
-  uint64                    compute_duration_ms   = 4; // wall time of the proofman phase call, excluding the input load
   ExecutorTime              executor_time         = 5; // contributions phase only
-  uint32                    step                  = 6; // ordinal within the phase, from one for Recurse and zero elsewhere
   repeated ProofTiming      proof_timings         = 7;
   uint64                    coordinator_start     = 8;
   uint64                    worker_start          = 9;
   uint64                    worker_end            = 10;
+  repeated ThreadSpans      threads               = 11;
+  repeated string           names                 = 12; // span names, indexed by Span.name
 }
 
 // One proof proofman produced, stamped in Unix milliseconds on the worker clock.
@@ -116,7 +116,22 @@ message ProofTiming {
   string air_name        = 4; // empty for a root step of the contributions phase, a fold and the two final proofs
   uint64 start           = 5;
   uint64 end             = 6;
-  map<string, uint32> breakdown_ms = 7; // the proof sections by name, only the nonzero ones
+  map<string, uint32> breakdown_ms = 7; // the proof sections by name, only the nonzero ones, v1.3.x only
+  repeated Span spans    = 8;
+}
+
+// Host spans of one thread that runs no proof.
+message ThreadSpans {
+  string        thread = 1; // thread name or id
+  repeated Span spans  = 2;
+}
+
+// One upstream timer span, in Unix microseconds on the worker clock.
+message Span {
+  uint32     name     = 1; // index into TaskTiming.names
+  uint64     start_us = 2;
+  uint64     end_us   = 3;
+  uint32     depth    = 4; // nesting depth inside its proof or thread
 }
 
 // Per-AIR planned instance count (the AIR name is derived from the ids by the consumer).
@@ -147,6 +162,13 @@ enum ProofKind {
   PROOF_KIND_PLONK        = 3;
 }
 
+// Protocol of the final SNARK (PROOF_KIND_PLONK), which the workers' SNARK proving key sets up.
+enum SnarkProtocol {
+  SNARK_PROTOCOL_UNSPECIFIED = 0; // any: the workers'
+  SNARK_PROTOCOL_PLONK       = 1;
+  SNARK_PROTOCOL_PILFFLONK   = 2;
+}
+
 enum JobPhase {
   JOB_PHASE_UNSPECIFIED   = 0;
   JOB_PHASE_CONTRIBUTIONS = 1; // witness generation and partial contributions
@@ -174,6 +196,9 @@ message Proof {
   bytes                     public_inputs    = 6;
   google.protobuf.Timestamp started_at       = 7;
   google.protobuf.Timestamp completed_at     = 8;
+  // 32-byte host randomness seed of the execution the proof attests to, also kept inside `data`.
+  // Set in responses (absent for aggregates); ignored in requests, but must be absent or 32 bytes.
+  optional bytes            random_seed      = 9;
 }
 
 // RPC-level error — returned in Status details for programmatic inspection.
@@ -264,6 +289,12 @@ message RegisterAggregationProgramResponse {
 
 message JobRequestMessage {
   JobKind job_kind = 1;
+  // Caller-defined key/value labels for the job; empty means none. At most 32
+  // keys, each up to 128 bytes, with values up to 1024 bytes. Accepted for
+  // prove, execute, wrap and aggregate_proofs jobs; setup and
+  // setup_aggregation_program reject any with INVALID_ARGUMENT. A coordinator
+  // that does not allow job metadata rejects it with JOB_METADATA_NOT_ALLOWED.
+  map<string, string> metadata = 2;
 }
 
 message JobResponse {
@@ -303,6 +334,11 @@ message ProveRequest {
   optional google.protobuf.Timestamp proof_timeout = 3;
   ProofKind                 proof_dest    = 4;
   optional InputKind        hints         = 5;
+  // Uses this 32-byte host randomness seed instead of drawing a fresh one. Rejected unless the
+  // coordinator is configured to allow client random seeds.
+  optional bytes            random_seed   = 6;
+  // For a PROOF_KIND_PLONK proof: the job is refused unless the workers' SNARK is of it.
+  optional SnarkProtocol    snark_protocol = 7;
 }
 
 message ProveResponse {
@@ -314,6 +350,8 @@ message WrapRequest {
   Proof                     proof        = 1;
   ProofKind                 proof_dest   = 2;
   optional google.protobuf.Timestamp wrap_timeout = 3;
+  // For a PROOF_KIND_PLONK proof_dest: the job is refused unless the workers' SNARK is of it.
+  optional SnarkProtocol    snark_protocol = 4;
 }
 
 message WrapResponse {
@@ -347,11 +385,17 @@ message ExecuteRequest {
   InputKind                 input           = 2;
   optional google.protobuf.Timestamp execute_timeout = 3;
   optional InputKind        hints           = 4;
+  // Uses this 32-byte host randomness seed instead of drawing a fresh one. Rejected unless the
+  // coordinator is configured to allow client random seeds.
+  optional bytes            random_seed     = 5;
 }
 
 message ExecuteResponse {
   ExecutionStats stats          = 1;
   bytes          public_outputs = 2;
+  // 32-byte host randomness seed the execution ran with; passing it back as the request's
+  // `random_seed` reproduces the run.
+  optional bytes random_seed    = 3;
 }
 
 message JobKindResponse {

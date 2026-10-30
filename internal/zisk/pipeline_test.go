@@ -48,14 +48,14 @@ func TestPipelineMapsTheCoordinatorStats(t *testing.T) {
 			{
 				WorkerId: "worker_1-gpu_0", Phase: api.JobPhase_JOB_PHASE_CONTRIBUTIONS,
 				CoordinatorStart: at(proofStart, 380), WorkerStart: at(proofStart, 400),
-				WorkerEnd: at(proofStart, 2150), CoordinatorEnd: at(proofStart, 2160), ComputeDurationMs: 1750,
+				WorkerEnd: at(proofStart, 2150), CoordinatorEnd: at(proofStart, 2160),
 				ExecutorTime: executorTime(1380, 210, 128),
 				ProofTimings: []*api.ProofTiming{{ProofType: 10, Start: at(proofStart, 400), End: at(proofStart, 2150)}},
 			},
 			{
 				WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_CONTRIBUTIONS,
 				CoordinatorStart: at(proofStart, 50), WorkerStart: at(proofStart, 60),
-				WorkerEnd: at(proofStart, 1870), CoordinatorEnd: at(proofStart, 1884), ComputeDurationMs: 1801,
+				WorkerEnd: at(proofStart, 1870), CoordinatorEnd: at(proofStart, 1884),
 				ExecutorTime: executorTime(1421, 214, 132),
 				ProofTimings: []*api.ProofTiming{{ProofType: 10, Start: at(proofStart, 65), End: at(proofStart, 1866)}},
 			},
@@ -99,8 +99,8 @@ func TestPipelinePlacesEveryRecord(t *testing.T) {
 		Tasks: []*api.TaskTiming{
 			{
 				WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_CONTRIBUTIONS,
-				CoordinatorEnd: at(proofStart, 30000), ComputeDurationMs: 29800,
-				ExecutorTime: &api.ExecutorTime{ExecutionDuration: 143, CountAndPlanDuration: 12, CountAndPlanMoDuration: 23},
+				CoordinatorEnd: at(proofStart, 30000),
+				ExecutorTime:   &api.ExecutorTime{ExecutionDuration: 143, CountAndPlanDuration: 12, CountAndPlanMoDuration: 23},
 				ProofTimings: []*api.ProofTiming{
 					{ProofType: 10, Start: record(0), End: record(190), BreakdownMs: sections(map[int]uint32{21: 8})},
 					{
@@ -117,7 +117,7 @@ func TestPipelinePlacesEveryRecord(t *testing.T) {
 			},
 			{
 				WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_PROVE,
-				CoordinatorEnd: at(proofStart, 140000), ComputeDurationMs: 110000,
+				CoordinatorEnd: at(proofStart, 140000),
 				ProofTimings: []*api.ProofTiming{
 					{
 						ProofType: 13, Id: 137, AirName: "Main", Start: record(2000), End: record(5200),
@@ -146,7 +146,7 @@ func TestPipelinePlacesEveryRecord(t *testing.T) {
 			},
 			{
 				WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_RECURSE,
-				CoordinatorEnd: at(proofStart, 141000), ComputeDurationMs: 200, Step: 1,
+				CoordinatorEnd: at(proofStart, 141000),
 				ProofTimings: []*api.ProofTiming{
 					{
 						ProofType: 4, Start: record(9000), End: record(9114),
@@ -239,7 +239,7 @@ func TestPipelineNamesTheAirgroupOfEveryFoldOfManyAirgroups(t *testing.T) {
 		ProofStart: timestamppb.New(proofStart),
 		Tasks: []*api.TaskTiming{{
 			WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_RECURSE,
-			CoordinatorEnd: at(proofStart, 1000), ComputeDurationMs: 200, Step: 1,
+			CoordinatorEnd: at(proofStart, 1000),
 			ProofTimings: []*api.ProofTiming{
 				{Id: 4, ProofType: 15, AirgroupId: 0, Start: at(proofStart, 50), End: at(proofStart, 100)},
 				{Id: 4, ProofType: 3, AirgroupId: 0, Start: at(proofStart, 100), End: at(proofStart, 300)},
@@ -271,8 +271,8 @@ func TestPipelineOfAnUnmappedProofTypeFails(t *testing.T) {
 			ProofStart: timestamppb.New(time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)),
 			Tasks: []*api.TaskTiming{{
 				WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_PROVE,
-				CoordinatorEnd: at(time.Date(2026, 9, 4, 10, 0, 1, 0, time.UTC), 0), ComputeDurationMs: 100,
-				ProofTimings: []*api.ProofTiming{{ProofType: proofType}},
+				CoordinatorEnd: at(time.Date(2026, 9, 4, 10, 0, 1, 0, time.UTC), 0),
+				ProofTimings:   []*api.ProofTiming{{ProofType: proofType}},
 			}},
 		}
 
@@ -292,7 +292,7 @@ func TestPipelineDropsASectionOfAnUnknownName(t *testing.T) {
 		Tasks: []*api.TaskTiming{{
 			WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_PROVE,
 			CoordinatorStart: at(proofStart, 100), WorkerStart: at(proofStart, 100),
-			WorkerEnd: at(proofStart, 500), CoordinatorEnd: at(proofStart, 500), ComputeDurationMs: 400,
+			WorkerEnd: at(proofStart, 500), CoordinatorEnd: at(proofStart, 500),
 			ProofTimings: []*api.ProofTiming{{
 				ProofType: 0, Id: 137, AirName: "Main", Start: at(proofStart, 100), End: at(proofStart, 500),
 				BreakdownMs: map[string]uint32{"FRI": 40, "Unknown Section": 60},
@@ -321,7 +321,7 @@ func TestPipelinePlacesATaskWithoutADispatchStampOverItsRecord(t *testing.T) {
 		Tasks: []*api.TaskTiming{{
 			WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_PROVE,
 			WorkerStart: at(proofStart, 100), WorkerEnd: at(proofStart, 500),
-			CoordinatorEnd: at(proofStart, 600), ComputeDurationMs: 400,
+			CoordinatorEnd: at(proofStart, 600),
 			ProofTimings: []*api.ProofTiming{{
 				ProofType: 0, Id: 137, AirName: "Main", Start: at(proofStart, 100), End: at(proofStart, 500),
 				BreakdownMs: map[string]uint32{"FRI": 40},
@@ -346,7 +346,7 @@ func TestPipelineOfAnUnmappedPhaseFails(t *testing.T) {
 		ProofStart: timestamppb.New(time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)),
 		Tasks: []*api.TaskTiming{{
 			WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_UNSPECIFIED,
-			CoordinatorEnd: at(time.Date(2026, 9, 4, 10, 0, 1, 0, time.UTC), 0), ComputeDurationMs: 100,
+			CoordinatorEnd: at(time.Date(2026, 9, 4, 10, 0, 1, 0, time.UTC), 0),
 		}},
 	}
 
@@ -362,13 +362,131 @@ func TestPipelineOfACoordinatorWithoutTimingsIsEmpty(t *testing.T) {
 		ProofStart: proofStart,
 		Tasks: []*api.TaskTiming{{
 			WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_PROVE,
-			CoordinatorEnd: at(time.Date(2026, 9, 4, 10, 0, 1, 0, time.UTC), 0), ComputeDurationMs: 100,
+			CoordinatorEnd: at(time.Date(2026, 9, 4, 10, 0, 1, 0, time.UTC), 0),
 		}},
 	}
 	for _, stats := range []*api.ExecutionStats{{}, {ProofStart: proofStart}, withoutRecords} {
 		pipeline, err := mapPipeline(stats)
 		if pipeline != nil || err != nil {
 			t.Errorf("pipeline = %+v, %v, want no timeline", pipeline, err)
+		}
+	}
+}
+
+// usAt is the Unix microsecond stamp offsetUs after proofStart.
+func usAt(proofStart time.Time, offsetUs int64) uint64 {
+	return uint64(proofStart.UnixMicro() + offsetUs)
+}
+
+// A task of ZisK 1.4 names its spans. The basic proof nests a commit and a
+// GPU category under its proof span, one span reaches back before the record
+// and clips, and one lies past the record and drops, which leaves two gaps.
+// The compressor proof has no span and is one gap. One thread runs no record
+// and draws its spans as a bar of its own. The two formatted names of one
+// timer share one label.
+func TestPipelineMapsSpans(t *testing.T) {
+	proofStart := time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)
+	span := func(name uint32, startUs, endUs int64, depth uint32) *api.Span {
+		return &api.Span{Name: name, StartUs: usAt(proofStart, startUs), EndUs: usAt(proofStart, endUs), Depth: depth}
+	}
+	stats := &api.ExecutionStats{
+		ProofStart: timestamppb.New(proofStart),
+		Tasks: []*api.TaskTiming{{
+			WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_PROVE,
+			CoordinatorEnd: at(proofStart, 2000),
+			Names:          []string{"GEN_PROOF_137 [0:0]", "STARK_COMMIT_STAGE_1", "NTT", "DRAIN_QUEUE", "GEN_PROOF_138 [0:0]"},
+			ProofTimings: []*api.ProofTiming{
+				{
+					ProofType: 0, Id: 137, AirName: "Main", Start: at(proofStart, 1000), End: at(proofStart, 1010),
+					Spans: []*api.Span{
+						span(0, 1000500, 1008000, 0),
+						span(1, 1001000, 1004000, 1),
+						span(2, 1001200, 1001350, 2),
+						span(3, 999000, 1000200, 0),
+						span(3, 1011000, 1012000, 0),
+					},
+				},
+				{ProofType: 1, Id: 137, AirName: "Main", Start: at(proofStart, 1010), End: at(proofStart, 1012)},
+			},
+			Threads: []*api.ThreadSpans{
+				{Thread: "rayon-3", Spans: []*api.Span{span(3, 1002000, 1002500, 0), span(4, 1004000, 1004100, 1)}},
+				{Thread: "idle"},
+			},
+		}},
+	}
+
+	pipeline, err := mapPipeline(stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantLabels := append(slices.Clone(breakdownLabels), "Unattributed", "GEN_PROOF", "STARK_COMMIT_STAGE_1", "NTT", "DRAIN_QUEUE")
+	if !slices.Equal(pipeline.Breakdown, wantLabels) {
+		t.Errorf("breakdown = %v, want %v", pipeline.Breakdown, wantLabels)
+	}
+	wantTasks := `[` +
+		`[8,0,"Main #137",1000,10,[],[[32,1000500,7500,0],[33,1001000,3000,1],[34,1001200,150,2],[35,1000000,200,0],` +
+		`[31,1000200,300,0],[31,1008000,2000,0]]],` +
+		`[14,0,"rayon-3",1002,3,[],[[35,1002000,500,0],[32,1004000,100,1]]],` +
+		`[9,0,"Main #137",1010,2,[],[[31,1010000,2000,0]]]]`
+	tasks, err := json.Marshal(pipeline.Tasks)
+	if err != nil || string(tasks) != wantTasks {
+		t.Errorf("tasks = %s, %v, want %s", tasks, err, wantTasks)
+	}
+}
+
+// A span of a name past the name table fails the proof.
+func TestPipelineOfASpanOfAnUnknownNameFails(t *testing.T) {
+	proofStart := time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)
+	stats := &api.ExecutionStats{
+		ProofStart: timestamppb.New(proofStart),
+		Tasks: []*api.TaskTiming{{
+			WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_PROVE,
+			CoordinatorEnd: at(proofStart, 600),
+			Names:          []string{"STARK_PROOF"},
+			ProofTimings: []*api.ProofTiming{{
+				ProofType: 0, Id: 137, AirName: "Main", Start: at(proofStart, 100), End: at(proofStart, 500),
+				Spans: []*api.Span{{Name: 1, StartUs: usAt(proofStart, 100000), EndUs: usAt(proofStart, 200000)}},
+			}},
+		}},
+	}
+
+	pipeline, err := mapPipeline(stats)
+	if pipeline != nil || err == nil {
+		t.Errorf("pipeline = %+v, %v, want an error", pipeline, err)
+	}
+}
+
+// The gaps cover the window minus the union of the segments at any depth.
+func TestUnattributedSegments(t *testing.T) {
+	cases := map[string]struct {
+		segments [][4]int64
+		want     [][4]int64
+	}{
+		"no segments":         {nil, [][4]int64{{9, 100, 900, 0}}},
+		"full cover":          {[][4]int64{{0, 100, 900, 0}}, nil},
+		"nested and overlaps": {[][4]int64{{1, 300, 200, 1}, {0, 200, 400, 0}, {2, 500, 300, 0}}, [][4]int64{{9, 100, 100, 0}, {9, 800, 200, 0}}},
+		"disjoint unsorted":   {[][4]int64{{0, 700, 100, 0}, {0, 100, 100, 0}}, [][4]int64{{9, 200, 500, 0}, {9, 800, 200, 0}}},
+	}
+	for name, test := range cases {
+		if got := unattributedSegments(test.segments, 9, 100, 1000); !slices.Equal(got, test.want) {
+			t.Errorf("%s: gaps = %v, want %v", name, got, test.want)
+		}
+	}
+}
+
+// A formatted name takes the name of its timer, and any other name stays.
+func TestSpanLabel(t *testing.T) {
+	cases := map[string]string{
+		"GEN_PROOF_12 [0:3]":   "GEN_PROOF",
+		"CIRCOM_WITNESS_7":     "CIRCOM_WITNESS",
+		"GEN_PROOF":            "GEN_PROOF",
+		"GEN_PROOFS":           "GEN_PROOFS",
+		"STARK_COMMIT_STAGE_1": "STARK_COMMIT_STAGE_1",
+	}
+	for name, want := range cases {
+		if got := spanLabel(name); got != want {
+			t.Errorf("spanLabel(%q) = %q, want %q", name, got, want)
 		}
 	}
 }
