@@ -53,7 +53,7 @@
 
 | Volume or bind                    | Mount point              | Holds                                                                                                                                                                                                                                 |
 | --------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zisk-proving-key-<zkvm_version>` | `/root/.zisk/provingKey` | the proving key from `https://storage.googleapis.com/zisk-setup/zisk-provingkey-<zkvm_version>-blake3.tar.gz`, or `zisk-provingkey-<zkvm_version>.tar.gz` below 1.3.0, and const-trees, mounted writable in the worker and setup jobs |
+| `zisk-proving-key-<zkvm_version>` | `/root/.zisk/provingKey` | the proving key from `https://storage.googleapis.com/zisk-setup/zisk-provingkey-<zkvm_version>.tar.gz`, or `zisk-provingkey-<zkvm_version>-blake3.tar.gz` for 1.3.x, and const-trees, mounted writable in the worker and setup jobs   |
 | `zisk-cache-<zkvm_version>`       | `/root/.zisk/cache`      | registered ELFs, ROM setup, and assembly emulators, addressed by ELF hash, mounted in the coordinator, the worker, and the program setup                                                                                              |
 
 ## Configuration
