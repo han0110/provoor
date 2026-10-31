@@ -27,7 +27,7 @@
 ## Image
 
 - `dockers/zkvm/Dockerfile.zisk` installs the `cargo_zisk_linux_amd64` release archive of ZisK under `/root/.zisk`.
-- It overlays `zisk-worker-gpu` and `zisk-coordinator` from han0110/zisk `91099508`, which serves the health endpoint and reports the per task timings.
+- It overlays `zisk-worker-gpu` and `zisk-coordinator` from han0110/zisk `d1a733a9`, which serves the health endpoint and reports the per task timings.
 - It builds `zisk-supervisor` from `cmd/zisk-supervisor`.
 
 ## Ports
