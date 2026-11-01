@@ -22,7 +22,6 @@ const (
 	PhaseBase      = "base"
 	PhaseRecursion = "recursion"
 	PhaseWrap      = "wrap"
-	PhaseThread    = "thread"
 )
 
 // Pipeline is the task timeline of one proof, the same shape for every zkVM.

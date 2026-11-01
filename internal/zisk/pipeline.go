@@ -28,7 +28,7 @@ const (
 	kindRecursive2
 	kindVadcopFinal
 	kindCompressed
-	kindThread
+	kindCompressorWitness
 )
 
 // kindUnmapped marks a record kind the timeline does not draw.
@@ -55,7 +55,7 @@ var pipelineKinds = []cluster.TaskKind{
 	{Name: "recursive2", Label: "Recursive2 Proof", Legend: "Recursive2 Proof", Row: "Fold", Phase: cluster.PhaseRecursion},
 	{Name: "vadcopfinal", Label: "Vadcop Final Proof", Legend: "Wrap", Row: "Vadcop Final Proof", Phase: cluster.PhaseWrap},
 	{Name: "compressed", Label: "Vadcop Final Compressed Proof", Legend: "Wrap", Row: "Vadcop Final Compressed Proof", Phase: cluster.PhaseWrap},
-	{Name: "thread", Label: "Thread", Legend: "Thread", Row: "Thread", Phase: cluster.PhaseThread},
+	{Name: "compressorwitness", Label: "Compressor Witness Generation", Legend: "Witness Generation", Row: "Proof", Phase: cluster.PhaseWitness},
 }
 
 // proofTypeKinds is the kind of each proofman record kind, in record kind
@@ -65,6 +65,7 @@ var proofTypeKinds = []int{
 	kindBasic, kindCompressor, kindRecursive1, kindRecursive2, kindVadcopFinal, kindCompressed,
 	kindUnmapped, kindUnmapped,
 	kindWitness, kindCommit, kindExecute, kindPrecalc, kindChallenge, kindRecompute, kindRecursionWitness, kindAggregationWitness,
+	kindCompressorWitness,
 }
 
 // pipelineBreakdown pairs each breakdown label with the executor duration
@@ -132,7 +133,7 @@ const unattributedLabel = "Unattributed"
 // name and an underscore. Their spans share the timer name as label, and any
 // other span keeps its own name.
 var formattedTimerNames = []string{
-	"CIRCOM_WITNESS", "COMPUTING_WC", "GENERATING_WC", "GEN_PROOF", "GET_CONTRIBUTION_AIR", "POOL_WAIT_WITNESS", "PREPARING_WC",
+	"CIRCOM_WITNESS", "COMPUTING_WC", "GENERATING_WC", "GEN_PROOF", "GEN_RECURSIVE_PROOF", "GET_CONTRIBUTION_AIR", "POOL_WAIT_WITNESS", "PREPARING_WC", "STAGING_WC",
 }
 
 // mapPipeline places every record the stats carry on the proof clock, which
@@ -147,6 +148,7 @@ func mapPipeline(stats *api.ExecutionStats) (*cluster.Pipeline, error) {
 	builder := cluster.NewPipelineBuilder(mapRegistrations(stats.GetTasks()))
 	proofStartMs := stats.GetProofStart().AsTime().UnixMilli()
 	withAirgroup := foldsManyAirgroups(stats.GetTasks())
+	rounds := foldRounds(stats.GetTasks())
 	labels, labelIndex := spanLabels(stats.GetTasks())
 	for _, task := range stats.GetTasks() {
 		switch task.GetPhase() {
@@ -154,10 +156,7 @@ func mapPipeline(stats *api.ExecutionStats) (*cluster.Pipeline, error) {
 		default:
 			return nil, fmt.Errorf("task of phase %s, which the timeline does not map", task.GetPhase())
 		}
-		if err := placeProofs(builder, task, proofStartMs, withAirgroup, labelIndex); err != nil {
-			return nil, err
-		}
-		if err := placeThreads(builder, task, proofStartMs, labelIndex); err != nil {
+		if err := placeProofs(builder, task, proofStartMs, withAirgroup, rounds[task], labelIndex); err != nil {
 			return nil, err
 		}
 	}
@@ -170,12 +169,16 @@ func mapPipeline(stats *api.ExecutionStats) (*cluster.Pipeline, error) {
 
 // placeProofs places one bar per record the task reports. A task of one record
 // and a dispatch stamp draws its bar over the whole round trip on the
-// coordinator clock and adds the network transport to its sections. Any other
-// task draws each bar over the worker stamps of its record. The Execute bar
-// also carries the executor durations, which the record does not measure as
-// sections. With span labels, every bar also carries the spans of its record
-// and the time of the record they leave uncovered.
-func placeProofs(builder *cluster.PipelineBuilder[string], task *api.TaskTiming, proofStartMs int64, withAirgroup bool, labelIndex map[string]int64) error {
+// coordinator clock. Any other task draws each bar over the worker stamps of
+// its record. With span labels, a bar of a record with spans carries its spans,
+// the network transport of a round trip at the two ends of the bar, and the
+// time of the bar they leave uncovered, so its segments close on the bar. The
+// dispatch leg takes what the two clocks tell, up to the whole transport, and
+// the spans move by the same skew, so a skew never cuts a span. A record with
+// no span carries no breakdown. Without span labels, a bar carries the sections
+// of its record, the Execute bar also the executor durations, and a round trip
+// also the network transport.
+func placeProofs(builder *cluster.PipelineBuilder[string], task *api.TaskTiming, proofStartMs int64, withAirgroup bool, round int, labelIndex map[string]int64) error {
 	roundTrip := len(task.GetProofTimings()) == 1 && task.GetCoordinatorStart() != 0
 	for _, proof := range task.GetProofTimings() {
 		kind, err := proofKind(proof.GetProofType())
@@ -183,61 +186,54 @@ func placeProofs(builder *cluster.PipelineBuilder[string], task *api.TaskTiming,
 			return err
 		}
 		startMs, endMs := int64(proof.GetStart()), int64(proof.GetEnd())
-		breakdown := mapProofBreakdown(proof.GetBreakdownMs())
-		if kind == kindExecute {
-			breakdown = append(mapBreakdown(task.GetExecutorTime()), breakdown...)
-		}
+		transportMs, dispatchMs, skewMs := int64(0), int64(0), int64(0)
 		if roundTrip {
 			startMs, endMs = int64(task.GetCoordinatorStart()), int64(task.GetCoordinatorEnd())
-			transportMs := cluster.NetworkTransportMs(startMs, int64(task.GetWorkerStart()), int64(task.GetWorkerEnd()), endMs)
+			workerStartMs := int64(task.GetWorkerStart())
+			transportMs = cluster.NetworkTransportMs(startMs, workerStartMs, int64(task.GetWorkerEnd()), endMs)
+			dispatchMs = min(max(workerStartMs-startMs, 0), transportMs)
+			skewMs = workerStartMs - startMs - dispatchMs
+		}
+		var breakdown [][2]int64
+		var segments [][4]int64
+		switch {
+		case labelIndex == nil:
+			breakdown = mapProofBreakdown(proof.GetBreakdownMs())
+			if kind == kindExecute {
+				breakdown = append(mapBreakdown(task.GetExecutorTime()), breakdown...)
+			}
 			if transportMs > 0 {
 				breakdown = append(breakdown, [2]int64{int64(len(breakdownLabels) - 1), transportMs})
 			}
-		}
-		var segments [][4]int64
-		if labelIndex != nil {
-			fromUs, toUs := max(int64(proof.GetStart())-proofStartMs, 0)*1000, (int64(proof.GetEnd())-proofStartMs)*1000
-			if segments, err = mapSpans(proof.GetSpans(), task.GetNames(), labelIndex, proofStartMs*1000, fromUs, toUs); err != nil {
+		case len(proof.GetSpans()) > 0:
+			fromUs, toUs := max(startMs-proofStartMs, 0)*1000, (endMs-proofStartMs)*1000
+			workFromUs, workToUs := fromUs+dispatchMs*1000, toUs-(transportMs-dispatchMs)*1000
+			if segments, err = mapSpans(proof.GetSpans(), task.GetNames(), labelIndex, (proofStartMs+skewMs)*1000, workFromUs, workToUs); err != nil {
 				return err
 			}
-			segments = append(segments, unattributedSegments(segments, labelIndex[unattributedLabel], fromUs, toUs)...)
+			segments = append(segments, unattributedSegments(segments, labelIndex[unattributedLabel], workFromUs, workToUs)...)
+			transport := labelIndex[cluster.NetworkTransportLabel]
+			for _, leg := range [][2]int64{{fromUs, workFromUs}, {workToUs, toUs}} {
+				if leg[0] < leg[1] {
+					segments = append(segments, [4]int64{transport, leg[0], leg[1] - leg[0], 0})
+				}
+			}
 		}
-		id := proofID(kind, proof, withAirgroup)
+		id := proofID(kind, proof, withAirgroup, round)
 		builder.PlaceSegments(kind, task.GetWorkerId(), id, endMs-proofStartMs, endMs-startMs, breakdown, segments)
 	}
 	return nil
 }
 
-// placeThreads places one bar per thread of the task that runs no record,
-// over the extent of its spans. The bars of one thread name share a row.
-func placeThreads(builder *cluster.PipelineBuilder[string], task *api.TaskTiming, proofStartMs int64, labelIndex map[string]int64) error {
-	for _, thread := range task.GetThreads() {
-		segments, err := mapSpans(thread.GetSpans(), task.GetNames(), labelIndex, proofStartMs*1000, 0, math.MaxInt64)
-		if err != nil {
-			return err
-		}
-		if len(segments) == 0 {
-			continue
-		}
-		fromUs, toUs := int64(math.MaxInt64), int64(0)
-		for _, segment := range segments {
-			fromUs, toUs = min(fromUs, segment[1]), max(toUs, segment[1]+segment[2])
-		}
-		endMs := (toUs + 999) / 1000
-		builder.PlaceSegments(kindThread, task.GetWorkerId(), thread.GetThread(), endMs, endMs-fromUs/1000, nil, segments)
-	}
-	return nil
-}
-
-// spanLabels extends breakdownLabels with the Unattributed label and the label
-// of every span name the tasks carry, in first sight order, and indexes them by
+// spanLabels are the Unattributed label, the network transport label, and the
+// label of every span name the tasks carry, in first sight order, indexed by
 // label. Stats that name no span keep breakdownLabels and a nil index.
 func spanLabels(tasks []*api.TaskTiming) ([]string, map[string]int64) {
 	if !slices.ContainsFunc(tasks, func(task *api.TaskTiming) bool { return len(task.GetNames()) > 0 }) {
 		return breakdownLabels, nil
 	}
-	labels := append(slices.Clone(breakdownLabels), unattributedLabel)
-	labelIndex := map[string]int64{unattributedLabel: int64(len(labels) - 1)}
+	labels := []string{unattributedLabel, cluster.NetworkTransportLabel}
+	labelIndex := map[string]int64{unattributedLabel: 0, cluster.NetworkTransportLabel: 1}
 	for _, task := range tasks {
 		for _, name := range task.GetNames() {
 			label := spanLabel(name)
@@ -310,6 +306,29 @@ func foldsManyAirgroups(tasks []*api.TaskTiming) bool {
 	return len(airgroups) > 1
 }
 
+// foldRounds numbers the tasks of a worker that carry folds, from one, for a
+// worker that folds in more than one task. Fold ids restart on every
+// aggregation round of a worker, so the round keeps two folds of one id apart,
+// and a worker that folds once needs no round.
+func foldRounds(tasks []*api.TaskTiming) map[*api.TaskTiming]int {
+	foldTypes := []uint32{uint32(slices.Index(proofTypeKinds, kindAggregationWitness)), uint32(slices.Index(proofTypeKinds, kindRecursive2))}
+	byWorker := make(map[string][]*api.TaskTiming)
+	for _, task := range tasks {
+		if slices.ContainsFunc(task.GetProofTimings(), func(proof *api.ProofTiming) bool { return slices.Contains(foldTypes, proof.GetProofType()) }) {
+			byWorker[task.GetWorkerId()] = append(byWorker[task.GetWorkerId()], task)
+		}
+	}
+	rounds := make(map[*api.TaskTiming]int)
+	for _, folding := range byWorker {
+		if len(folding) > 1 {
+			for index, task := range folding {
+				rounds[task] = index + 1
+			}
+		}
+	}
+	return rounds
+}
+
 // proofKind is the kind of one proofman record kind. A kind the timeline does
 // not draw fails the record instead of drawing on the row of another kind.
 func proofKind(proofType uint32) (int, error) {
@@ -323,16 +342,21 @@ func proofKind(proofType uint32) (int, error) {
 // for a fold, and by nothing for a root step of the contributions phase and for
 // the two final proofs. The records of one instance share an id, which the
 // frontend folds onto one row per row group. A fold id carries the airgroup
-// only when the job folds more than one.
-func proofID(kind int, proof *api.ProofTiming, withAirgroup bool) string {
+// only when the job folds more than one, and the round only when its worker
+// folds in more than one task.
+func proofID(kind int, proof *api.ProofTiming, withAirgroup bool, round int) string {
 	switch kind {
-	case kindWitness, kindCommit, kindRecompute, kindRecursionWitness, kindBasic, kindCompressor, kindRecursive1:
+	case kindWitness, kindCommit, kindRecompute, kindRecursionWitness, kindCompressorWitness, kindBasic, kindCompressor, kindRecursive1:
 		return fmt.Sprintf("%s #%d", proof.GetAirName(), proof.GetId())
 	case kindAggregationWitness, kindRecursive2:
+		id := fmt.Sprintf("#%d", proof.GetId())
 		if withAirgroup {
-			return fmt.Sprintf("airgroup %d #%d", proof.GetAirgroupId(), proof.GetId())
+			id = fmt.Sprintf("airgroup %d %s", proof.GetAirgroupId(), id)
 		}
-		return fmt.Sprintf("#%d", proof.GetId())
+		if round > 0 {
+			id = fmt.Sprintf("round %d %s", round, id)
+		}
+		return id
 	default:
 		return ""
 	}

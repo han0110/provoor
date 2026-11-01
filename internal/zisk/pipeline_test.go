@@ -381,9 +381,8 @@ func usAt(proofStart time.Time, offsetUs int64) uint64 {
 // A task of ZisK 1.4 names its spans. The basic proof nests a commit and a
 // GPU category under its proof span, one span reaches back before the record
 // and clips, and one lies past the record and drops, which leaves two gaps.
-// The compressor proof has no span and is one gap. One thread runs no record
-// and draws its spans as a bar of its own. The two formatted names of one
-// timer share one label.
+// The compressor proof has no span and carries no breakdown. The two formatted
+// names of one timer share one label.
 func TestPipelineMapsSpans(t *testing.T) {
 	proofStart := time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)
 	span := func(name uint32, startUs, endUs int64, depth uint32) *api.Span {
@@ -408,10 +407,6 @@ func TestPipelineMapsSpans(t *testing.T) {
 				},
 				{ProofType: 1, Id: 137, AirName: "Main", Start: at(proofStart, 1010), End: at(proofStart, 1012)},
 			},
-			Threads: []*api.ThreadSpans{
-				{Thread: "rayon-3", Spans: []*api.Span{span(3, 1002000, 1002500, 0), span(4, 1004000, 1004100, 1)}},
-				{Thread: "idle"},
-			},
 		}},
 	}
 
@@ -420,18 +415,127 @@ func TestPipelineMapsSpans(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantLabels := append(slices.Clone(breakdownLabels), "Unattributed", "GEN_PROOF", "STARK_COMMIT_STAGE_1", "NTT", "DRAIN_QUEUE")
+	wantLabels := []string{"Unattributed", "Network Transport", "GEN_PROOF", "STARK_COMMIT_STAGE_1", "NTT", "DRAIN_QUEUE"}
 	if !slices.Equal(pipeline.Breakdown, wantLabels) {
 		t.Errorf("breakdown = %v, want %v", pipeline.Breakdown, wantLabels)
 	}
 	wantTasks := `[` +
-		`[8,0,"Main #137",1000,10,[],[[32,1000500,7500,0],[33,1001000,3000,1],[34,1001200,150,2],[35,1000000,200,0],` +
-		`[31,1000200,300,0],[31,1008000,2000,0]]],` +
-		`[14,0,"rayon-3",1002,3,[],[[35,1002000,500,0],[32,1004000,100,1]]],` +
-		`[9,0,"Main #137",1010,2,[],[[31,1010000,2000,0]]]]`
+		`[8,0,"Main #137",1000,10,[],[[2,1000500,7500,0],[3,1001000,3000,1],[4,1001200,150,2],[5,1000000,200,0],` +
+		`[0,1000200,300,0],[0,1008000,2000,0]]],` +
+		`[9,0,"Main #137",1010,2,[]]]`
 	tasks, err := json.Marshal(pipeline.Tasks)
 	if err != nil || string(tasks) != wantTasks {
 		t.Errorf("tasks = %s, %v, want %s", tasks, err, wantTasks)
+	}
+}
+
+// With spans, a round trip carries its network transport at the two ends of
+// its bar and closes on the bar, the Execute bar carries no executor duration
+// beside its spans, and a compressor witness draws as its own kind.
+func TestPipelineMapsSpansOfARoundTripTheExecuteAndACompressorWitness(t *testing.T) {
+	proofStart := time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)
+	span := func(startUs, endUs int64) *api.Span {
+		return &api.Span{Name: 0, StartUs: usAt(proofStart, startUs), EndUs: usAt(proofStart, endUs)}
+	}
+	stats := &api.ExecutionStats{
+		ProofStart: timestamppb.New(proofStart),
+		Tasks: []*api.TaskTiming{
+			{
+				WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_CONTRIBUTIONS,
+				ExecutorTime: &api.ExecutorTime{ExecutionDuration: 5},
+				Names:        []string{"COMPUTE_MINIMAL_TRACE"},
+				ProofTimings: []*api.ProofTiming{
+					{ProofType: 10, Start: at(proofStart, 0), End: at(proofStart, 10), Spans: []*api.Span{span(0, 10000)}},
+					{ProofType: 16, Id: 3, AirName: "Main", Start: at(proofStart, 20), End: at(proofStart, 30), Spans: []*api.Span{span(20000, 30000)}},
+				},
+			},
+			{
+				WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_RECURSE,
+				CoordinatorStart: at(proofStart, 1000), WorkerStart: at(proofStart, 1003),
+				WorkerEnd: at(proofStart, 1015), CoordinatorEnd: at(proofStart, 1020),
+				Names: []string{"STARK_GPU_PROOF"},
+				ProofTimings: []*api.ProofTiming{
+					{ProofType: 4, Start: at(proofStart, 1005), End: at(proofStart, 1014), Spans: []*api.Span{span(1006000, 1013000)}},
+				},
+			},
+		},
+	}
+
+	pipeline, err := mapPipeline(stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantTasks := `[` +
+		`[0,0,"",0,10,[],[[2,0,10000,0]]],` +
+		`[14,0,"Main #3",20,10,[],[[2,20000,10000,0]]],` +
+		`[12,0,"",1000,20,[],[[3,1006000,7000,0],[0,1003000,3000,0],[0,1013000,2000,0],[1,1000000,3000,0],[1,1015000,5000,0]]]]`
+	tasks, err := json.Marshal(pipeline.Tasks)
+	if err != nil || string(tasks) != wantTasks {
+		t.Errorf("tasks = %s, %v, want %s", tasks, err, wantTasks)
+	}
+}
+
+// A worker clock 40 ms ahead keeps the transport at the round trip minus the
+// worker time and moves the spans by the skew, so no span is cut.
+func TestPipelineMovesTheSpansOfASkewedRoundTrip(t *testing.T) {
+	proofStart := time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)
+	stats := &api.ExecutionStats{
+		ProofStart: timestamppb.New(proofStart),
+		Tasks: []*api.TaskTiming{{
+			WorkerId: "worker_0-gpu_0", Phase: api.JobPhase_JOB_PHASE_RECURSE,
+			CoordinatorStart: at(proofStart, 0), WorkerStart: at(proofStart, 60),
+			WorkerEnd: at(proofStart, 140), CoordinatorEnd: at(proofStart, 100),
+			Names: []string{"STARK_GPU_PROOF"},
+			ProofTimings: []*api.ProofTiming{{
+				ProofType: 4, Start: at(proofStart, 60), End: at(proofStart, 140),
+				Spans: []*api.Span{{Name: 0, StartUs: usAt(proofStart, 70000), EndUs: usAt(proofStart, 130000)}},
+			}},
+		}},
+	}
+
+	pipeline, err := mapPipeline(stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantTasks := `[[12,0,"",0,100,[],[[2,30000,60000,0],[0,20000,10000,0],[0,90000,10000,0],[1,0,20000,0]]]]`
+	tasks, err := json.Marshal(pipeline.Tasks)
+	if err != nil || string(tasks) != wantTasks {
+		t.Errorf("tasks = %s, %v, want %s", tasks, err, wantTasks)
+	}
+}
+
+// A worker that folds in two tasks numbers the folds of each by round, and a
+// worker that folds in one task keeps the bare fold id.
+func TestPipelineNamesTheRoundOfAFoldOfAWorkerThatFoldsTwice(t *testing.T) {
+	proofStart := time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)
+	fold := func(workerID string, startMs int64) *api.TaskTiming {
+		return &api.TaskTiming{
+			WorkerId: workerID, Phase: api.JobPhase_JOB_PHASE_RECURSE,
+			ProofTimings: []*api.ProofTiming{
+				{ProofType: 15, Id: 0, Start: at(proofStart, startMs), End: at(proofStart, startMs+10)},
+				{ProofType: 3, Id: 0, Start: at(proofStart, startMs+10), End: at(proofStart, startMs+20)},
+			},
+		}
+	}
+	stats := &api.ExecutionStats{
+		ProofStart: timestamppb.New(proofStart),
+		Tasks:      []*api.TaskTiming{fold("worker_0-gpu_0", 0), fold("worker_0-gpu_0", 100), fold("worker_1-gpu_0", 0)},
+	}
+
+	pipeline, err := mapPipeline(stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var ids []string
+	for _, task := range pipeline.Tasks {
+		ids = append(ids, task.ID)
+	}
+	wantIDs := []string{"round 1 #0", "#0", "round 1 #0", "#0", "round 2 #0", "round 2 #0"}
+	if !slices.Equal(ids, wantIDs) {
+		t.Errorf("ids = %v, want %v", ids, wantIDs)
 	}
 }
 

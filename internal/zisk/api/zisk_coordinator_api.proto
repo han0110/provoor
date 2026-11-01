@@ -104,7 +104,6 @@ message TaskTiming {
   uint64                    coordinator_start     = 8;
   uint64                    worker_start          = 9;
   uint64                    worker_end            = 10;
-  repeated ThreadSpans      threads               = 11;
   repeated string           names                 = 12; // span names, indexed by Span.name
 }
 
@@ -120,18 +119,12 @@ message ProofTiming {
   repeated Span spans    = 8;
 }
 
-// Host spans of one thread that runs no proof.
-message ThreadSpans {
-  string        thread = 1; // thread name or id
-  repeated Span spans  = 2;
-}
-
 // One upstream timer span, in Unix microseconds on the worker clock.
 message Span {
   uint32     name     = 1; // index into TaskTiming.names
   uint64     start_us = 2;
   uint64     end_us   = 3;
-  uint32     depth    = 4; // nesting depth inside its proof or thread
+  uint32     depth    = 4; // nesting depth inside its proof
 }
 
 // Per-AIR planned instance count (the AIR name is derived from the ids by the consumer).
