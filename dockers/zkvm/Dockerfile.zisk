@@ -45,8 +45,8 @@ RUN curl -fSL "https://github.com/0xPolygonHermez/zisk/releases/download/v${ZISK
     && rm /tmp/zisk.tar.gz \
     && chmod +x /root/.zisk/bin/*
 
-# Overlay of the worker and the coordinator from han0110/zisk d1a733a9.
-RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-d1a733a96cd3b48bd699163bf5dca04d2a9eb347/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
+# Overlay of the worker and the coordinator from han0110/zisk fab2c486.
+RUN curl -fSL "https://github.com/han0110/zisk/releases/download/test-fab2c4866e58f095a6d9509b24819ae9fcd0b969/cargo_zisk_linux_amd64.tar.gz" -o /tmp/zisk-patched.tar.gz \
     && tar --no-same-owner -xzf /tmp/zisk-patched.tar.gz -C /root/.zisk ./bin/zisk-worker-gpu ./bin/zisk-coordinator \
     && rm /tmp/zisk-patched.tar.gz \
     && chmod +x /root/.zisk/bin/zisk-worker-gpu /root/.zisk/bin/zisk-coordinator
