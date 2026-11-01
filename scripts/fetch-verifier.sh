@@ -7,7 +7,7 @@ set -euo pipefail
 # published archive is pinned here, because a release asset can be replaced
 # after it is published.
 
-ERE_VERSION=v0.19.3
+ERE_VERSION=v0.20.0
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="${REPO_DIR}/internal/ereverifier/lib"
 
@@ -23,9 +23,9 @@ case "$(uname -m)" in
 esac
 
 case "${os}-${arch}" in
-    linux-amd64)  DIGEST=0bce4f6131d1b7981cd20707055975677422499d6279325b9828dcd3f8a3cd4c ;;
-    linux-arm64)  DIGEST=dfba5bfa4e257b73194c1025eb6e0b460820835689b94eab3fe4f7e814b00f5d ;;
-    darwin-arm64) DIGEST=15863be245b745f46e91f7b9f18840bc333b3b9c5ae507b0e0a6fa138ce0afca ;;
+    linux-amd64)  DIGEST=2579dad14e9da9ad7d54764073eebcc6473f1f725cbb374c9cabf0a1db9ecbe9 ;;
+    linux-arm64)  DIGEST=002d2b6603c0b29c69174111875d6057405ae35005d3ec5bb685583486d8974d ;;
+    darwin-arm64) DIGEST=e829d44013afa3cbdaeed35f4f7bf1cb6b42e7b40e2d7f19cb8e4827887cd679 ;;
     *)            echo "ere ${ERE_VERSION} publishes no ${os}-${arch} verifier" >&2; exit 1 ;;
 esac
 

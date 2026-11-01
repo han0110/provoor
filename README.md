@@ -145,6 +145,7 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `ereSer
 | `zisk`   | `v1.3.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:77e2aae`  |
 | `zisk`   | `v1.3.1-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.2`   |
 | `zisk`   | `v1.3.2-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.4`   |
+| `zisk`   | `v1.4.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.20.0`   |
 
 - A rerun with the same image, ELF, and suite resumes where the last one stopped. Recorded guest failures are not retried.
 - A new estimate shows in the UI after `provoor-runs/scripts/build.sh` regenerates `estimates/index.json`.
@@ -178,6 +179,7 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `profil
 | `openvm` | `v2.1.0-preview` | `ghcr.io/eth-act/ere/ere-server-openvm:0.19.4` |
 | `zisk`   | `v1.3.1-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.2`   |
 | `zisk`   | `v1.3.2-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.19.4`   |
+| `zisk`   | `v1.4.0-alpha`   | `ghcr.io/eth-act/ere/ere-server-zisk:0.20.0`   |
 
 - A rerun resumes and reuses earlier profiles, as `estimate` does.
 - An existing estimate in `estimates/<id>/` of another image, ELF, or suite stays as it is.

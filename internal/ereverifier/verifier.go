@@ -1,5 +1,5 @@
 // Vendored verbatim from
-// https://github.com/eth-act/ere/blob/v0.19.3/bindings/golang/verifier.go
+// https://github.com/eth-act/ere/blob/v0.20.0/bindings/golang/verifier.go
 
 //go:build cgo
 
@@ -34,6 +34,7 @@ const (
 	SP1      ZkVMKind = 1
 	Zisk     ZkVMKind = 2
 	LambdaVM ZkVMKind = 3
+	Pico     ZkVMKind = 4
 )
 
 // String implements [fmt.Stringer].
@@ -47,6 +48,8 @@ func (k ZkVMKind) String() string {
 		return "zisk"
 	case LambdaVM:
 		return "lambdavm"
+	case Pico:
+		return "pico"
 	default:
 		return fmt.Sprintf("unknown(%d)", uint32(k))
 	}
