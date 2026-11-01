@@ -6,8 +6,8 @@
 
 | Example file                           | Hosts and GPUs                                                                 | zkVM version  |
 | -------------------------------------- | ------------------------------------------------------------------------------ | ------------- |
-| `examples/zisk-4x4.example.yaml`       | four hosts with four GPUs each, one worker per host, the coordinator on node 1 | `1.3.2-alpha` |
-| `examples/zisk-1x1-local.example.yaml` | GPU 0 of the local Docker daemon, which also runs the coordinator              | `1.3.2-alpha` |
+| `examples/zisk-4x4.example.yaml`       | four hosts with four GPUs each, one worker per host, the coordinator on node 1 | `1.4.0-alpha` |
+| `examples/zisk-1x1-local.example.yaml` | GPU 0 of the local Docker daemon, which also runs the coordinator              | `1.4.0-alpha` |
 
 ## Up and down
 
