@@ -11,6 +11,8 @@ func TestTaskMarshalsAsARow(t *testing.T) {
 	cases := map[string]Task{
 		`[2,0,"24",1015,1100,[[0,30]]]`: {Kind: 2, ID: "24", StartMs: 1015, DurationMs: 1100, Breakdown: [][2]int64{{0, 30}}},
 		`[0,1,"",0,480,[]]`:             {Worker: 1, DurationMs: 480},
+		// A task with segments adds them as a seventh cell.
+		`[1,0,"",0,9,[],[[0,500,8000,0]]]`: {Kind: 1, DurationMs: 9, Segments: [][4]int64{{0, 500, 8000, 0}}},
 	}
 	for want, task := range cases {
 		row, err := json.Marshal(task)

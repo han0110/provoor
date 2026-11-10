@@ -280,14 +280,14 @@ func workerSpec(cfg *Config, worker Worker, name string, numaNodes int) cluster.
 }
 
 // provingKeyArchive names the proving key archive of a ZisK release. Releases
-// before 1.3.0 publish only their Poseidon1 key, and later releases publish a
-// blake3 key.
+// before 1.3.0 publish only their Poseidon1 key, the 1.3 releases publish a
+// blake3 key under a suffix, and later releases publish it with no suffix.
 func provingKeyArchive(zkvmVersion string) string {
 	var major, minor int
-	if _, err := fmt.Sscanf(zkvmVersion, "%d.%d", &major, &minor); err == nil && (major < 1 || major == 1 && minor < 3) {
-		return "zisk-provingkey-" + zkvmVersion + ".tar.gz"
+	if _, err := fmt.Sscanf(zkvmVersion, "%d.%d", &major, &minor); err == nil && major == 1 && minor == 3 {
+		return "zisk-provingkey-" + zkvmVersion + "-blake3.tar.gz"
 	}
-	return "zisk-provingkey-" + zkvmVersion + "-blake3.tar.gz"
+	return "zisk-provingkey-" + zkvmVersion + ".tar.gz"
 }
 
 // setupSpec builds the one-off proving-key job of one worker host on the GPUs

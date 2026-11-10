@@ -395,7 +395,8 @@ func TestProvingKeyArchive(t *testing.T) {
 		"1.2.0-alpha": "zisk-provingkey-1.2.0-alpha.tar.gz",
 		"1.3.0-alpha": "zisk-provingkey-1.3.0-alpha-blake3.tar.gz",
 		"1.3.2-alpha": "zisk-provingkey-1.3.2-alpha-blake3.tar.gz",
-		"2.0.0":       "zisk-provingkey-2.0.0-blake3.tar.gz",
+		"1.4.0-alpha": "zisk-provingkey-1.4.0-alpha.tar.gz",
+		"2.0.0":       "zisk-provingkey-2.0.0.tar.gz",
 	}
 	for version, want := range cases {
 		if got := provingKeyArchive(version); got != want {
