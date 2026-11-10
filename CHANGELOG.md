@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.0](https://github.com/han0110/provoor/compare/v0.12.0...v0.13.0) (2026-11-10)
+
+
+### Features
+
+* zisk v1.4.0-alpha ([#59](https://github.com/han0110/provoor/issues/59)) ([40e558a](https://github.com/han0110/provoor/commit/40e558aad6ca164a1ece3806881403150a8d7b2d))
+
+
+### Bug Fixes
+
+* bump openvm to 40111cb51ac44e2a5fd8aefdaa4c5b19d7ada11d to have axiom-edge manager to release slot first before notifying ([#57](https://github.com/han0110/provoor/issues/57)) ([24e79f5](https://github.com/han0110/provoor/commit/24e79f54341638e629b1d1df05b5dcc8576e7ac2))
+
 ## [0.12.0](https://github.com/han0110/provoor/compare/v0.11.0...v0.12.0) (2026-10-25)
 
 
