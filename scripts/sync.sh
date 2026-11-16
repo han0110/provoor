@@ -15,14 +15,16 @@ RESULTS_DIR="${RUNS_DIR}/results"
 
 SSH_DESTINATION=""
 REMOTE_RESULTS_DIR=""
+REMOTE_USER=""
 SYNC_LOGS=false
 
 usage() {
-    echo "Usage: $0 [--ssh USER@HOST] [--remote-results-dir DIR] [--log]"
+    echo "Usage: $0 [--ssh SSH] [--remote-results-dir DIR] [--user USER] [--log]"
     echo ""
     echo "Options:"
-    echo "  --ssh USER@HOST           SSH destination holding the results, COORDINATOR_SSH in .env by default"
+    echo "  --ssh SSH                 SSH destination holding the results, COORDINATOR_SSH in .env by default"
     echo "  --remote-results-dir DIR  Results directory on the remote, REMOTE_RESULTS_DIR in .env by default"
+    echo "  --user USER               Run the remote rsync as USER through sudo -n"
     echo "  --log                     Also pull container.log and benchmarkoor.log of each run"
     echo "  --help, -h                Show this help"
     exit 1
@@ -47,6 +49,11 @@ while [[ $# -gt 0 ]]; do
         --remote-results-dir)
             require_value $# "$1"
             REMOTE_RESULTS_DIR="$2"
+            shift 2
+            ;;
+        --user)
+            require_value $# "$1"
+            REMOTE_USER="$2"
             shift 2
             ;;
         --log)
@@ -94,8 +101,16 @@ if [[ "${SYNC_LOGS}" == false ]]; then
     log_excludes=(--exclude container.log --exclude benchmarkoor.log)
 fi
 
+# A shared SSH login can lack read access to the results, so --user runs the
+# remote rsync as an account that has it.
+rsync_path=()
+if [[ -n "${REMOTE_USER}" ]]; then
+    rsync_path=(--rsync-path="sudo -n -u ${REMOTE_USER} rsync")
+fi
+
 mkdir -p "${RESULTS_DIR}"
 rsync -a \
+    "${rsync_path[@]}" \
     "${log_excludes[@]}" \
     --exclude '*.request' \
     "${SSH_DESTINATION}:${REMOTE_RESULTS_DIR}/" "${RESULTS_DIR}/"

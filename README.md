@@ -126,6 +126,7 @@ Run it on the coordinator host, so the stateless input reaches the cluster over 
 ./provoor estimate provoor-runs/results/runs/<run_id>
 (cd provoor-runs && ../provoor estimate ../benchmarkoor/examples/provoor/<file>.example.yaml)
 ./provoor estimate link provoor-runs/results/runs/<run_id> provoor-runs/results/estimates/<estimate_id>
+./provoor estimate status provoor-runs/results/runs/<run_id>
 ```
 
 `estimate` executes the guest on the input of every test in an ere-server container on the local CPU, so it needs no cluster and no GPU. Each test gets its cost per component in `estimates/<id>/result.estimate.json`. An ere-server image before v0.19.1 also reports the peak heap use, which later images report only to `profile`. `estimate link` attaches an estimate of a configuration to a run with the same suite and ELF, so the UI links them.
@@ -149,6 +150,7 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `ereSer
 
 - A rerun with the same image, ELF, and suite resumes where the last one stopped. Recorded guest failures are not retried.
 - A new estimate shows in the UI after `provoor-runs/scripts/build.sh` regenerates `estimates/index.json`.
+- `estimate status` prints the test, failure, and pending counts of a run as JSON.
 
 ## Profile cost
 
@@ -156,6 +158,7 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `ereSer
 ./provoor profile provoor-runs/results/runs/<run_id>
 (cd provoor-runs && ../provoor profile ../benchmarkoor/examples/provoor/<file>.example.yaml)
 ./provoor profile link provoor-runs/results/runs/<run_id> provoor-runs/results/profiles/<profile_id>
+./provoor profile status provoor-runs/results/runs/<run_id>
 ```
 
 `profile` executes the guest program on the input of every test, as `estimate` does, and also records which guest functions spend the cost.
@@ -183,6 +186,7 @@ The `zkvm` and `zkvm_version` labels select the ere-server image through `profil
 
 - A rerun resumes and reuses earlier profiles, as `estimate` does.
 - An existing estimate in `estimates/<id>/` of another image, ELF, or suite stays as it is.
+- `profile status` prints the counts as `estimate status` does, plus `missing_files`, the profiled tests without a `profile.pb.gz`.
 
 ## Publish results
 
