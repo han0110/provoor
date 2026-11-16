@@ -17,6 +17,23 @@ deployment uses, so a preview matches production.
 Results reach that checkout through `scripts/sync.sh` and
 `scripts/desensitize.sh`, which the [README](../README.md#publish-results) describes.
 
+## Profiles
+
+The `profile` workflow profiles each run in its own draft pull request from
+`profile/<run_id>`. It runs on a push to `main`, every six hours, and on
+manual dispatch.
+
+1. The scan job lists the runs with pending tests through
+   `provoor profile status`. The job summary shows the state of each run.
+2. One job per run profiles for 5.5 hours, then pushes the results.
+3. The next scan continues the run from its branch.
+4. When no test is pending, the job marks the pull request ready.
+
+- Merge the pull request to deploy the profiles.
+- Close the pull request to stop the run.
+- A job that profiles no test fails. The next scan tries again.
+- The repository must allow GitHub Actions to create pull requests.
+
 ## Constraints worth knowing
 
 - The UI resolves assets, routes, and `dataSource` against Vite's `--base`, so

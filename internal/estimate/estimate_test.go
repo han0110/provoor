@@ -1215,6 +1215,64 @@ func TestLinkProfile(t *testing.T) {
 	}
 }
 
+func TestStatus(t *testing.T) {
+	recorded := &artifact{
+		Tests:    map[string]*ereserver.CostEstimation{"profiled": {}, "unfiled": {}, "outside the run": {}},
+		Failures: map[string]string{"failed": "guest panicked"},
+	}
+	cases := []struct {
+		name        string
+		status      func(runDir string, output io.Writer) error
+		kind        *kind
+		zkvmVersion string
+		want        string
+	}{
+		{
+			name: "profile", status: ProfileStatus, kind: profileKind, zkvmVersion: "v1.3.2-alpha",
+			want: `{"supported":true,"tests":4,"failures":1,"pending":1,"missing_files":1}`,
+		},
+		{
+			name: "profile of an unsupported version", status: ProfileStatus, kind: profileKind, zkvmVersion: "v1.3.0-alpha",
+			want: `{"supported":false,"tests":4,"failures":1,"pending":1,"missing_files":1}`,
+		},
+		{
+			name: "estimate", status: Status, kind: estimateKind, zkvmVersion: "v1.3.0-alpha",
+			want: `{"supported":true,"tests":4,"failures":1,"pending":1,"missing_files":0}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			results, runDir, _ := writeRun(t, `{"instance": {"extra_args": ["--elf=%s"]}, "metadata": {"labels": {"zkvm": "zisk", "zkvm_version": "`+tc.zkvmVersion+`"}}}`,
+				"profiled", "unfiled", "failed", "pending")
+			if err := writeArtifact(tc.kind.artifactPath(results, "run"), recorded); err != nil {
+				t.Fatal(err)
+			}
+			if err := writeFile(profileKind.testFilePath(filepath.Join(results, profileKind.dir, "run"), "profiled"), []byte("profile")); err != nil {
+				t.Fatal(err)
+			}
+			var output bytes.Buffer
+			// A shell glob of run directories ends each path in a slash.
+			if err := tc.status(runDir+"/", &output); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimSpace(output.String()); got != tc.want {
+				t.Errorf("output = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStatusOfRunWithoutArtifact(t *testing.T) {
+	_, runDir, _ := writeRun(t, `{"instance": {"extra_args": ["--elf=%s"]}, "metadata": {"labels": {"zkvm": "zisk", "zkvm_version": "v1.3.2-alpha"}}}`, "first", "second")
+	var output bytes.Buffer
+	if err := ProfileStatus(runDir, &output); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"supported":true,"tests":2,"failures":0,"pending":2,"missing_files":0}`; strings.TrimSpace(output.String()) != want {
+		t.Errorf("output = %s, want %s", strings.TrimSpace(output.String()), want)
+	}
+}
+
 func TestLinkProfileKeepsEstimateOfRun(t *testing.T) {
 	const id = "1790500000_aaaaaaaa_reth-zisk"
 	results, runDir, _ := writeRun(t, `{"suite_hash": "f585281e3fea89a8", "instance": {"extra_args": ["--elf=%s"]},

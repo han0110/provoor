@@ -404,6 +404,71 @@ func (k *kind) link(ctx context.Context, runDir, estimateDir string, output io.W
 	return nil
 }
 
+// runStatus is how far the estimate of a run is. Supported tells whether the
+// tags of the kind map the zkvm labels of the run to an image. Tests counts the
+// tests of the run, Failures the recorded guest failures among them, and
+// Pending the tests with neither a cost nor a failure. MissingFiles counts the
+// tests with a cost but no test file, which a rerun does not measure again.
+type runStatus struct {
+	Supported    bool `json:"supported"`
+	Tests        int  `json:"tests"`
+	Failures     int  `json:"failures"`
+	Pending      int  `json:"pending"`
+	MissingFiles int  `json:"missing_files"`
+}
+
+// Status writes the status of the estimate of the run in runDir as one JSON
+// line. A run is complete when it is supported and has no pending test and
+// no missing file.
+func Status(runDir string, output io.Writer) error {
+	return estimateKind.status(runDir, output)
+}
+
+// ProfileStatus writes the status of the profile of the run in runDir, as
+// Status does for an estimate.
+func ProfileStatus(runDir string, output io.Writer) error {
+	return profileKind.status(runDir, output)
+}
+
+// status writes the status of the estimate of the run in runDir, as Status
+// describes for an estimate.
+func (k *kind) status(runDir string, output io.Writer) error {
+	runDir, err := filepath.Abs(runDir)
+	if err != nil {
+		return err
+	}
+	run, err := readRunConfig(runDir)
+	if err != nil {
+		return err
+	}
+	names, err := readTestNames(runDir)
+	if err != nil {
+		return err
+	}
+	resultsDir, id := filepath.Dir(filepath.Dir(runDir)), filepath.Base(runDir)
+	result, err := readArtifact(k.artifactPath(resultsDir, id))
+	if err != nil {
+		return err
+	}
+	labels := run.Metadata.Labels
+	_, supported := k.tags[labels["zkvm"]][labels["zkvm_version"]]
+	status := runStatus{Supported: supported, Tests: len(names), Pending: len(pendingTests(names, result))}
+	for _, name := range names {
+		if _, failed := result.Failures[name]; failed {
+			status.Failures++
+		}
+		if _, measured := result.Tests[name]; !measured || k.testFile == "" {
+			continue
+		}
+		if _, err := os.Stat(k.testFilePath(filepath.Join(resultsDir, k.dir, id), name)); errors.Is(err, fs.ErrNotExist) {
+			status.MissingFiles++
+		} else if err != nil {
+			return err
+		}
+	}
+	return json.NewEncoder(output).Encode(status)
+}
+
 // linkMirror renames the mirror of a profile at oldID to the id of the run, and
 // reports whether it renamed it. Only an estimate with the image, ELF, and
 // suite of the profile is its mirror. It does nothing for an estimate. An
