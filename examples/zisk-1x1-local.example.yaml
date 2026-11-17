@@ -4,8 +4,8 @@ zkvm: zisk
 zkvm_version: 1.4.0-alpha
 
 guests:
-  - elf: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.4.0-alpha.elf
-    vk: https://raw.githubusercontent.com/han0110/provoor/refs/heads/main/elfs/stateless-validator-reth-zisk-v1.4.0-alpha.vk
+  - elf: https://raw.githubusercontent.com/han0110/provoor/0cbe52149a19a9479dc415cd0c29ecc12b5e87e0/elfs/stateless-validator-reth-zisk-v1.4.0-alpha.elf
+    vk: https://raw.githubusercontent.com/han0110/provoor/0cbe52149a19a9479dc415cd0c29ecc12b5e87e0/elfs/stateless-validator-reth-zisk-v1.4.0-alpha.vk
 
 workers:
   - { gpu: { device_ids: [0] } }
