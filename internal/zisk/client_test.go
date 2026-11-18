@@ -309,9 +309,9 @@ func TestVerifyProof(t *testing.T) {
 	}
 }
 
-// TestVerifyProofClusterEnvelope verifies an envelope a coordinator really
-// returned against the verifying key that cluster derived, so the transcode
-// is pinned against the encoding a live cluster emits.
+// TestVerifyProofClusterEnvelope verifies a real worker envelope against the
+// verifying key of its program, so the transcode is pinned against the
+// encoding a live cluster emits.
 func TestVerifyProofClusterEnvelope(t *testing.T) {
 	verifier := boundToFixture(t, readFixture(t, "cluster-program-vk.bin"))
 

@@ -52,7 +52,7 @@ var ereServerTags = map[string]map[string]string{
 		"v1.3.0-alpha": "77e2aae",
 		"v1.3.1-alpha": "0.19.2",
 		"v1.3.2-alpha": "0.19.4",
-		"v1.4.0-alpha": "0.20.0",
+		"v1.4.0-alpha": "0.20.2",
 	},
 }
 
@@ -65,7 +65,7 @@ var profileEreServerTags = map[string]map[string]string{
 	"zisk": {
 		"v1.3.1-alpha": "0.19.2",
 		"v1.3.2-alpha": "0.19.4",
-		"v1.4.0-alpha": "0.20.0",
+		"v1.4.0-alpha": "0.20.2",
 	},
 }
 
