@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.14.0](https://github.com/han0110/provoor/compare/v0.13.0...v0.14.0) (2026-11-18)
+
+
+### Features
+
+* ere v0.20.2 verifier and compressed zisk proofs ([#65](https://github.com/han0110/provoor/issues/65)) ([0aafb6d](https://github.com/han0110/provoor/commit/0aafb6de019765aaf53ae1ec63574fb2d5950495))
+* profile workflow prep ([#60](https://github.com/han0110/provoor/issues/60)) ([0cbe521](https://github.com/han0110/provoor/commit/0cbe52149a19a9479dc415cd0c29ecc12b5e87e0))
+* update examples ([#62](https://github.com/han0110/provoor/issues/62)) ([8c62b0f](https://github.com/han0110/provoor/commit/8c62b0f94d2e33374d3cc9e831f3b7937e34449b))
+
+
+### Bug Fixes
+
+* bump axiom-edge to 6d4a18a8 to admit proofs only on idle workers ([#64](https://github.com/han0110/provoor/issues/64)) ([b16d33a](https://github.com/han0110/provoor/commit/b16d33a9332c0b53a3baae1d96396c290dd5d639))
+* bump axiom-edge to a71886a0 to rebuild the app prover after a failure ([#63](https://github.com/han0110/provoor/issues/63)) ([5716aba](https://github.com/han0110/provoor/commit/5716aba33832f525b04220dfc923f81fa3fc72fa))
+
 ## [0.13.0](https://github.com/han0110/provoor/compare/v0.12.0...v0.13.0) (2026-11-10)
 
 
