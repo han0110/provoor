@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -217,6 +218,12 @@ func (c *Client) submitProof(ctx context.Context, input []byte) (string, time.Du
 		err := c.uploadInput(ctx, proofUUID, input)
 		if err == nil {
 			err = c.startProof(ctx, proofUUID)
+			// A lost admission response can leave this proof running on the cluster.
+			if errors.Is(err, errClusterUnreachable) {
+				cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+				_ = c.cancelProof(cancelCtx, proofUUID)
+				cancel()
+			}
 		}
 		if err == nil {
 			return proofUUID, submitWait, nil
@@ -277,11 +284,16 @@ func (c *Client) uploadInput(ctx context.Context, proofUUID string, input []byte
 }
 
 func (c *Client) startProof(ctx context.Context, proofUUID string) error {
-	payload, err := json.Marshal(map[string]any{
+	request := map[string]any{
 		"proof_uuid":             proofUUID,
 		"program":                map[string]any{"name": c.ProgramName, "version": programVersion},
 		"input_already_uploaded": false,
-	})
+	}
+	// The manager deadline rounds up, so the manager never ends a proof before the caller does.
+	if deadline, ok := ctx.Deadline(); ok {
+		request["timeout_secs"] = max(1, int64(math.Ceil(time.Until(deadline).Seconds())))
+	}
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return err
 	}
