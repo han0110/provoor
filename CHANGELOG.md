@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/han0110/provoor/compare/v0.14.0...v0.14.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* cancel timed-out proofs on the openvm cluster ([#66](https://github.com/han0110/provoor/issues/66)) ([588ca63](https://github.com/han0110/provoor/commit/588ca63f4f99b785fa25fa2e49682d486bbebe1b))
+
 ## [0.14.0](https://github.com/han0110/provoor/compare/v0.13.0...v0.14.0) (2026-11-18)
 
 
